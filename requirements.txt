@@ -1,0 +1,6 @@
+numpy==2.2.2
+opencv-python==4.11.0.86
+pillow==11.1.0
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.16
+PyQt5_sip==12.16.1
