@@ -3,3 +3,4 @@ mainWindow.py
 __pycache__/
 .DS_Store
 info/
+*Window.py
