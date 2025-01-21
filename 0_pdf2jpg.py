@@ -14,24 +14,21 @@ def convert_pdf_to_jpg():
     for pdf_file in pdf_files:
         pdf_path = os.path.join(pdf_dir, pdf_file)
         pdf_name = os.path.splitext(pdf_file)[0]
+        json_path = os.path.join(pdf_dir, f"{pdf_name}.json")
         
-        # 请求用户输入
         print(f"\n处理文件: {pdf_file}")
         try:
-            toc_start = int(input("请输入目录起始页 (PDF第几页): "))
-            toc_end = int(input("请输入目录结束页 (PDF第几页): "))
-            content_start = int(input("请输入正文第1页 (PDF第几页): "))
-            
-            # 保存JSON数据
-            json_data = {
-                "toc_start": toc_start,
-                "toc_end": toc_end,
-                "content_start": content_start
-            }
-            
-            json_path = os.path.join(pdf_dir, f"{pdf_name}.json")
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(json_data, f, ensure_ascii=False, indent=4)
+            # 从JSON文件读取数据
+            if not os.path.exists(json_path):
+                print(f"未找到对应的JSON文件: {json_path}")
+                continue
+                
+            with open(json_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+                
+            toc_start = json_data['toc_start']
+            toc_end = json_data['toc_end']
+            content_start = json_data['content_start']
             
             # 转换PDF页面为图片
             pages = convert_from_path(
@@ -47,8 +44,11 @@ def convert_pdf_to_jpg():
                 page.save(output_path, 'JPEG')
                 print(f"已保存: {output_path}")
             
-        except ValueError as e:
-            print(f"输入错误: {e}")
+        except json.JSONDecodeError as e:
+            print(f"JSON文件格式错误 {json_path}: {e}")
+            continue
+        except KeyError as e:
+            print(f"JSON文件缺少必要的键 {json_path}: {e}")
             continue
         except Exception as e:
             print(f"处理文件 {pdf_file} 时发生错误: {e}")

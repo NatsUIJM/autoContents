@@ -1,13 +1,11 @@
 import os
 import json
 import asyncio
+import time
 from openai import AsyncOpenAI
 import platform
 from pathlib import Path
 from itertools import groupby
-
-# 配置参数
-MAX_TITLE_LEVEL = 3  # 可配置的最大标题层级深度
 
 # 创建异步客户端实例
 client = AsyncOpenAI(
@@ -15,9 +13,63 @@ client = AsyncOpenAI(
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
 
-def get_system_prompt(max_level: int) -> str:
-    """根据最大层级深度生成系统提示"""
-    return f"""Task: 处理JSON格式的目录数据，修正文本错误并规范化格式。
+class ProgressTracker:
+    def __init__(self):
+        self.total_input_chars = 0
+        self.total_output_chars = 0
+        self.last_progress_time = 0
+        self.start_time = time.time()
+        self.processed_chars = 0
+    
+    def add_input_chars(self, count: int):
+        self.total_input_chars += count
+    
+    def add_output_chars(self, count: int):
+        self.total_output_chars += count
+        self.processed_chars += count
+    
+    def get_progress(self) -> float:
+        if self.total_output_chars == 0:
+            return 0.0
+        return self.total_output_chars / (self.total_input_chars / 0.6) * 100
+
+    def get_time_estimate(self) -> str:
+        if self.processed_chars == 0:
+            return "calculating..."
+        
+        elapsed_time = time.time() - self.start_time
+        chars_per_second = self.processed_chars / elapsed_time
+        remaining_chars = (self.total_input_chars / 0.6) - self.total_output_chars
+        
+        if chars_per_second > 0:
+            remaining_seconds = remaining_chars / chars_per_second
+            remaining_minutes = int(remaining_seconds / 60)
+            remaining_seconds = int(remaining_seconds % 60)
+            return f"{remaining_minutes}m {remaining_seconds}s"
+        return "calculating..."
+
+    def should_update(self) -> bool:
+        current_time = time.time()
+        if current_time - self.last_progress_time >= 1:
+            self.last_progress_time = current_time
+            return True
+        return False
+
+# 创建全局进度追踪器
+progress_tracker = ProgressTracker()
+
+system="""
+You are a helpful assistant with these specific requirements:
+1. Always be conservative about page number confidence. When in doubt, mark confirmed as false.
+2. Any estimated or inferred page numbers must be marked as confirmed=false.
+3. For chapter titles without explicit page numbers, default to confirmed=false unless there is clear evidence to mark it true.
+4. Propagated page numbers (like using first sub-section's page number) should be marked as confirmed=false.
+5. When processing TOC data, err on the side of caution - it's better to have more confirmed=false than missing uncertain cases.
+"""
+
+def get_system_prompt() -> str:
+    """生成系统提示"""
+    return """Task: 处理JSON格式的目录数据，修正文本错误并规范化格式。
 
 Request:
 1. 文本处理要求：
@@ -27,9 +79,8 @@ Request:
 2. 页码处理规则：
 对于number字段为null的情况，需处理以下三种场景：
    a. OCR未识别页码（常见于目录开头的个位数页码）：
-      - 根据前后文估算合理页码
+      - 保持"number":null
       - 输出时标记"confirmed": false
-      - 注意：如果某个页码是估算的，务必在输出中标记"confirmed": false。不怕多，就怕少
    
    b. 标题换行导致分散（常见于较长标题）：
       - 将本行与相邻行合并为完整标题
@@ -43,23 +94,20 @@ Request:
 3. 标题合并规则：
    - 遇到含章节号且结尾不完整的条目时，与下一个无章节号的条目合并
    - 合并后使用下一条目的页码
-   - 输出的结果中不应包含任何"null"字段，如无法确定页码请标记"confirmed": false
 
 4. 层级处理规则：
-   - 最大标题层级为{max_level}级
-   - 根据章节号判断标题层级：
-     * 章标题（如"第1章"）为level 1
-     * 节标题（如"1.1"）为level 2
-     * 以此类推
-     * 注意：部分情况下章标题之上还有一个层级的标题，此时章标题为 level 2，以此类推
+   - 如果"章"是最大标题层级
+     * 章为level 1，节为level 2，忽略更小的层级
+   - 如果"章"之上还有一个层级的标题
+     * 章之上的层级为level1，章为level 2，节为level 3，忽略更小的层级
 
 5. 输出格式要求：
    - 输出为一个JSON对象，包含一个"items"数组字段
    - 数组中的每个元素包含四个字段：
      * "text": 处理后的文本内容
-     * "number": 页码数值(整数)
-     * "confirmed": 页码是否确认(布尔值)（如果某个页码是估算的，务必在输出中标记"confirmed": false）
-     * "level": 标题层级(1到{max_level}的整数)
+     * "number": 页码数值或null
+     * "confirmed": 页码是否确认(布尔值)
+     * "level": 标题层级(1到2或3的整数)
 
 请按照上述规则处理以下内容，输出符合要求的JSON格式数据。"""
 
@@ -91,13 +139,16 @@ async def process_book_files(book_files: list[Path], output_dir: Path, token_cou
     combined_data = combine_json_data(book_files)
     
     # 创建模型提示
-    prompt = f"{get_system_prompt(MAX_TITLE_LEVEL)}\n\n{json.dumps(combined_data, ensure_ascii=False, indent=2)}"
+    prompt = f"{get_system_prompt()}\n\n{json.dumps(combined_data, ensure_ascii=False, indent=2)}"
+    
+    # 更新输入字符计数
+    progress_tracker.add_input_chars(len(prompt))
     
     # 使用流式调用模型
     response = await client.chat.completions.create(
         model="qwen-plus",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt}
         ],
         response_format={"type": "json_object"},
@@ -107,7 +158,14 @@ async def process_book_files(book_files: list[Path], output_dir: Path, token_cou
     full_response = ""
     async for chunk in response:
         if chunk.choices[0].delta.content is not None:
-            full_response += chunk.choices[0].delta.content
+            content = chunk.choices[0].delta.content
+            full_response += content
+            progress_tracker.add_output_chars(len(content))
+            
+            # 检查是否应该更新进度
+            if progress_tracker.should_update():
+                print(f"Progress: {progress_tracker.get_progress():.2f}% | Estimated time remaining: {progress_tracker.get_time_estimate()}")
+                
         if hasattr(chunk, 'usage') and chunk.usage:
             token_counter.update(
                 chunk.usage.completion_tokens,

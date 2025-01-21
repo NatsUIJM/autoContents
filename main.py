@@ -1,6 +1,9 @@
 import os
 import json
 import shutil
+import subprocess
+import time
+import sys
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QVBoxLayout, QWidget
 from mainWindow import Ui_MainWindow
@@ -16,8 +19,11 @@ class PDFCard(QtWidgets.QWidget, Ui_Form):
         self.pdf_path = pdf_path
         self.pdf_name = os.path.basename(pdf_path)
         
-        # 设置PDF名称
-        self.pdfNameLabel.setText(self.pdf_name)
+        # 将 PDF 名称标签设置为可点击的链接样式
+        self.pdfNameLabel.setText(f'<a href="{pdf_path}" style="color: blue; text-decoration: none;">{self.pdf_name}</a>')
+        self.pdfNameLabel.setOpenExternalLinks(False)  # 禁用默认的链接处理
+        self.pdfNameLabel.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse)
+        self.pdfNameLabel.linkActivated.connect(self.open_pdf)
         
         # 加载第一页预览
         self.load_preview()
@@ -30,6 +36,15 @@ class PDFCard(QtWidgets.QWidget, Ui_Form):
         self.tocStartSpinBox.valueChanged.connect(self.save_json_data)
         self.tocEndSpinBox.valueChanged.connect(self.save_json_data)
         self.contentStartSpinBox.valueChanged.connect(self.save_json_data)
+
+    def open_pdf(self):
+        """使用系统默认程序打开PDF"""
+        if sys.platform == 'win32':
+            os.startfile(self.pdf_path)
+        elif sys.platform == 'darwin':  # macOS
+            subprocess.call(('open', self.pdf_path))
+        else:  # linux variants
+            subprocess.call(('xdg-open', self.pdf_path))
         
     def load_preview(self):
         try:
@@ -38,8 +53,8 @@ class PDFCard(QtWidgets.QWidget, Ui_Form):
             if pages:
                 # 获取第一页
                 page = pages[0]
-                # 调整大小
-                img = page.resize((120, 160))
+                # 调整大小为 100x140
+                img = page.resize((100, 140))
                 # 转换为QPixmap
                 qimg = QtGui.QImage(img.tobytes(), img.width, img.height, QtGui.QImage.Format_RGB888)
                 pixmap = QtGui.QPixmap.fromImage(qimg)
@@ -103,9 +118,45 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         
         # 连接信号
         self.pushButton_5.clicked.connect(self.add_pdfs)
+        # 连接第二步按钮的点击事件
+        self.pushButton_3.clicked.connect(self.run_pic_mark)
         
         # 初始加载已有PDF
         self.load_existing_pdfs()
+
+    def run_pic_mark(self):
+        """运行1_picMark.py"""
+        try:
+            # 检查是否有PDF文件
+            if not os.path.exists(self.pdf_dir) or not any(f.lower().endswith('.pdf') for f in os.listdir(self.pdf_dir)):
+                QMessageBox.warning(
+                    self,
+                    "警告",
+                    "请先添加PDF文件！"
+                )
+                return
+
+            # 检查1_picMark.py是否存在
+            if not os.path.exists("1_picMark.py"):
+                QMessageBox.critical(
+                    self,
+                    "错误",
+                    "未找到1_picMark.py文件！"
+                )
+                return
+
+            # 使用Python解释器运行1_picMark.py
+            python_executable = sys.executable
+            subprocess.Popen([python_executable, "0_pdf2jpg.py"])
+            time.sleep(1)
+            subprocess.Popen([python_executable, "1_picMark.py"])
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "错误",
+                f"运行1_picMark.py失败：{str(e)}"
+            )
 
     def generate_unique_filename(self, original_path):
         """生成唯一的文件名"""

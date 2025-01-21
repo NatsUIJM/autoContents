@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QGraphicsScene,
                             QGraphicsView, QGraphicsLineItem, QGraphicsEllipseItem)
 from PyQt5.QtGui import QPixmap, QImage, QPen, QPainter
 from PyQt5.QtCore import Qt, QPointF, QLineF, QRectF
-from markWindow import Ui_markWindow
+from markWindow import Ui_MainWindow
 
 class DraggableLine(QGraphicsLineItem):
     def __init__(self, x1, y1, x2, y2, is_vertical=False, parent=None):
@@ -75,7 +75,7 @@ class CustomGraphicsView(QGraphicsView):
 class MainApplication(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.ui = Ui_markWindow()
+        self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         
         self.graphics_view = CustomGraphicsView()
