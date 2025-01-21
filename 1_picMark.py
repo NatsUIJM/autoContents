@@ -204,12 +204,93 @@ class MainApplication(QMainWindow):
         # 在输出所有点坐标后添加禁止符号位置的检查
         self.check_positions()
     
+    def reset_drawing_area(self):
+        # 移除除固定红线外的所有线条和标记
+        for item in self.scene.items():
+            if isinstance(item, (DraggableLine, DraggableCircle)):
+                if item not in self.lines:  # 不移除固定的红线
+                    self.scene.removeItem(item)
+        
+        # 重置绿线和蓝线列表
+        self.green_line = None
+        self.blue_lines = []
+        self.ban_symbols = []
+        
+        # 重置绿线按钮文本
+        self.ui.addColumnBtn.setText("添加分栏标记")
+        
+        # 重置固定红线位置
+        h1, h2, v1, v2 = self.lines
+        h1.setPos(0, 200)
+        h2.setPos(0, 600)
+        v1.setPos(200, 0)
+        v2.setPos(600, 0)
+
     def check_positions(self):
         for i, symbol in enumerate(self.ban_symbols, 1):
             center_x = symbol.pos().x() + symbol.rect().width()/2
             center_y = symbol.pos().y() + symbol.rect().height()/2
             print(f"点X{i}: ({center_x:.2f}, {center_y:.2f})")
     
+    def load_page_marks(self):
+        # 获取当前图片对应的JSON文件路径
+        current_image = self.image_files[self.current_page]
+        base_name = os.path.splitext(current_image)[0]
+        json_path = os.path.join('1_picMark', 'picJSON', f'{base_name}.json')
+        
+        # 如果JSON文件不存在，直接返回
+        if not os.path.exists(json_path):
+            return
+        
+        # 读取JSON文件
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # 计算缩放比例（从原始尺寸到显示尺寸）
+        scale = 850 / data['original_height']
+        points = data['points']
+        
+        # 重置绘图区域
+        self.reset_drawing_area()
+        
+        # 设置红线位置
+        h1, h2, v1, v2 = self.lines
+        h1.setPos(0, points['A']['y'] * scale)
+        h2.setPos(0, points['C']['y'] * scale)
+        v1.setPos(points['A']['x'] * scale, 0)
+        v2.setPos(points['B']['x'] * scale, 0)
+        
+        # 如果存在E和F点，添加绿线
+        if 'E' in points and 'F' in points:
+            x = points['E']['x'] * scale
+            self.green_line = DraggableLine(x, 0, x, 850, True)
+            self.green_line.setPen(QPen(Qt.green, 5))
+            self.green_line.main_window = self
+            self.scene.addItem(self.green_line)
+            self.ui.addColumnBtn.setText("删除分栏标记")
+        
+        # 添加蓝线
+        m_points = [(k, v) for k, v in points.items() if k.startswith('M')]
+        for m_key, m_point in m_points:
+            num = m_key[1:]  # 获取编号
+            y = m_point['y'] * scale
+            blue_line = DraggableLine(0, y, 780, y, False)
+            blue_line.setPen(QPen(Qt.blue, 5))
+            blue_line.main_window = self
+            self.scene.addItem(blue_line)
+            self.blue_lines.append(blue_line)
+        
+        # 添加禁止标记
+        x_points = [(k, v) for k, v in points.items() if k.startswith('X')]
+        for _, x_point in x_points:
+            x = x_point['x'] * scale
+            y = x_point['y'] * scale
+            diameter = 10
+            ban_symbol = DraggableCircle(x, y, diameter)
+            ban_symbol.main_window = self
+            self.scene.addItem(ban_symbol)
+            self.ban_symbols.append(ban_symbol)
+
     def add_ban_symbol(self):
         y_pos = 400 + len(self.ban_symbols) * 50
         if y_pos > 800:
@@ -276,6 +357,17 @@ class MainApplication(QMainWindow):
             
             pixmap_item = self.scene.addPixmap(scaled_pixmap)
             pixmap_item.setZValue(-1)
+            
+            # 重置绘图区域并检查是否有已存在的标记
+            self.reset_drawing_area()
+            
+            # 检查并加载已存在的标记
+            current_image = self.image_files[self.current_page]
+            base_name = os.path.splitext(current_image)[0]
+            json_path = os.path.join('1_picMark', 'picJSON', f'{base_name}.json')
+            
+            if os.path.exists(json_path):
+                self.load_page_marks()
     
     def update_progress_label(self):
         total_pages = len(self.image_files)
@@ -356,7 +448,22 @@ class MainApplication(QMainWindow):
             point['x'] = round(point['x'] * scale, 2)
             point['y'] = round(point['y'] * scale, 2)
         
-        # 2. 重排M/N/P点
+        # 2. 重排ABCD点
+        points = data['points']
+        abcd_points = [(k, v) for k, v in points.items() if k in ['A', 'B', 'C', 'D']]
+        # 按y坐标排序
+        abcd_points.sort(key=lambda x: x[1]['y'])
+        # 分成上下两组
+        top_two = sorted(abcd_points[:2], key=lambda x: x[1]['x'])
+        bottom_two = sorted(abcd_points[2:], key=lambda x: x[1]['x'])
+        
+        # 重新赋值
+        points['A'] = top_two[0][1]      # 左上
+        points['B'] = top_two[1][1]      # 右上
+        points['C'] = bottom_two[0][1]   # 左下
+        points['D'] = bottom_two[1][1]   # 右下
+
+        # 3. 重排M/N/P点
         m_points = [(k, v) for k, v in data['points'].items() if k.startswith('M')]
         if m_points:
             # 按y坐标排序
@@ -383,7 +490,7 @@ class MainApplication(QMainWindow):
             
             data['points'] = new_points
         
-        # 3. 重排X点
+        # 4. 重排X点
         x_points = [(k, v) for k, v in data['points'].items() if k.startswith('X')]
         if x_points:
             x_points.sort(key=lambda x: x[1]['y'])
@@ -407,6 +514,7 @@ class MainApplication(QMainWindow):
         self.save_points_data()  # 保存当前页面的数据
         if self.current_page < len(self.image_files) - 1:
             self.current_page += 1
+            self.reset_drawing_area()  # 在加载新图像前重置
             self.load_current_image()
             self.update_progress_label()
             self.update_button_states()
@@ -414,9 +522,10 @@ class MainApplication(QMainWindow):
             self.close()
     
     def prev_page(self):
+        self.save_points_data()  # 保存当前页面的数据
         if self.current_page > 0:
             self.current_page -= 1
-            self.load_current_image()
+            self.load_current_image()  # 这里会自动检查和加载标记
             self.update_progress_label()
             self.update_button_states()
 

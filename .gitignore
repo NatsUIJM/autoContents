@@ -2,3 +2,4 @@ mainWindow.py
 [0-9]_*/
 __pycache__/
 .DS_Store
+info/
