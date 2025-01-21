@@ -1,3 +1,4 @@
 mainWindow.py
-1_picMark/
+[0-9]_*/
 __pycache__/
+.DS_Store
