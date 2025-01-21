@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>623</width>
+    <height>184</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>0</width>
+    <height>184</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>16777215</width>
+    <height>184</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <property name="styleSheet">
+   <string>
+    QWidget#Form {
+        background-color: white;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+    }
+   </string>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout_2">
+   <property name="spacing">
+    <number>16</number>
+   </property>
+   <property name="leftMargin">
+    <number>12</number>
+   </property>
+   <property name="topMargin">
+    <number>12</number>
+   </property>
+   <property name="rightMargin">
+    <number>12</number>
+   </property>
+   <property name="bottomMargin">
+    <number>12</number>
+   </property>
+   <item>
+    <widget class="QGraphicsView" name="graphicsView">
+     <property name="minimumSize">
+      <size>
+       <width>120</width>
+       <height>160</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>120</width>
+       <height>160</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string>
+       QGraphicsView {
+           background-color: #F3F4F6;
+           border: 1px solid #E5E7EB;
+           border-radius: 4px;
+       }
+      </string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="verticalLayout">
+     <property name="spacing">
+      <number>12</number>
+     </property>
+     <item>
+      <spacer name="verticalSpacer_3">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="pdfNameLabel">
+       <property name="font">
+        <font>
+         <pointsize>-1</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string>
+         QLabel {
+             font-size: 14px;
+             font-weight: bold;
+             color: #374151;
+             background-color: #F9FAFB;
+             padding: 4px 8px;
+             border-radius: 4px;
+         }
+        </string>
+       </property>
+       <property name="text">
+        <string>PDF 名称</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="verticalSpacer_2">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="pageSettingsLayout">
+       <property name="spacing">
+        <number>12</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="tocStartLabel">
+         <property name="styleSheet">
+          <string>
+           QLabel {
+               color: #374151;
+               font-size: 13px;
+           }
+          </string>
+         </property>
+         <property name="text">
+          <string>目录起始页</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="tocStartSpinBox">
+         <property name="font">
+          <font>
+           <kerning>true</kerning>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string>
+           QSpinBox {
+               padding: 4px;
+               border: 1px solid #D1D5DB;
+               border-radius: 4px;
+               background-color: white;
+           }
+           QSpinBox:focus {
+               border-color: #3B82F6;
+           }
+          </string>
+         </property>
+         <property name="minimum">
+          <number>1</number>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="tocEndLabel">
+         <property name="styleSheet">
+          <string>
+           QLabel {
+               color: #374151;
+               font-size: 13px;
+           }
+          </string>
+         </property>
+         <property name="text">
+          <string>目录结束页</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="tocEndSpinBox">
+         <property name="styleSheet">
+          <string>
+           QSpinBox {
+               padding: 4px;
+               border: 1px solid #D1D5DB;
+               border-radius: 4px;
+               background-color: white;
+           }
+           QSpinBox:focus {
+               border-color: #3B82F6;
+           }
+          </string>
+         </property>
+         <property name="minimum">
+          <number>1</number>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="contentStartLabel">
+         <property name="styleSheet">
+          <string>
+           QLabel {
+               color: #374151;
+               font-size: 13px;
+           }
+          </string>
+         </property>
+         <property name="text">
+          <string>正文起始页</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="contentStartSpinBox">
+         <property name="styleSheet">
+          <string>
+           QSpinBox {
+               padding: 4px;
+               border: 1px solid #D1D5DB;
+               border-radius: 4px;
+               background-color: white;
+           }
+           QSpinBox:focus {
+               border-color: #3B82F6;
+           }
+          </string>
+         </property>
+         <property name="minimum">
+          <number>1</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <spacer name="verticalSpacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="deletePDF">
+       <property name="text">
+        <string>删除 PDF</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -5,6 +5,11 @@ import pikepdf
 def process_pdf_with_bookmarks(root_dir):
     content_dir = os.path.join(root_dir, '6_confirmedContentInfo')
     pdf_dir = os.path.join(root_dir, '0_originPDF')
+    output_dir = os.path.join(root_dir, '7_processedPDF')
+    
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     
     for filename in os.listdir(content_dir):
         if not filename.endswith('_processed.json'):
@@ -93,8 +98,8 @@ def process_pdf_with_bookmarks(root_dir):
             with pdf.open_outline() as outline:
                 outline.root.extend(bookmarks)
             
-            # 保存处理后的PDF
-            output_path = os.path.join(pdf_dir, f'{base_name}_with_toc.pdf')
+            # 保存处理后的PDF到新目录
+            output_path = os.path.join(output_dir, f'{base_name}_with_toc.pdf')
             pdf.save(output_path)
             print(f"\n已成功处理 {base_name}")
             
