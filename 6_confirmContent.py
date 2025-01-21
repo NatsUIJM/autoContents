@@ -7,19 +7,50 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QGraphicsScene
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt, QTimer
 from confirmWindow import Ui_MainWindow
+from PyQt5.QtCore import QThread, pyqtSignal
+
+class PageNumberProcessor(QThread):
+    finished = pyqtSignal()
+    
+    def __init__(self, source_dir):
+        super().__init__()
+        self.source_dir = source_dir
+        
+    def run(self):
+        # 处理所有JSON文件中的单位数页码
+        for filename in os.listdir(self.source_dir):
+            if not filename.endswith('.json'):
+                continue
+                
+            filepath = os.path.join(self.source_dir, filename)
+            self.process_file(filepath)
+            
+        self.finished.emit()
+    
+    def process_file(self, filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        modified = False
+        for item in data['items']:
+            if isinstance(item.get('number'), int) and 0 <= item['number'] <= 9:
+                item['confirmed'] = False
+                modified = True
+        
+        if modified:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
 
 class DataManager:
     def __init__(self):
         self.source_dir = "5_processedContentInfo"
         self.target_dir = "6_confirmedContentInfo"
-        self.items = []  # 所有需要确认的项目
+        self.items = []
         self.current_index = 0
-        self.load_all_items()
 
     def load_all_items(self):
         """加载所有需要确认的项目"""
         self.items = []
-        # 遍历source_dir中的所有JSON文件
         for filename in os.listdir(self.source_dir):
             if not filename.endswith('.json'):
                 continue
@@ -27,7 +58,6 @@ class DataManager:
             filepath = os.path.join(self.source_dir, filename)
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # 筛选未确认的项目，并添加源文件信息
                 for item in data['items']:
                     if item.get('confirmed') == False:
                         item['source_file'] = filename
@@ -42,7 +72,7 @@ class DataManager:
     def get_image_files(self, item: Dict) -> List[str]:
         """获取当前项目对应的图片文件列表"""
         source_file = item['source_file']
-        book_name = source_file.replace('_processed.json', '')
+        book_name = source_file.replace('_final.json', '')
         
         image_files = []
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -135,21 +165,49 @@ class ConfirmWindow(QMainWindow, Ui_MainWindow):
         self.current_images = []
         self.current_image_index = 0
         
+        # 创建并启动页码处理器
+        self.page_processor = PageNumberProcessor(self.data_manager.source_dir)
+        self.page_processor.finished.connect(self.on_processing_finished)
+        self.page_processor.start()
+        
         # 设置信号连接
         self.prevPageButton.clicked.connect(self.on_prev_page)
         self.nextPageButton.clicked.connect(self.on_next_page)
         self.prevItemButton.clicked.connect(self.on_prev_item)
         self.nextItemButton.clicked.connect(self.on_next_item)
         
-        # 检查是否有数据需要处理
+        # 禁用所有按钮，直到处理完成
+        self.disable_all_buttons()
+
+    def disable_all_buttons(self):
+        """禁用所有按钮"""
+        self.prevPageButton.setEnabled(False)
+        self.nextPageButton.setEnabled(False)
+        self.prevItemButton.setEnabled(False)
+        self.nextItemButton.setEnabled(False)
+
+    def enable_all_buttons(self):
+        """启用所有按钮"""
+        self.prevPageButton.setEnabled(True)
+        self.nextPageButton.setEnabled(True)
+        self.prevItemButton.setEnabled(True)
+        self.nextItemButton.setEnabled(True)
+
+    def on_processing_finished(self):
+        """页码处理完成后的回调"""
+        self.enable_all_buttons()
+        
+        # 加载数据并初始化界面
+        self.data_manager.load_all_items()
+        
         if len(self.data_manager.items) == 0:
             print("No items to process")
             self.close()
             return
             
-        # 初始加载数据
         self.load_current_item()
         self.update_next_button_state()
+
 
     def update_next_button_state(self):
         """更新下一条按钮的状态"""
