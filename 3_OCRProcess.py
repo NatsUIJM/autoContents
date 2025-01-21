@@ -5,6 +5,7 @@ import easyocr
 import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
+import concurrent.futures
 
 def is_pure_number(text):
     """检查文本是否为纯数字"""
@@ -149,6 +150,43 @@ def draw_ocr_results(image, results):
     output_img = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
     return output_img
 
+def process_image(img_path, reader, output_dir):
+    """处理单张图片的OCR并保存结果"""
+    # 读取图片
+    image = cv2.imread(str(img_path))
+    height, width = image.shape[:2]
+    
+    # 执行OCR
+    results = reader.readtext(image)
+    
+    # 合并同一行的文本
+    merged_results = merge_line_texts(results, height, width)
+    
+    # 转换结果为JSON格式
+    json_results = []
+    for (bbox, text, prob) in merged_results:
+        # 将numpy数组转换为普通list以便JSON序列化
+        bbox = np.array(bbox).tolist()
+        
+        result_dict = {
+            'text': text,
+            'confidence': float(prob),
+            'bbox': bbox
+        }
+        json_results.append(result_dict)
+        
+    # 保存JSON结果
+    json_path = output_dir / f"{img_path.stem}.json"
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(json_results, f, ensure_ascii=False, indent=2)
+    
+    # 绘制并保存带标注的图片
+    output_img = draw_ocr_results(image, merged_results)
+    img_output_path = output_dir / f"{img_path.stem}_annotated.jpg"
+    cv2.imwrite(str(img_output_path), output_img)
+        
+    print(f"Processed {img_path.name}")
+
 def main():
     # 初始化OCR reader (只需运行一次)
     reader = easyocr.Reader(['ch_sim','en'])
@@ -159,41 +197,13 @@ def main():
     
     # 遍历图片目录
     input_dir = Path('2_outputPic')
-    for img_path in input_dir.glob('*.jpg'):
-        # 读取图片
-        image = cv2.imread(str(img_path))
-        height, width = image.shape[:2]
-        
-        # 执行OCR
-        results = reader.readtext(image)
-        
-        # 合并同一行的文本
-        merged_results = merge_line_texts(results, height, width)
-        
-        # 转换结果为JSON格式
-        json_results = []
-        for (bbox, text, prob) in merged_results:
-            # 将numpy数组转换为普通list以便JSON序列化
-            bbox = np.array(bbox).tolist()
-            
-            result_dict = {
-                'text': text,
-                'confidence': float(prob),
-                'bbox': bbox
-            }
-            json_results.append(result_dict)
-            
-        # 保存JSON结果
-        json_path = output_dir / f"{img_path.stem}.json"
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(json_results, f, ensure_ascii=False, indent=2)
-        
-        # 绘制并保存带标注的图片
-        output_img = draw_ocr_results(image, merged_results)
-        img_output_path = output_dir / f"{img_path.stem}_annotated.jpg"
-        cv2.imwrite(str(img_output_path), output_img)
-            
-        print(f"Processed {img_path.name}")
+    img_paths = list(input_dir.glob('*.jpg'))
+    
+    # 使用多线程处理图片
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_image, img_path, reader, output_dir) for img_path in img_paths]
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
 
 if __name__ == '__main__':
     main()
