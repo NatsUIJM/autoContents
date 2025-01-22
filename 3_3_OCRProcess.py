@@ -1,7 +1,6 @@
 import os
 import json
 from pathlib import Path
-import easyocr
 import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
@@ -150,35 +149,32 @@ def draw_ocr_results(image, results):
     output_img = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
     return output_img
 
-def process_image(img_path, reader, output_dir):
+def process_image(img_path, json_dir, output_dir):
     """处理单张图片的OCR并保存结果"""
     # 读取图片
     image = cv2.imread(str(img_path))
     height, width = image.shape[:2]
     
-    # 执行OCR
-    results = reader.readtext(image)
+    # 读取对应的JSON文件
+    json_path = json_dir / f"{img_path.stem}.json"
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            json_results = json.load(f)
+    except FileNotFoundError:
+        print(f"Warning: JSON file not found for {img_path.name}")
+        return
+    
+    # 转换JSON结果为程序所需格式
+    results = []
+    for item in json_results:
+        results.append((
+            np.array(item['bbox']),
+            item['text'],
+            1.0  # 使用默认信度值1.0
+        ))
     
     # 合并同一行的文本
     merged_results = merge_line_texts(results, height, width)
-    
-    # 转换结果为JSON格式
-    json_results = []
-    for (bbox, text, prob) in merged_results:
-        # 将numpy数组转换为普通list以便JSON序列化
-        bbox = np.array(bbox).tolist()
-        
-        result_dict = {
-            'text': text,
-            'confidence': float(prob),
-            'bbox': bbox
-        }
-        json_results.append(result_dict)
-        
-    # 保存JSON结果
-    json_path = output_dir / f"{img_path.stem}.json"
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(json_results, f, ensure_ascii=False, indent=2)
     
     # 绘制并保存带标注的图片
     output_img = draw_ocr_results(image, merged_results)
@@ -188,12 +184,12 @@ def process_image(img_path, reader, output_dir):
     print(f"Processed {img_path.name}")
 
 def main():
-    # 初始化OCR reader (只需运行一次)
-    reader = easyocr.Reader(['ch_sim','en'])
-    
     # 创建输出目录
     output_dir = Path('3_OCRInfo')
     output_dir.mkdir(exist_ok=True)
+    
+    # JSON文件目录
+    json_dir = Path('3_1_OCRServiceBack')
     
     # 遍历图片目录
     input_dir = Path('2_outputPic')
@@ -201,7 +197,8 @@ def main():
     
     # 使用多线程处理图片
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_image, img_path, reader, output_dir) for img_path in img_paths]
+        futures = [executor.submit(process_image, img_path, json_dir, output_dir) 
+                  for img_path in img_paths]
         for future in concurrent.futures.as_completed(futures):
             future.result()
 
