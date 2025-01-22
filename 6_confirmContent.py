@@ -26,11 +26,27 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         self.all_tasks = []
         self.current_task_index = -1
         
+        # 设置按钮文本（添加快捷键提示）
+        self.ui.prevItemButton.setText("上一条 (Shift+Enter)")
+        self.ui.nextItemButton.setText("下一条 (Enter)")
+        
         # 设置信号连接
         self.ui.prevItemButton.clicked.connect(self.prev_item)
         self.ui.nextItemButton.clicked.connect(self.next_item)
         self.ui.prevPageButton.clicked.connect(self.prev_page)
         self.ui.nextPageButton.clicked.connect(self.next_page)
+        
+        # 设置Enter键快捷键
+        self.next_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Return"), self)
+        self.next_shortcut.activated.connect(self.next_item)
+        
+        # 设置Shift+Enter快捷键
+        self.prev_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Shift+Return"), self)
+        self.prev_shortcut.activated.connect(self.prev_item)
+        
+        # 设置下一条按钮的激活样式
+        self.ui.nextItemButton.setAutoDefault(True)
+        self.ui.nextItemButton.setDefault(True)
         
         # 初始化文件处理
         self.process_files()
@@ -88,6 +104,12 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             print(f"{idx + 1}. [{task['source']}]-[{task['title']}]")
         print(f"\n当前正在处理第 {self.current_task_index + 1} 个任务，共 {len(self.all_tasks)} 个任务")
         
+        # 更新"下一条"按钮文本
+        if self.current_task_index == len(self.all_tasks) - 1:
+            self.ui.nextItemButton.setText("完成 (Enter)")
+        else:
+            self.ui.nextItemButton.setText("下一条 (Enter)")
+            
     def load_current_item(self):
         if not self.current_json_data:
             return
@@ -99,8 +121,19 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         self.ui.pageConfirmLineEdit.setText(str(item['number']) if item['number'] is not None else '')
         self.ui.progressLabel.setText(f"处理进度：{self.current_task_index + 1}/{len(self.all_tasks)}")
         
-        # 加载相关图片
-        self.load_images()
+        # 全选页码确认框中的内容
+        self.ui.pageConfirmLineEdit.selectAll()
+        
+        # 判断是否需要刷新图片
+        need_refresh = True
+        if self.current_task_index > 0:
+            prev_task = self.all_tasks[self.current_task_index - 1]
+            current_task = self.all_tasks[self.current_task_index]
+            if prev_task['source'] == current_task['source']:
+                need_refresh = False
+                
+        if need_refresh:
+            self.load_images()
         
     def load_images(self):
         if not self.current_json_path:
@@ -125,7 +158,7 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         if 0 <= self.current_image_index < len(self.current_images):
             image_path = str(self.current_images[self.current_image_index])
             pixmap = QPixmap(image_path)
-            scaled_pixmap = pixmap.scaledToHeight(875, QtCore.Qt.SmoothTransformation)
+            scaled_pixmap = pixmap.scaledToWidth(800, QtCore.Qt.SmoothTransformation)
             scene = QtWidgets.QGraphicsScene()
             scene.addPixmap(scaled_pixmap)
             self.ui.imageView.setScene(scene)
@@ -162,6 +195,9 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             self.current_task_index += 1
             self.load_current_task()
             self.print_task_info()
+        elif self.current_task_index == len(self.all_tasks) - 1:
+            # 如果是最后一个任务，保存后退出程序
+            self.close()
         
     def prev_page(self):
         if self.current_images and self.current_image_index > 0:
