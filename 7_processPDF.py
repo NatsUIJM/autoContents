@@ -12,10 +12,10 @@ def process_pdf_with_bookmarks(root_dir):
         os.makedirs(output_dir)
     
     for filename in os.listdir(content_dir):
-        if not filename.endswith('_processed.json'):
+        if not filename.endswith('_final.json'):
             continue
             
-        base_name = filename.replace('_processed.json', '')
+        base_name = filename.replace('_final.json', '')
         pdf_path = os.path.join(pdf_dir, f'{base_name}.pdf')
         info_json_path = os.path.join(pdf_dir, f'{base_name}.json')
         content_json_path = os.path.join(content_dir, filename)
