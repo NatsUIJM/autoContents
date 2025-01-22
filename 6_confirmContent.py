@@ -1,372 +1,178 @@
-import sys
 import os
 import json
 import shutil
-from typing import List, Dict, Tuple
-from PyQt5.QtWidgets import QApplication, QMainWindow, QGraphicsScene
+from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtCore import Qt, QTimer
 from confirmWindow import Ui_MainWindow
-from PyQt5.QtCore import QThread, pyqtSignal
+import glob
+from pathlib import Path
 
-class PageNumberProcessor(QThread):
-    finished = pyqtSignal()
-    
-    def __init__(self, source_dir):
-        super().__init__()
-        self.source_dir = source_dir
-        
-    def run(self):
-        # 处理所有JSON文件中的单位数页码
-        for filename in os.listdir(self.source_dir):
-            if not filename.endswith('.json'):
-                continue
-                
-            filepath = os.path.join(self.source_dir, filename)
-            self.process_file(filepath)
-            
-        self.finished.emit()
-    
-    def process_file(self, filepath):
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            
-        modified = False
-        for item in data['items']:
-            if isinstance(item.get('number'), int) and 0 <= item['number'] <= 9:
-                item['confirmed'] = False
-                modified = True
-        
-        if modified:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-
-class DataManager:
-    def __init__(self):
-        self.source_dir = "5_processedContentInfo"
-        self.target_dir = "6_confirmedContentInfo"
-        self.items = []
-        self.current_index = 0
-
-    def load_all_items(self):
-        """加载所有需要确认的项目"""
-        self.items = []
-        for filename in os.listdir(self.source_dir):
-            if not filename.endswith('.json'):
-                continue
-                
-            filepath = os.path.join(self.source_dir, filename)
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                for item in data['items']:
-                    if item.get('confirmed') == False:
-                        item['source_file'] = filename
-                        self.items.append(item)
-
-    def get_current_item(self) -> Dict:
-        """获取当前项目"""
-        if 0 <= self.current_index < len(self.items):
-            return self.items[self.current_index]
-        return None
-
-    def get_image_files(self, item: Dict) -> List[str]:
-        """获取当前项目对应的图片文件列表"""
-        source_file = item['source_file']
-        book_name = source_file.replace('_final.json', '')
-        
-        image_files = []
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        base_path = os.path.join(current_dir, "1_picMark", "inputPic")
-        
-        print(f"Looking for images for book: {book_name}")
-        
-        # 收集所有匹配的文件
-        matching_files = []
-        for file in os.listdir(base_path):
-            if file.startswith(f"{book_name}_page_") and file.endswith(".jpg"):
-                try:
-                    # 提取页码
-                    page_num = int(file.replace(f"{book_name}_page_", "").replace(".jpg", ""))
-                    matching_files.append((page_num, os.path.join(base_path, file)))
-                except ValueError:
-                    print(f"Skipping file with invalid page number: {file}")
-        
-        # 按页码排序
-        matching_files.sort(key=lambda x: x[0])
-        
-        # 提取排序后的文件路径
-        image_files = [file_path for _, file_path in matching_files]
-        
-        print("Found files in order:")
-        for page_num, file_path in matching_files:
-            print(f"  Page {page_num}: {file_path}")
-        
-        return image_files
-
-    def save_current_item(self, new_page_number: int):
-        """保存当前项目"""
-        current_item = self.get_current_item()
-        if not current_item:
-            return
-
-        source_filename = current_item['source_file']
-        target_filename = os.path.join(self.target_dir, source_filename)
-        
-        # 如果目标文件不存在，从源文件复制
-        if not os.path.exists(target_filename):
-            source_path = os.path.join(self.source_dir, source_filename)
-            os.makedirs(self.target_dir, exist_ok=True)
-            shutil.copy2(source_path, target_filename)
-
-        # 读取目标文件
-        with open(target_filename, 'r', encoding='utf-8') as f:
-            target_data = json.load(f)
-
-        # 更新对应项目
-        for item in target_data['items']:
-            if (item['text'] == current_item['text'] and 
-                item['level'] == current_item['level']):
-                item['number'] = new_page_number
-                item['confirmed'] = True
-                break
-
-        # 保存更新后的文件
-        with open(target_filename, 'w', encoding='utf-8') as f:
-            json.dump(target_data, f, ensure_ascii=False, indent=2)
-
-    def move_to_next(self) -> bool:
-        """移动到下一项"""
-        if self.current_index < len(self.items) - 1:
-            self.current_index += 1
-            return True
-        return False
-
-    def move_to_prev(self) -> bool:
-        """移动到上一项"""
-        if self.current_index > 0:
-            self.current_index -= 1
-            return True
-        return False
-
-    def get_progress(self) -> Tuple[int, int]:
-        """获取当前进度"""
-        return self.current_index + 1, len(self.items)
-
-class ConfirmWindow(QMainWindow, Ui_MainWindow):
+class ContentConfirmWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setupUi(self)
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
         
-        # 初始化场景和视图
-        self.scene = QGraphicsScene()
-        self.imageView.setScene(self.scene)
-        
-        self.data_manager = DataManager()
+        # 初始化变量
+        self.current_json_path = None
+        self.current_json_data = None
+        self.current_item_index = -1
         self.current_images = []
         self.current_image_index = 0
+        self.json_files = []
+        self.current_file_index = 0
         
-        # 创建并启动页码处理器
-        self.page_processor = PageNumberProcessor(self.data_manager.source_dir)
-        self.page_processor.finished.connect(self.on_processing_finished)
-        self.page_processor.start()
+        # 保存所有待处理任务的列表
+        self.all_tasks = []
+        self.current_task_index = -1
         
         # 设置信号连接
-        self.prevPageButton.clicked.connect(self.on_prev_page)
-        self.nextPageButton.clicked.connect(self.on_next_page)
-        self.prevItemButton.clicked.connect(self.on_prev_item)
-        self.nextItemButton.clicked.connect(self.on_next_item)
+        self.ui.prevItemButton.clicked.connect(self.prev_item)
+        self.ui.nextItemButton.clicked.connect(self.next_item)
+        self.ui.prevPageButton.clicked.connect(self.prev_page)
+        self.ui.nextPageButton.clicked.connect(self.next_page)
         
-        # 禁用所有按钮，直到处理完成
-        self.disable_all_buttons()
-
-    def disable_all_buttons(self):
-        """禁用所有按钮"""
-        self.prevPageButton.setEnabled(False)
-        self.nextPageButton.setEnabled(False)
-        self.prevItemButton.setEnabled(False)
-        self.nextItemButton.setEnabled(False)
-
-    def enable_all_buttons(self):
-        """启用所有按钮"""
-        self.prevPageButton.setEnabled(True)
-        self.nextPageButton.setEnabled(True)
-        self.prevItemButton.setEnabled(True)
-        self.nextItemButton.setEnabled(True)
-
-    def on_processing_finished(self):
-        """页码处理完成后的回调"""
-        self.enable_all_buttons()
+        # 初始化文件处理
+        self.process_files()
         
-        # 加载数据并初始化界面
-        self.data_manager.load_all_items()
+    def process_files(self):
+        source_dir = Path("5_processedContentInfo")
+        target_dir = Path("6_confirmedContentInfo")
         
-        if len(self.data_manager.items) == 0:
-            print("No items to process")
-            self.close()
+        if not target_dir.exists():
+            target_dir.mkdir(parents=True)
+            
+        # 先确保文件都复制到了目标文件夹
+        json_files = sorted(source_dir.glob("*.json"))
+        for source_file in json_files:
+            target_file = target_dir / source_file.name
+            if not target_file.exists():
+                shutil.copy2(source_file, target_file)
+        
+        # 只从目标文件夹加载任务
+        self.all_tasks = []
+        self.json_files = sorted(target_dir.glob("*.json"))
+        
+        # 构建任务序列
+        for json_file in self.json_files:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                source_name = json_file.stem.replace('_final', '')
+                for idx, item in enumerate(data['items']):
+                    if not item['confirmed']:
+                        self.all_tasks.append({
+                            'file_path': json_file,
+                            'item_index': idx,
+                            'source': source_name,
+                            'title': item['text']
+                        })
+        
+        # 开始处理第一个任务
+        if self.all_tasks:
+            self.current_task_index = 0
+            self.load_current_task()
+            self.print_task_info()
+            
+    def load_current_task(self):
+        if 0 <= self.current_task_index < len(self.all_tasks):
+            task = self.all_tasks[self.current_task_index]
+            self.current_json_path = task['file_path']
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                self.current_json_data = json.load(f)
+            self.current_item_index = task['item_index']
+            self.load_current_item()
+            
+    def print_task_info(self):
+        print("\n任务序列:")
+        for idx, task in enumerate(self.all_tasks):
+            print(f"{idx + 1}. [{task['source']}]-[{task['title']}]")
+        print(f"\n当前正在处理第 {self.current_task_index + 1} 个任务，共 {len(self.all_tasks)} 个任务")
+        
+    def load_current_item(self):
+        if not self.current_json_data:
             return
             
-        self.load_current_item()
-        self.update_next_button_state()
-
-
-    def update_next_button_state(self):
-        """更新下一条按钮的状态"""
-        current, total = self.data_manager.get_progress()
-        if current == total:  # 最后一条
-            self.nextItemButton.setText("完成")
-        else:
-            self.nextItemButton.setText("下一条")
-
-    def on_next_item(self):
-        """下一条按钮点击处理"""
-        self.save_current_item()
-        current, total = self.data_manager.get_progress()
+        item = self.current_json_data['items'][self.current_item_index]
         
-        if current == total:  # 最后一条
-            print("Processing completed")
-            self.close()  # 关闭程序
-        elif self.data_manager.move_to_next():
-            self.load_current_item()
-            self.update_next_button_state()
-
-    def closeEvent(self, event):
-        """窗口关闭事件处理"""
-        self.save_current_item()  # 保存最后的更改
-        event.accept()
-
-    def showEvent(self, event):
-        """窗口显示事件"""
-        super().showEvent(event)
-        # 确保图片正确显示
-        QTimer.singleShot(100, self.initial_display)
-
-    def initial_display(self):
-        """初始显示"""
-        if self.current_images:
-            self.imageView.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-            print("Initial display completed")
-
-    def resizeEvent(self, event):
-        """窗口大小改变事件"""
-        super().resizeEvent(event)
-        if self.current_images:
-            self.imageView.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-
-    def load_current_item(self):
-        """加载当前项目"""
-        item = self.data_manager.get_current_item()
-        if not item:
-            print("No current item found")
+        # 更新UI
+        self.ui.currentTitleLabel.setText(f"当前标题：{item['text']}")
+        self.ui.pageConfirmLineEdit.setText(str(item['number']) if item['number'] is not None else '')
+        self.ui.progressLabel.setText(f"处理进度：{self.current_task_index + 1}/{len(self.all_tasks)}")
+        
+        # 加载相关图片
+        self.load_images()
+        
+    def load_images(self):
+        if not self.current_json_path:
             return
-
-        # 更新标题
-        self.currentTitleLabel.setText(f"当前标题：{item['text']}")
-        print(f"Loading item: {item['text']}")
+            
+        textbook_name = self.current_json_path.stem.replace('_final', '')
         
-        # 更新页码
-        self.pageConfirmLineEdit.setText(str(item['number']))
+        image_dir = Path("1_picMark/inputPic")
+        image_pattern = f"{textbook_name}_page_*.jpg"
+        self.current_images = sorted(
+            image_dir.glob(image_pattern),
+            key=lambda x: int(x.stem.split('_')[-1])
+        )
         
-        # 更新进度
-        current, total = self.data_manager.get_progress()
-        self.progressLabel.setText(f"处理进度：第 {current} 条，共 {total} 条")
-        
-        # 加载图片
-        self.current_images = self.data_manager.get_image_files(item)
-        print(f"Found images: {self.current_images}")
         self.current_image_index = 0
         self.display_current_image()
-
+        
     def display_current_image(self):
-        """显示当前图片"""
         if not self.current_images:
-            print("No images available")
             return
             
-        if self.current_image_index >= len(self.current_images):
-            print(f"Invalid image index: {self.current_image_index}")
-            return
-
-        image_path = self.current_images[self.current_image_index]
-        print(f"Displaying image: {image_path}")
+        if 0 <= self.current_image_index < len(self.current_images):
+            image_path = str(self.current_images[self.current_image_index])
+            pixmap = QPixmap(image_path)
+            scaled_pixmap = pixmap.scaledToHeight(875, QtCore.Qt.SmoothTransformation)
+            scene = QtWidgets.QGraphicsScene()
+            scene.addPixmap(scaled_pixmap)
+            self.ui.imageView.setScene(scene)
         
-        if not os.path.exists(image_path):
-            print(f"Image file not found: {image_path}")
-            return
-
-        # 清除当前场景
-        self.scene.clear()
-        
-        # 加载图片
-        image = QImage(image_path)
-        if image.isNull():
-            print(f"Failed to load image: {image_path}")
-            return
-            
-        print(f"Original image size: {image.width()}x{image.height()}")
-        
-        # 等比缩放到高度875
-        if image.height() > 875:
-            image = image.scaledToHeight(875, Qt.SmoothTransformation)
-            print(f"Scaled image size: {image.width()}x{image.height()}")
-        
-        pixmap = QPixmap.fromImage(image)
-        if pixmap.isNull():
-            print("Failed to convert QImage to QPixmap")
-            return
-            
-        # 添加到场景
-        self.scene.addPixmap(pixmap)
-        
-        # 将 QRect 转换为 QRectF
-        rect = pixmap.rect()
-        self.scene.setSceneRect(rect.x(), rect.y(), rect.width(), rect.height())
-        print(f"Scene rectangle set to: {rect.x()}, {rect.y()}, {rect.width()}, {rect.height()}")
-        
-        # 调整视图
-        self.imageView.setScene(self.scene)
-        self.imageView.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-        print("Image display completed")
-
-    def resizeEvent(self, event):
-        """窗口大小改变时重新调整图片"""
-        super().resizeEvent(event)
-        if self.scene.items():
-            self.imageView.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-
     def save_current_item(self):
-        """保存当前项目"""
-        try:
-            new_page_number = int(self.pageConfirmLineEdit.text())
-            self.data_manager.save_current_item(new_page_number)
-        except ValueError:
-            pass  # 处理页码输入错误
-
-    def on_prev_page(self):
-        """上一页按钮点击处理"""
-        if self.current_image_index > 0:
+        if not self.current_json_data or self.current_item_index < 0:
+            return
+            
+        number_text = self.ui.pageConfirmLineEdit.text().strip()
+        number = int(number_text) if number_text.isdigit() else None
+        
+        # 更新数据
+        self.current_json_data['items'][self.current_item_index]['number'] = number
+        
+        # 保存到文件
+        with open(self.current_json_path, 'w', encoding='utf-8') as f:
+            json.dump(self.current_json_data, f, ensure_ascii=False, indent=2)
+            
+    def prev_item(self):
+        self.save_current_item()
+        if self.current_task_index > 0:
+            self.current_task_index -= 1
+            self.load_current_task()
+            self.print_task_info()
+        
+    def next_item(self):
+        self.save_current_item()
+        if self.current_task_index < len(self.all_tasks) - 1:
+            self.current_task_index += 1
+            self.load_current_task()
+            self.print_task_info()
+        
+    def prev_page(self):
+        if self.current_images and self.current_image_index > 0:
             self.current_image_index -= 1
             self.display_current_image()
-
-    def on_next_page(self):
-        """下一页按钮点击处理"""
-        if self.current_image_index < len(self.current_images) - 1:
+            
+    def next_page(self):
+        if self.current_images and self.current_image_index < len(self.current_images) - 1:
             self.current_image_index += 1
             self.display_current_image()
 
-    def on_prev_item(self):
-        """上一条按钮点击处理"""
-        self.save_current_item()
-        if self.data_manager.move_to_prev():
-            self.load_current_item()
-
-    def on_next_item(self):
-        """下一条按钮点击处理"""
-        self.save_current_item()
-        if self.data_manager.move_to_next():
-            self.load_current_item()
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = ConfirmWindow()
+def main():
+    app = QtWidgets.QApplication([])
+    window = ContentConfirmWindow()
     window.show()
-    sys.exit(app.exec_())
+    app.exec_()
+
+if __name__ == '__main__':
+    main()
