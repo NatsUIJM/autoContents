@@ -184,18 +184,9 @@ def find_end_overlap_indices(list1: List[dict], list2: List[dict]) -> Tuple[Opti
 def validate_page_number(item: dict) -> dict:
     """验证并调整页码确认状态"""
     item = item.copy()
-    # 处理页码为None或"null"字符串的情况
+    # 只处理页码为None或"null"字符串的情况
     if item['number'] is None or item['number'] == "null":
         item['confirmed'] = False
-    else:
-        try:
-            # 将页码转换为整数进行比较
-            page_num = int(str(item['number']))
-            if 0 <= page_num < 10:
-                item['confirmed'] = False
-        except (ValueError, TypeError):
-            # 如果转换失败，标记为不确定
-            item['confirmed'] = False
     return item
 
 # ... (previous imports and classes remain the same)
@@ -205,10 +196,8 @@ def determine_confirmation_status(item1: dict, item2: dict,
                                 idx1: int, idx2: int,
                                 duplicate_titles: Dict[str, int]) -> bool:
     """确定两个匹配项的确认状态"""
-    # 如果页码为null或个位数，confirmed一定为False
-    if (item1['number'] is None or item1['number'] == "null" or 
-        (isinstance(item1['number'], (int, str)) and 
-         str(item1['number']).isdigit() and 0 <= int(str(item1['number'])) < 10)):
+    # 如果页码为null，confirmed一定为False
+    if (item1['number'] is None or item1['number'] == "null"):
         return False
     
     # 如果不是重复标题，使用原有逻辑

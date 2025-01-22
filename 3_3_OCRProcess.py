@@ -32,36 +32,58 @@ def merge_line_texts(results, image_height, image_width):
             independent_numbers.append(result)
         else:
             merge_candidates.append(result)
+            # 计算缩减高度后的文本框范围
+            y_min, y_max = calculate_reduced_height_box(bbox)
+            
+            # 确保边界在图片范围内
+            y_min = max(0, int(y_min))
+            y_max = min(image_height - 1, int(y_max))
+            
             # 只对需要合并的文本框进行投影
-            bbox = np.array(bbox, dtype=np.int32)
-            y_min = max(0, bbox[:, 1].min())
-            y_max = min(image_height - 1, bbox[:, 1].max())
             projection[y_min:y_max + 1] += 1
     
-    # 找出投影为0的位置，即行间距
-    zero_positions = np.where(projection == 0)[0]
+    # 找出投影值为0或1的位置，作为分割线
+    split_positions = np.where((projection == 0))[0]
     
-    # 如果开头不是0，添加0位置
-    if len(zero_positions) == 0 or zero_positions[0] != 0:
-        zero_positions = np.concatenate(([0], zero_positions))
+    # 如果开头不在分割位置中，添加0位置
+    if len(split_positions) == 0 or split_positions[0] != 0:
+        split_positions = np.concatenate(([0], split_positions))
     
-    # 如果结尾不是0，添加最后一个位置
-    if zero_positions[-1] != image_height - 1:
-        zero_positions = np.concatenate((zero_positions, [image_height - 1]))
+    # 如果结尾不在分割位置中，添加最后一个位置
+    if split_positions[-1] != image_height - 1:
+        split_positions = np.concatenate((split_positions, [image_height - 1]))
     
-    # 根据零位置分组
+    # 寻找连续的分割位置的起始和结束点
+    line_boundaries = []
+    start_idx = 0
+    for i in range(1, len(split_positions)):
+        # 如果当前位置与前一个位置不连续，说明找到了一个边界
+        if split_positions[i] != split_positions[i-1] + 1:
+            line_boundaries.append((split_positions[start_idx], split_positions[i-1]))
+            start_idx = i
+    # 添加最后一个边界
+    if start_idx < len(split_positions):
+        line_boundaries.append((split_positions[start_idx], split_positions[-1]))
+    
+    # 找出分割线之间的非分割区域（即文本行所在区域）
+    text_regions = []
+    for i in range(len(line_boundaries)-1):
+        current_end = line_boundaries[i][1]
+        next_start = line_boundaries[i+1][0]
+        if next_start - current_end > 1:  # 如果两个分割区域之间有间隔
+            text_regions.append((current_end + 1, next_start - 1))
+    
+    # 根据文本区域分组
     merged_results = []
-    for i in range(len(zero_positions) - 1):
-        line_start = zero_positions[i]
-        line_end = zero_positions[i + 1]
-        
+    for region_start, region_end in text_regions:
         # 找出属于这一行的文本框
         line_texts = []
         for result in merge_candidates:
             bbox = np.array(result[0], dtype=np.int32)
             text_center_y = (bbox[:, 1].min() + bbox[:, 1].max()) / 2
             
-            if line_start <= text_center_y <= line_end:
+            # 使用文本框的中心点判断是否属于当前行
+            if region_start <= text_center_y <= region_end:
                 line_texts.append(result)
         
         if line_texts:
@@ -90,10 +112,10 @@ def merge_line_texts(results, image_height, image_width):
     # 按y坐标排序最终结果
     final_results.sort(key=lambda x: x[0][0][1])
     
-    return final_results
+    return final_results, projection
 
-def draw_ocr_results(image, results):
-    """在图片上绘制OCR结果"""
+def draw_ocr_results(image, results, projection):
+    """在图片上绘制OCR结果并添加投影曲线图"""
     # 转换为PIL Image以便使用中文字体
     image_pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(image_pil)
@@ -119,35 +141,87 @@ def draw_ocr_results(image, results):
     if font is None:
         font = ImageFont.load_default()
     
+    # 绘制OCR结果
     for (bbox, text, prob) in results:
-        # 将bbox转换为整数坐标
         bbox = np.array(bbox, dtype=np.int32)
-        
-        # 绘制矩形框 (加粗到6像素)
         draw.line([tuple(bbox[0]), tuple(bbox[1]), tuple(bbox[2]), tuple(bbox[3]), tuple(bbox[0])],
                  fill=(0, 255, 0), width=6)
         
-        # 在框上方添加文本
         x = bbox[0][0]
-        y = bbox[0][1] - 50  # 增加文本与框的距离
+        y = bbox[0][1] - 50
         
-        # 获取文本大小
         text_bbox = draw.textbbox((0, 0), text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
         
-        # 绘制白色背景
         draw.rectangle(
             [x, y - text_height - 4, x + text_width, y + 4],
             fill=(255, 255, 255)
         )
         
-        # 绘制文本
         draw.text((x, y - text_height), text, font=font, fill=(0, 0, 0))
     
-    # 转换回OpenCV格式
-    output_img = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
-    return output_img
+    # 创建投影曲线图
+    plot_width = 300  # 曲线图宽度
+    plot_height = image.shape[0]  # 与原图等高
+    plot_img = np.ones((plot_height, plot_width, 3), dtype=np.uint8) * 255  # 白色背景
+    
+    # 计算投影值的最大值用于归一化
+    max_proj = np.max(projection) if np.max(projection) > 0 else 1
+    
+    # 绘制网格线
+    grid_color = (200, 200, 200)
+    for i in range(0, plot_width, 50):
+        cv2.line(plot_img, (i, 0), (i, plot_height), grid_color, 1)
+    for i in range(0, plot_height, 50):
+        cv2.line(plot_img, (0, i), (plot_width, i), grid_color, 1)
+    
+    # 绘制投影曲线
+    for y in range(plot_height):
+        if y < len(projection):
+            x = int((projection[y] / max_proj) * (plot_width - 20))  # 留出右边距
+            cv2.line(plot_img, (0, y), (x, y), (255, 0, 0), 1)
+    
+    # 绘制刻度和数值
+    font_scale = 0.5
+    font_thickness = 1
+    # Y轴刻度（每100像素一个刻度）
+    for y in range(0, plot_height, 100):
+        cv2.putText(plot_img, f"{y}", (5, y), cv2.FONT_HERSHEY_SIMPLEX, 
+                   font_scale, (0, 0, 0), font_thickness)
+    
+    # X轴刻度（投影值）
+    for i in range(0, 6):
+        x = int((plot_width - 20) * i / 5)
+        value = int((max_proj * i / 5))
+        cv2.putText(plot_img, f"{value}", (x, plot_height - 10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
+    
+    # 将OCR结果图和投影曲线图横向拼接
+    ocr_img = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
+    combined_img = np.hstack((ocr_img, plot_img))
+    
+    return combined_img
+
+def calculate_reduced_height_box(bbox, reduction_percent=0.2):
+    """计算缩减高度后的文本框范围"""
+    # 将bbox转换为numpy数组以便计算
+    bbox = np.array(bbox)
+    
+    # 计算当前文本框的上下边界和中心位置
+    y_min = bbox[:, 1].min()
+    y_max = bbox[:, 1].max()
+    height = y_max - y_min
+    center_y = (y_max + y_min) / 2
+    
+    # 计算缩减后的高度
+    reduced_height = height * (1 - reduction_percent)
+    
+    # 计算新的上下边界
+    new_y_min = center_y - (reduced_height / 2)
+    new_y_max = center_y + (reduced_height / 2)
+    
+    return new_y_min, new_y_max
 
 def process_image(img_path, json_dir, output_dir):
     """处理单张图片的OCR并保存结果"""
@@ -163,7 +237,7 @@ def process_image(img_path, json_dir, output_dir):
     except FileNotFoundError:
         print(f"Warning: JSON file not found for {img_path.name}")
         return
-    
+
     # 转换JSON结果为程序所需格式
     results = []
     for item in json_results:
@@ -173,14 +247,29 @@ def process_image(img_path, json_dir, output_dir):
             1.0  # 使用默认信度值1.0
         ))
     
-    # 合并同一行的文本
-    merged_results = merge_line_texts(results, height, width)
+    # 获取合并结果和投影数组
+    merged_results, projection = merge_line_texts(results, height, width)
     
-    # 绘制并保存带标注的图片
-    output_img = draw_ocr_results(image, merged_results)
+    # 转换结果为JSON格式
+    json_results = []
+    for (bbox, text, prob) in merged_results:
+        bbox = np.array(bbox).tolist()
+        result_dict = {
+            'text': text,
+            'bbox': bbox
+        }
+        json_results.append(result_dict)
+    
+    # 保存合并后的JSON结果
+    merged_json_path = output_dir / f"{img_path.stem}_merged.json"
+    with open(merged_json_path, 'w', encoding='utf-8') as f:
+        json.dump(json_results, f, ensure_ascii=False, indent=2)
+    
+    # 绘制带标注的图片和投影曲线图
+    output_img = draw_ocr_results(image, merged_results, projection)
     img_output_path = output_dir / f"{img_path.stem}_annotated.jpg"
     cv2.imwrite(str(img_output_path), output_img)
-        
+    
     print(f"Processed {img_path.name}")
 
 def main():
