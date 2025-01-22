@@ -75,6 +75,7 @@ Request:
 1. 文本处理要求：
    - 修正text字段中的OCR识别错误（通常每条数据最多1-2个形近字错误）
    - 在章节序号和标题之间添加一个空格分隔
+   - 删除text字段中的多余空格以及异常符号
     
 2. 页码处理规则：
 对于number字段为null的情况，需处理以下三种场景：
@@ -94,6 +95,7 @@ Request:
 3. 标题合并规则：
    - 遇到含章节号且结尾不完整的条目时，与下一个无章节号的条目合并
    - 合并后使用下一条目的页码
+   - 输出时标记"confirmed": true
 
 4. 层级处理规则：
    - 如果"章"是最大标题层级
@@ -112,12 +114,7 @@ Request:
 请按照上述规则处理以下内容，输出符合要求的JSON格式数据。"""
 
 system = """
-You are a helpful assistant with these specific requirements:
-1. Always be conservative about page number confidence. When in doubt, mark confirmed as false.
-2. Any estimated or inferred page numbers must be marked as confirmed=false.
-3. For chapter titles without explicit page numbers, default to confirmed=false unless there is clear evidence to mark it true.
-4. Propagated page numbers (like using first sub-section's page number) should be marked as confirmed=false.
-5. When processing TOC data, err on the side of caution - it's better to have more confirmed=false than missing uncertain cases.
+You are a helpful assistant for a data processing task. You need to process JSON-formatted directory data, correct text errors, and standardize the format.
 """
 
 async def process_single_file(file_path: Path, output_dir: Path, token_counter: TokenCounter, retry_count: int = 1):

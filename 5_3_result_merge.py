@@ -26,6 +26,89 @@ def setup_logging():
         ]
     )
 
+def find_duplicate_titles(files: List[ProcessedFile]) -> Dict[str, int]:
+    """查找所有文件中重复出现的标题及其出现次数"""
+    title_count = {}
+    # 收集所有标题的出现次数
+    for file in files:
+        for item in file.items:
+            title = item['text']
+            title_count[title] = title_count.get(title, 0) + 1
+            
+    # 只保留重复出现的标题
+    return {title: count for title, count in title_count.items() if count > 2}
+
+
+def validate_context_match(list1: List[dict], list2: List[dict], idx1: int, idx2: int) -> bool:
+    """验证两个位置的上下文是否匹配"""
+    matches = 0
+    total_checks = 0
+    
+    # 检查前两条
+    for offset in [-2, -1]:
+        pos1 = idx1 + offset
+        pos2 = idx2 + offset
+        if pos1 >= 0 and pos2 >= 0:
+            total_checks += 1
+            if list1[pos1]['text'] == list2[pos2]['text']:
+                matches += 1
+
+    # 检查后两条
+    for offset in [1, 2]:
+        pos1 = idx1 + offset
+        pos2 = idx2 + offset
+        if pos1 < len(list1) and pos2 < len(list2):
+            total_checks += 1
+            if list1[pos1]['text'] == list2[pos2]['text']:
+                matches += 1
+    
+    # 如果能检查的上下文太少（比如在文件开头或结尾），降低匹配要求
+    if total_checks <= 2:
+        return matches >= 1
+    
+    return matches >= 3
+def find_reliable_overlap_indices(list1: List[dict], list2: List[dict], 
+                                duplicate_titles: Dict[str, int]) -> Tuple[Optional[int], Optional[int]]:
+    """查找可靠的重叠起始点"""
+    for i in range(len(list1)):
+        title1 = list1[i]['text']
+        # 跳过重复标题
+        if title1 in duplicate_titles:
+            continue
+            
+        for j in range(len(list2)):
+            if check_exact_match(list1[i], list2[j])[0]:
+                return i, j
+            
+            # 如果找到标题匹配但页码不匹配，验证上下文
+            if (title1 == list2[j]['text'] and 
+                validate_context_match(list1, list2, i, j)):
+                list1[i]['confirmed'] = False
+                return i, j
+    
+    return None, None
+
+def find_reliable_end_overlap_indices(list1: List[dict], list2: List[dict], 
+                                    duplicate_titles: Dict[str, int]) -> Tuple[Optional[int], Optional[int]]:
+    """从后向前查找可靠的重叠终止点"""
+    for i in range(len(list1) - 1, -1, -1):
+        title1 = list1[i]['text']
+        # 跳过重复标题
+        if title1 in duplicate_titles:
+            continue
+            
+        for j in range(len(list2) - 1, -1, -1):
+            if check_exact_match(list1[i], list2[j])[0]:
+                return i, j
+            
+            # 如果找到标题匹配但页码不匹配，验证上下文
+            if (title1 == list2[j]['text'] and 
+                validate_context_match(list1, list2, i, j)):
+                list1[i]['confirmed'] = False
+                return i, j
+    
+    return None, None
+
 def read_json_file(file_path: Path) -> List[dict]:
     """读取JSON文件并返回数据"""
     try:
@@ -117,33 +200,77 @@ def validate_page_number(item: dict) -> dict:
 
 # ... (previous imports and classes remain the same)
 
+def determine_confirmation_status(item1: dict, item2: dict, 
+                                list1: List[dict], list2: List[dict], 
+                                idx1: int, idx2: int,
+                                duplicate_titles: Dict[str, int]) -> bool:
+    """确定两个匹配项的确认状态"""
+    # 如果页码为null或个位数，confirmed一定为False
+    if (item1['number'] is None or item1['number'] == "null" or 
+        (isinstance(item1['number'], (int, str)) and 
+         str(item1['number']).isdigit() and 0 <= int(str(item1['number'])) < 10)):
+        return False
+    
+    # 如果不是重复标题，使用原有逻辑
+    if item1['text'] not in duplicate_titles:
+        return item1['confirmed'] and item2['confirmed']
+    
+    # 对于重复标题，进行严格的上下文验证
+    matches = 0
+    total_checks = 0
+    
+    # 检查前两条和后两条
+    for offset in [-2, -1, 1, 2]:
+        pos1 = idx1 + offset
+        pos2 = idx2 + offset
+        if 0 <= pos1 < len(list1) and 0 <= pos2 < len(list2):
+            total_checks += 1
+            if (list1[pos1]['text'] == list2[pos2]['text'] and 
+                list1[pos1].get('number') == list2[pos2].get('number')):
+                matches += 1
+    
+    # 如果在文件边界，降低要求
+    min_required_matches = 3 if total_checks >= 4 else (2 if total_checks >= 3 else 1)
+    
+    # 只有在以下所有条件都满足时，才返回True：
+    # 1. 足够的上下文匹配
+    # 2. 两个条目的页码完全相同
+    # 3. 两个条目原本都是confirmed状态
+    return (matches >= min_required_matches and 
+            item1.get('number') == item2.get('number') and 
+            item1['confirmed'] and item2['confirmed'])
+
 def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
-    """合并两个文件的处理结果"""
+    """改进后的合并函数"""
     print(f"\n开始合并文件:")
     print(f"文件1: {file1.original_path.name}")
     print(f"文件2: {file2.original_path.name}")
     
-    # 查找重叠部分起始位置
-    start_idx1, start_idx2 = find_overlap_indices(file1.items, file2.items)
+    # 查找重复标题
+    duplicate_titles = find_duplicate_titles([file1, file2])
+    print(f"\n检测到的重复标题: {list(duplicate_titles.keys())}")
+    
+    # 查找可靠的重叠部分起始位置
+    start_idx1, start_idx2 = find_reliable_overlap_indices(file1.items, file2.items, duplicate_titles)
     if start_idx1 is None or start_idx2 is None:
-        print(f"未找到重叠部分！返回文件1的全部内容")
+        print(f"未找到可靠的重叠起始点！返回文件1的全部内容")
         return [validate_page_number(item) for item in file1.items]
     
-    print(f"找到起始重叠点:")
+    print(f"找到可靠的起始重叠点:")
     print(f"文件1起始位置: {start_idx1}, 内容: {file1.items[start_idx1]['text']}")
     print(f"文件2起始位置: {start_idx2}, 内容: {file2.items[start_idx2]['text']}")
     
-    # 查找重叠部分终止位置
-    end_idx1, end_idx2 = find_end_overlap_indices(file1.items, file2.items)
+    # 查找可靠的重叠部分终止位置
+    end_idx1, end_idx2 = find_reliable_end_overlap_indices(file1.items, file2.items, duplicate_titles)
     
     if end_idx1 is not None and end_idx2 is not None:
-        print(f"找到结束重叠点:")
+        print(f"找到可靠的结束重叠点:")
         print(f"文件1结束位置: {end_idx1}, 内容: {file1.items[end_idx1]['text']}")
         print(f"文件2结束位置: {end_idx2}, 内容: {file2.items[end_idx2]['text']}")
     else:
         end_idx1 = len(file1.items)
         end_idx2 = len(file2.items)
-        print("未找到结束重叠点，使用文件末尾")
+        print("未找到可靠的结束重叠点，使用文件末尾")
     
     # 合并结果
     merged = []
@@ -156,19 +283,31 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
     
     # 重叠部分的处理
     overlap_section = []
-    for i in range(start_idx1, end_idx1 + 1):  # 包含end_idx1
+    for i in range(start_idx1, end_idx1 + 1):
         item = file1.items[i].copy()
+        matched = False
+        
         # 在第二个文件中查找匹配项
-        for j in range(start_idx2, end_idx2 + 1):  # 包含end_idx2
-            is_match, final_confirmed = check_exact_match(item, file2.items[j])
-            if is_match:
-                item['confirmed'] = final_confirmed
+        for j in range(start_idx2, end_idx2 + 1):
+            if item['text'] == file2.items[j]['text']:
+                # 确定确认状态
+                confirmed = determine_confirmation_status(
+                    item, file2.items[j],
+                    file1.items, file2.items,
+                    i, j,
+                    duplicate_titles
+                )
+                item['confirmed'] = confirmed
+                matched = True
                 break
-            elif item['text'] == file2.items[j]['text']:
-                item['confirmed'] = False
-                break
+        
+        if not matched and item['text'] in duplicate_titles:
+            # 如果是重复标题但没找到匹配，标记为未确认
+            item['confirmed'] = False
+        
         item = validate_page_number(item)
         overlap_section.append(item)
+    
     merged.extend(overlap_section)
     print(f"2. 重叠部分: {len(overlap_section)}条")
     
@@ -191,6 +330,80 @@ def get_page_number(file_path: Path) -> int:
         return int(page_str)
     except ValueError:
         return 0
+
+def post_process_confirmation_status(merged_results: List[dict], 
+                                   processed_files: List[ProcessedFile],
+                                   duplicate_titles: Dict[str, int]) -> List[dict]:
+    """后处理函数，修正重复标题的确认状态"""
+    # 深拷贝结果以避免修改原始数据
+    results = [item.copy() for item in merged_results]
+    
+    # 遍历所有需要检查的条目
+    for i, item in enumerate(results):
+        # 只处理被标记为false且属于重复标题的条目
+        if not item['confirmed'] and item['text'] in duplicate_titles:
+            matching_items = []
+            
+            # 在所有分页文件中查找匹配项
+            for processed_file in processed_files:
+                for source_item in processed_file.items:
+                    # 检查标题和页码是否完全匹配
+                    if (source_item['text'] == item['text'] and 
+                        source_item['number'] == item['number'] and 
+                        source_item['confirmed']):
+                        matching_items.append(source_item)
+            
+            # 如果找到两个或以上的确认匹配项，将状态改为true
+            if len(matching_items) >= 2:
+                print(f"修正确认状态: {item['text']} (页码: {item['number']}) - 找到 {len(matching_items)} 个匹配项")
+                results[i]['confirmed'] = True
+    
+    return results
+
+def interpolate_null_numbers(results: List[dict], duplicate_titles: Dict[str, int]) -> List[dict]:
+    """为重复标题中number为null的条目插值，并标记为未确认"""
+    processed_results = [item.copy() for item in results]
+    
+    for i in range(len(processed_results)):
+        item = processed_results[i]
+        
+        # 只处理number为null且属于重复标题的条目
+        if (item['number'] is None or item['number'] == "null") and item['text'] in duplicate_titles:
+            prev_number = None
+            next_number = None
+            
+            # 向前查找最近的有效页码
+            for j in range(i-1, -1, -1):
+                if (processed_results[j]['number'] is not None and 
+                    processed_results[j]['number'] != "null" and
+                    str(processed_results[j]['number']).isdigit()):
+                    prev_number = int(str(processed_results[j]['number']))
+                    break
+            
+            # 向后查找最近的有效页码
+            for j in range(i+1, len(processed_results)):
+                if (processed_results[j]['number'] is not None and 
+                    processed_results[j]['number'] != "null" and
+                    str(processed_results[j]['number']).isdigit()):
+                    next_number = int(str(processed_results[j]['number']))
+                    break
+            
+            # 计算插值并标记为未确认
+            if prev_number is not None and next_number is not None:
+                interpolated_number = (prev_number + next_number) // 2
+                print(f"插值处理: {item['text']} - 前:{prev_number} 后:{next_number} 插值:{interpolated_number}")
+                processed_results[i]['number'] = interpolated_number
+                processed_results[i]['confirmed'] = False
+            elif prev_number is not None:
+                processed_results[i]['number'] = prev_number
+                processed_results[i]['confirmed'] = False
+                print(f"插值处理: {item['text']} - 使用前值:{prev_number}")
+            elif next_number is not None:
+                processed_results[i]['number'] = next_number
+                processed_results[i]['confirmed'] = False
+                print(f"插值处理: {item['text']} - 使用后值:{next_number}")
+    
+    return processed_results
 
 def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: Path):
     """处理一本书的所有结果"""
@@ -342,14 +555,56 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
             book_results[book_name] = current_result
             print(f"\n{book_name} 最终条目数: {len(current_result)}")
 
-    # 保存最终结果
     print("\n=== 阶段3：保存结果 ===")
     for book_name, results in book_results.items():
+        # 获取这本书的所有分页文件
+        book_files = [
+            processed_file for processed_file in processed_files.values()
+            if book_name in processed_file.original_path.stem and not processed_file.is_combined
+        ]
+        
+        # 查找重复标题（阈值为2）
+        duplicate_titles = {}
+        for processed_file in book_files:
+            for item in processed_file.items:
+                title = item['text']
+                duplicate_titles[title] = duplicate_titles.get(title, 0) + 1
+        duplicate_titles = {title: count for title, count in duplicate_titles.items() 
+                          if count > 2}
+        
+        print("\n处理空页码的重复标题...")
+        # 先进行页码插值
+        results_with_numbers = interpolate_null_numbers(results, duplicate_titles)
+        
+        print("\n修正确认状态...")
+        # 然后进行确认状态的修正
+        final_results = post_process_confirmation_status(results_with_numbers, book_files, duplicate_titles)
+        
         output_path = output_dir / f"{book_name}_final.json"
-        write_json_file(output_path, results)
+        write_json_file(output_path, final_results)
         print(f"\n书籍: {book_name}")
-        print(f"最终条目数: {len(results)}")
+        print(f"最终条目数: {len(final_results)}")
         print(f"保存路径: {output_path}")
+        
+        # 输出统计信息
+        original_null_numbers = sum(1 for item in results 
+                                  if (item['number'] is None or item['number'] == "null") 
+                                  and item['text'] in duplicate_titles)
+        final_null_numbers = sum(1 for item in final_results 
+                               if (item['number'] is None or item['number'] == "null") 
+                               and item['text'] in duplicate_titles)
+        
+        original_confirmed = sum(1 for item in results if item['confirmed'])
+        final_confirmed = sum(1 for item in final_results if item['confirmed'])
+        
+        print(f"\n统计信息:")
+        print(f"页码处理:")
+        print(f"  - 原始空页码数: {original_null_numbers}")
+        print(f"  - 最终空页码数: {final_null_numbers}")
+        print(f"确认状态:")
+        print(f"  - 处理前确认条目数: {original_confirmed}")
+        print(f"  - 处理后确认条目数: {final_confirmed}")
+        print(f"  - 修正条目数: {final_confirmed - original_confirmed}")
 
 def main():
     setup_logging()
