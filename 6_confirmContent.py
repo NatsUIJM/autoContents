@@ -95,7 +95,7 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         item = self.current_json_data['items'][self.current_item_index]
         
         # 更新UI
-        self.ui.currentTitleLabel.setText(f"当前标题：{item['text']}")
+        self.ui.currentTitleLabel.setText(f"{item['text']}")
         self.ui.pageConfirmLineEdit.setText(str(item['number']) if item['number'] is not None else '')
         self.ui.progressLabel.setText(f"处理进度：{self.current_task_index + 1}/{len(self.all_tasks)}")
         
@@ -134,11 +134,16 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         if not self.current_json_data or self.current_item_index < 0:
             return
             
+        # 获取页码
         number_text = self.ui.pageConfirmLineEdit.text().strip()
         number = int(number_text) if number_text.isdigit() else None
         
+        # 获取标题
+        text = self.ui.currentTitleLabel.text().strip()
+        
         # 更新数据
         self.current_json_data['items'][self.current_item_index]['number'] = number
+        self.current_json_data['items'][self.current_item_index]['text'] = text
         
         # 保存到文件
         with open(self.current_json_path, 'w', encoding='utf-8') as f:

@@ -26,7 +26,7 @@
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="mainVerticalLayout">
+   <layout class="QVBoxLayout" name="verticalLayout">
     <item>
      <widget class="QGraphicsView" name="imageView">
       <property name="minimumSize">
@@ -62,13 +62,22 @@
      </layout>
     </item>
     <item>
-     <layout class="QHBoxLayout" name="titleLayout">
+     <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
-       <widget class="QLabel" name="currentTitleLabel">
+       <widget class="QLabel" name="currentTitleLabel0">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
         <property name="minimumSize">
          <size>
-          <width>600</width>
+          <width>0</width>
           <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>60</width>
+          <height>16777215</height>
          </size>
         </property>
         <property name="text">
@@ -77,16 +86,45 @@
        </widget>
       </item>
       <item>
+       <widget class="QLineEdit" name="currentTitleLabel">
+        <property name="minimumSize">
+         <size>
+          <width>500</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>600</width>
+          <height>16777215</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
        <layout class="QHBoxLayout" name="pageConfirmLayout">
         <item>
          <widget class="QLabel" name="pageConfirmLabel">
+          <property name="maximumSize">
+           <size>
+            <width>60</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="text">
            <string>页码确认：</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QLineEdit" name="pageConfirmLineEdit"/>
+         <widget class="QLineEdit" name="pageConfirmLineEdit">
+          <property name="maximumSize">
+           <size>
+            <width>75</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
        </layout>
       </item>
