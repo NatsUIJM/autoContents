@@ -117,9 +117,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.scroll_layout.setAlignment(QtCore.Qt.AlignTop)
         
         # 连接信号
-        self.pushButton_5.clicked.connect(self.add_pdfs)
-        # 连接第二步按钮的点击事件
-        self.pushButton_3.clicked.connect(self.run_pic_mark)
+        self.pushButton_5.clicked.connect(self.add_pdfs)  # 添加PDF文件
+        self.pushButton_3.clicked.connect(self.run_pic_mark)  # 标记目录版面
+        self.pushButton_6.clicked.connect(self.run_ocr_process)  # OCR流程
+        self.pushButton_2.clicked.connect(self.run_confirm_content)  # 处理错误数据
+        self.pushButton.clicked.connect(self.run_process_pdf)  # 目录挂入PDF
         
         # 初始加载已有PDF
         self.load_existing_pdfs()
@@ -177,7 +179,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             for filename in os.listdir(self.pdf_dir):
                 if filename.lower().endswith('.pdf'):
                     self.add_pdf_card(os.path.join(self.pdf_dir, filename))
-
+ 
     def add_pdfs(self):
         files, _ = QFileDialog.getOpenFileNames(
             self,
@@ -255,6 +257,85 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             if isinstance(widget, PDFCard) and widget.pdf_path == pdf_path:
                 widget.deleteLater()
                 break
+    def run_script_with_output(self, script_name, status_text):
+        """运行脚本并更新状态"""
+        try:
+            # 更新当前进行的状态
+            self.label_2.setText(status_text)
+            
+            # 运行脚本并捕获输出
+            process = subprocess.Popen(
+                [sys.executable, script_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+            
+            # 读取输出并更新进度文本
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    self.label_3.setText(f"当前进度：{output.strip()}")
+                    QtWidgets.QApplication.processEvents()  # 保持UI响应
+                    
+            return process.poll() == 0  # 返回是否成功执行
+            
+        except Exception as e:
+            self.label_3.setText(f"当前进度：错误 - {str(e)}")
+            return False
+
+    def run_ocr_process(self):
+        """执行OCR处理流程"""
+        scripts_and_status = [
+            ("2_picProcess.py", "当前进行：图像文件切分（1/6）"),
+            ("3_OCRProcess.py", "当前进行：执行 OCR 处理（2/6）"),
+            ("4_matchText.py", "当前进行：匹配 OCR 结果（3/6）"),
+            ("5_1_json_preprocess.py", "当前进行：JSON 文件切分（4/6）"),
+            ("5_2_model_process.py", "当前进行：JSON 文件处理（5/6）"),
+            ("5_3_result_merge.py", "当前进行：JSON 文件合并（6/6）")
+        ]
+        
+        # 重置进度显示
+        self.label_3.setText("当前进度：")
+        
+        for script, status in scripts_and_status:
+            if not os.path.exists(script):
+                QMessageBox.critical(self, "错误", f"未找到脚本文件：{script}")
+                return
+                
+            if not self.run_script_with_output(script, status):
+                QMessageBox.critical(self, "错误", f"执行{script}时出错")
+                return
+                
+        # 完成后重置显示
+        self.label_2.setText("当前进行：（已完成）")
+        self.label_3.setText("当前进度：处理完成")
+        QMessageBox.information(self, "完成", "OCR处理流程已完成")
+
+    def run_confirm_content(self):
+        """运行确认内容脚本"""
+        if not os.path.exists("6_confirmContent.py"):
+            QMessageBox.critical(self, "错误", "未找到6_confirmContent.py文件")
+            return
+            
+        try:
+            subprocess.Popen([sys.executable, "6_confirmContent.py"])
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"运行6_confirmContent.py失败：{str(e)}")
+
+    def run_process_pdf(self):
+        """运行PDF处理脚本"""
+        if not os.path.exists("7_processPDF.py"):
+            QMessageBox.critical(self, "错误", "未找到7_processPDF.py文件")
+            return
+            
+        try:
+            subprocess.Popen([sys.executable, "7_processPDF.py"])
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"运行7_processPDF.py失败：{str(e)}")
 
 if __name__ == '__main__':
     import sys

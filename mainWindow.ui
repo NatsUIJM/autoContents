@@ -51,17 +51,10 @@
             <x>0</x>
             <y>0</y>
             <width>664</width>
-            <height>712</height>
+            <height>746</height>
            </rect>
           </property>
          </widget>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="pushButton_4">
-         <property name="text">
-          <string>保存页码标记数据</string>
-         </property>
         </widget>
        </item>
       </layout>

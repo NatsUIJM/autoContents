@@ -97,78 +97,79 @@ class TokenCounter:
 def get_system_prompt() -> str:
     """Generate system prompt"""
     return """{
-  "promptName": "JSON Table of Contents Processor",
-  "version": "1.0",
-  "description": "Process and normalize table of contents data in JSON format",
-  "rules": {
+    "promptName": "JSON Table of Contents Processor",
+    "version": "1.0",
+    "description": "Process and normalize table of contents data in JSON format",
+    "rules": {
     "textProcessing": {
       "operations": [
-        "Fix OCR errors (typically 1-2 similar character mistakes per entry)",
-        "Add space between chapter numbers and titles",
-        "Remove redundant spaces and abnormal symbols"
+      "Fix OCR errors (typically 1-2 similar character mistakes per entry)",
+      "Add space between chapter numbers and titles",
+      "Remove redundant spaces and abnormal symbols",
+      "Ignore English part if the title is bilingual (Chinese and English)"
       ]
     },
     "pageNumberProcessing": {
       "scenarios": {
-        "unrecognizedOCR": {
-          "condition": "Single-digit page numbers at beginning",
-          "action": "Keep number as null",
-          "confirmed": false
-        },
-        "lineBreakTitle": {
-          "condition": "Long titles split across lines",
-          "action": "Merge with adjacent lines",
-          "useExistingNumber": true,
-          "confirmed": true
-        },
-        "unmarkedPages": {
-          "condition": "Level 1-2 titles without page numbers",
-          "action": "Use first child page number",
-          "confirmed": true
-        }
+      "unrecognizedOCR": {
+        "condition": "Single-digit page numbers at beginning",
+        "action": "Keep number as null",
+        "confirmed": false
+      },
+      "lineBreakTitle": {
+        "condition": "Long titles split across lines",
+        "action": "Merge with adjacent lines",
+        "useExistingNumber": true,
+        "confirmed": true
+      },
+      "unmarkedPages": {
+        "condition": "Level 1-2 titles without page numbers",
+        "action": "Use first child page number",
+        "confirmed": true
+      }
       }
     },
     "titleMerging": {
       "condition": "Incomplete entry with chapter number",
       "actions": [
-        "Merge with next unnumbered entry",
-        "Use page number from next entry"
+      "Merge with next unnumbered entry",
+      "Use page number from next entry"
       ],
       "confirmed": true
     },
     "hierarchyRules": {
       "twoLevels": {
-        "condition": "Chapter is highest level",
-        "mapping": {
-          "chapter": 1,
-          "section": 2
-        }
+      "condition": "Chapter is highest level",
+      "mapping": {
+        "chapter": 1,
+        "section": 2
+      }
       },
       "threeLevels": {
-        "condition": "Title above chapter exists",
-        "mapping": {
-          "topLevel": 1,
-          "chapter": 2,
-          "section": 3
-        }
+      "condition": "Title above chapter exists",
+      "mapping": {
+        "topLevel": 1,
+        "chapter": 2,
+        "section": 3
+      }
       }
     },
     "outputFormat": {
       "type": "JSON",
       "structure": {
-        "items": {
-          "type": "array",
-          "elements": {
-            "text": "string",
-            "number": "integer|null",
-            "confirmed": "boolean",
-            "level": "integer(1-3)"
-          }
+      "items": {
+        "type": "array",
+        "elements": {
+        "text": "string",
+        "number": "integer|null",
+        "confirmed": "boolean",
+        "level": "integer(1-3)"
         }
       }
+      }
     }
-  }
-}"""
+    }
+  }"""
 
 system = """
 You are a helpful assistant for a data processing task. You need to process JSON-formatted directory data, correct text errors, and standardize the format.
@@ -255,7 +256,7 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
 
 async def main():
     # Get service selection from environment variable or use default
-    service_name = os.getenv('LLM_SERVICE', 'deepseek').lower()
+    service_name = os.getenv('LLM_SERVICE', 'dashscope').lower()
     service_manager = ServiceManager(service_name)
     
     input_dir = Path("4_initialContentInfo")

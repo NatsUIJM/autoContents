@@ -6,6 +6,8 @@ from PyQt5.QtGui import QPixmap, QImage
 from confirmWindow import Ui_MainWindow
 import glob
 from pathlib import Path
+from PIL import Image
+import io
 
 class ContentConfirmWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -18,7 +20,6 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         self.current_json_data = None
         self.current_item_index = -1
         self.current_images = []
-        self.current_image_index = 0
         self.json_files = []
         self.current_file_index = 0
         
@@ -33,8 +34,6 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         # 设置信号连接
         self.ui.prevItemButton.clicked.connect(self.prev_item)
         self.ui.nextItemButton.clicked.connect(self.next_item)
-        self.ui.prevPageButton.clicked.connect(self.prev_page)
-        self.ui.nextPageButton.clicked.connect(self.next_page)
         
         # 设置Enter键快捷键
         self.next_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Return"), self)
@@ -47,6 +46,10 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         # 设置下一条按钮的激活样式
         self.ui.nextItemButton.setAutoDefault(True)
         self.ui.nextItemButton.setDefault(True)
+        
+        # 设置图片查看器为可滚动
+        self.ui.imageView.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.ui.imageView.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         
         # 初始化文件处理
         self.process_files()
@@ -88,7 +91,40 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             self.current_task_index = 0
             self.load_current_task()
             self.print_task_info()
+
+    def concatenate_images(self, image_paths):
+        """垂直连接所有图片"""
+        images = [Image.open(str(path)) for path in image_paths]
+        
+        # 统一宽度为775像素
+        target_width = 775
+        resized_images = []
+        for img in images:
+            # 计算等比例缩放后的高度
+            ratio = target_width / img.width
+            new_height = int(img.height * ratio)
+            resized_img = img.resize((target_width, new_height), Image.Resampling.LANCZOS)
+            resized_images.append(resized_img)
             
+        # 计算总高度
+        total_height = sum(img.height for img in resized_images)
+        
+        # 创建新图片
+        combined_image = Image.new('RGB', (target_width, total_height))
+        
+        # 垂直拼接图片
+        y_offset = 0
+        for img in resized_images:
+            combined_image.paste(img, (0, y_offset))
+            y_offset += img.height
+            
+        # 转换为QPixmap
+        with io.BytesIO() as bio:
+            combined_image.save(bio, format='PNG')
+            bytes_data = bio.getvalue()
+            qimg = QImage.fromData(bytes_data)
+            return QPixmap.fromImage(qimg)
+
     def load_current_task(self):
         if 0 <= self.current_task_index < len(self.all_tasks):
             task = self.all_tasks[self.current_task_index]
@@ -141,27 +177,27 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             
         textbook_name = self.current_json_path.stem.replace('_final', '')
         
-        image_dir = Path("1_picMark/inputPic")
+        image_dir = Path("6_1_cutPic")
         image_pattern = f"{textbook_name}_page_*.jpg"
         self.current_images = sorted(
             image_dir.glob(image_pattern),
             key=lambda x: int(x.stem.split('_')[-1])
         )
         
-        self.current_image_index = 0
         self.display_current_image()
         
     def display_current_image(self):
         if not self.current_images:
             return
             
-        if 0 <= self.current_image_index < len(self.current_images):
-            image_path = str(self.current_images[self.current_image_index])
-            pixmap = QPixmap(image_path)
-            scaled_pixmap = pixmap.scaledToWidth(800, QtCore.Qt.SmoothTransformation)
-            scene = QtWidgets.QGraphicsScene()
-            scene.addPixmap(scaled_pixmap)
-            self.ui.imageView.setScene(scene)
+        # 连接所有图片并显示
+        combined_pixmap = self.concatenate_images(self.current_images)
+        scene = QtWidgets.QGraphicsScene()
+        scene.addPixmap(combined_pixmap)
+        self.ui.imageView.setScene(scene)
+        
+        # 重置滚动条位置
+        self.ui.imageView.verticalScrollBar().setValue(0)
         
     def save_current_item(self):
         if not self.current_json_data or self.current_item_index < 0:
@@ -198,16 +234,6 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         elif self.current_task_index == len(self.all_tasks) - 1:
             # 如果是最后一个任务，保存后退出程序
             self.close()
-        
-    def prev_page(self):
-        if self.current_images and self.current_image_index > 0:
-            self.current_image_index -= 1
-            self.display_current_image()
-            
-    def next_page(self):
-        if self.current_images and self.current_image_index < len(self.current_images) - 1:
-            self.current_image_index += 1
-            self.display_current_image()
 
 def main():
     app = QtWidgets.QApplication([])
