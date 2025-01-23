@@ -239,6 +239,23 @@ def determine_confirmation_status(item1: dict, item2: dict,
             item1.get('number') == item2.get('number') and 
             item1['confirmed'] and item2['confirmed'])
 
+def check_level_consistency(list1: List[dict], list2: List[dict], 
+                          start_idx1: int, start_idx2: int,
+                          end_idx1: int, end_idx2: int) -> bool:
+    """检查重叠部分的层级是否一致"""
+    # 收集重叠部分的相同标题的层级信息
+    for i, j in zip(range(start_idx1, end_idx1 + 1), 
+                   range(start_idx2, end_idx2 + 1)):
+        if list1[i]['text'] == list2[j]['text']:
+            # 只要发现任意一对相同标题的层级不同，就返回False
+            if list1[i]['level'] != list2[j]['level']:
+                return False
+    return True
+
+def adjust_levels(items: List[dict]) -> List[dict]:
+    """将所有项的level加1"""
+    return [{**item, 'level': item['level'] + 1} for item in items]
+
 def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
     """改进后的合并函数"""
     print(f"\n开始合并文件:")
@@ -247,7 +264,6 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
     
     # 查找重复标题
     duplicate_titles = find_duplicate_titles([file1, file2])
-    print(f"\n检测到的重复标题: {list(duplicate_titles.keys())}")
     
     # 查找可靠的重叠部分起始位置
     start_idx1, start_idx2 = find_reliable_overlap_indices(file1.items, file2.items, duplicate_titles)
@@ -255,44 +271,38 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
         print(f"未找到可靠的重叠起始点！返回文件1的全部内容")
         return [validate_page_number(item) for item in file1.items]
     
-    print(f"找到可靠的起始重叠点:")
-    print(f"文件1起始位置: {start_idx1}, 内容: {file1.items[start_idx1]['text']}")
-    print(f"文件2起始位置: {start_idx2}, 内容: {file2.items[start_idx2]['text']}")
-    
     # 查找可靠的重叠部分终止位置
     end_idx1, end_idx2 = find_reliable_end_overlap_indices(file1.items, file2.items, duplicate_titles)
-    
-    if end_idx1 is not None and end_idx2 is not None:
-        print(f"找到可靠的结束重叠点:")
-        print(f"文件1结束位置: {end_idx1}, 内容: {file1.items[end_idx1]['text']}")
-        print(f"文件2结束位置: {end_idx2}, 内容: {file2.items[end_idx2]['text']}")
-    else:
+    if end_idx1 is None or end_idx2 is None:
         end_idx1 = len(file1.items)
         end_idx2 = len(file2.items)
-        print("未找到可靠的结束重叠点，使用文件末尾")
+    
+    # 检查层级一致性并在需要时调整file2的层级
+    file2_items = file2.items
+    if not check_level_consistency(file1.items, file2_items, 
+                                 start_idx1, start_idx2,
+                                 end_idx1, end_idx2):
+        print(f"检测到层级不一致，调整文件2的层级")
+        file2_items = adjust_levels(file2_items)
     
     # 合并结果
     merged = []
     
     # 添加第一个文件的前半部分
-    front_part = [validate_page_number(item) for item in file1.items[:start_idx1]]
-    merged.extend(front_part)
-    print(f"\n合并结构:")
-    print(f"1. 使用文件1的前半部分: {len(front_part)}条")
+    merged.extend([validate_page_number(item) for item in file1.items[:start_idx1]])
     
-    # 重叠部分的处理
-    overlap_section = []
+    # 处理重叠部分
     for i in range(start_idx1, end_idx1 + 1):
         item = file1.items[i].copy()
         matched = False
         
         # 在第二个文件中查找匹配项
         for j in range(start_idx2, end_idx2 + 1):
-            if item['text'] == file2.items[j]['text']:
+            if item['text'] == file2_items[j]['text']:
                 # 确定确认状态
                 confirmed = determine_confirmation_status(
-                    item, file2.items[j],
-                    file1.items, file2.items,
+                    item, file2_items[j],
+                    file1.items, file2_items,
                     i, j,
                     duplicate_titles
                 )
@@ -301,21 +311,13 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
                 break
         
         if not matched and item['text'] in duplicate_titles:
-            # 如果是重复标题但没找到匹配，标记为未确认
             item['confirmed'] = False
         
-        item = validate_page_number(item)
-        overlap_section.append(item)
-    
-    merged.extend(overlap_section)
-    print(f"2. 重叠部分: {len(overlap_section)}条")
+        merged.append(validate_page_number(item))
     
     # 添加第二个文件的后半部分
-    back_part = [validate_page_number(item) for item in file2.items[end_idx2 + 1:]]
-    merged.extend(back_part)
-    print(f"3. 使用文件2的后半部分: {len(back_part)}条")
+    merged.extend([validate_page_number(item) for item in file2_items[end_idx2 + 1:]])
     
-    print(f"合并后总条目数: {len(merged)}\n")
     return merged
 
 def get_page_number(file_path: Path) -> int:
@@ -569,7 +571,7 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
                 title = item['text']
                 duplicate_titles[title] = duplicate_titles.get(title, 0) + 1
         duplicate_titles = {title: count for title, count in duplicate_titles.items() 
-                          if count > 2}
+                        if count > 2}
         
         print("\n处理空页码的重复标题...")
         # 先进行页码插值
@@ -587,11 +589,11 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         
         # 输出统计信息
         original_null_numbers = sum(1 for item in results 
-                                  if (item['number'] is None or item['number'] == "null") 
-                                  and item['text'] in duplicate_titles)
+                                if (item['number'] is None or item['number'] == "null") 
+                                and item['text'] in duplicate_titles)
         final_null_numbers = sum(1 for item in final_results 
-                               if (item['number'] is None or item['number'] == "null") 
-                               and item['text'] in duplicate_titles)
+                            if (item['number'] is None or item['number'] == "null") 
+                            and item['text'] in duplicate_titles)
         
         original_confirmed = sum(1 for item in results if item['confirmed'])
         final_confirmed = sum(1 for item in final_results if item['confirmed'])
