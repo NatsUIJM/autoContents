@@ -19,11 +19,30 @@ class DraggableLine(QGraphicsLineItem):
         super().__init__(0, 0, x2-x1, y2-y1, parent)
         self.is_vertical = is_vertical
         self.setFlag(self.ItemIsMovable)
+        self.setFlag(self.ItemSendsScenePositionChanges)
+        self.setAcceptHoverEvents(True)  # 允许接收悬停事件
         self.setPen(QPen(Qt.red, 5))  # 默认红色
         self.main_window = None
         self.setPos(x1, y1)
         
+    def hoverEnterEvent(self, event):
+        # 根据线条方向设置不同的光标
+        if self.is_vertical:
+            self.setCursor(Qt.SizeHorCursor)  # 水平调整光标
+        else:
+            self.setCursor(Qt.SizeVerCursor)  # 垂直调整光标
+        super().hoverEnterEvent(event)
+    
+    def hoverLeaveEvent(self, event):
+        self.setCursor(Qt.ArrowCursor)  # 恢复默认光标
+        super().hoverLeaveEvent(event)
+        
     def mousePressEvent(self, event):
+        # 在鼠标按下时也设置对应的光标
+        if self.is_vertical:
+            self.setCursor(Qt.SizeHorCursor)
+        else:
+            self.setCursor(Qt.SizeVerCursor)
         super().mousePressEvent(event)
         if self.main_window:
             print("\n拖动开始:")
@@ -50,17 +69,22 @@ class DraggableCircle(QGraphicsEllipseItem):
     def __init__(self, x, y, diameter, parent=None):
         super().__init__(0, 0, diameter, diameter, parent)
         self.setFlag(self.ItemIsMovable)
+        self.setFlag(self.ItemSendsScenePositionChanges)
+        self.setAcceptHoverEvents(True)  # 允许接收悬停事件
         self.setPen(QPen(Qt.red, 5))
         self.setPos(x - diameter/2, y - diameter/2)
         self.main_window = None
         
-    def paint(self, painter, option, widget):
-        painter.setPen(QPen(Qt.red, 5))
-        painter.drawEllipse(self.rect())
-        rect = self.rect()
-        painter.drawLine(rect.topLeft(), rect.bottomRight())
+    def hoverEnterEvent(self, event):
+        self.setCursor(Qt.SizeAllCursor)  # 设置为四向移动光标
+        super().hoverEnterEvent(event)
+    
+    def hoverLeaveEvent(self, event):
+        self.setCursor(Qt.ArrowCursor)  # 恢复默认光标
+        super().hoverLeaveEvent(event)
         
     def mousePressEvent(self, event):
+        self.setCursor(Qt.SizeAllCursor)  # 设置为四向移动光标
         super().mousePressEvent(event)
         if self.main_window:
             print("\n移动开始:")
@@ -77,14 +101,30 @@ class CustomGraphicsView(QGraphicsView):
         super().__init__(parent)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setFocusPolicy(Qt.StrongFocus)  # 设置焦点策略
+        self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+        
+    def focusInEvent(self, event):
+        """视图获得焦点时被调用"""
+        super().focusInEvent(event)
+        self.viewport().update()  # 更新视图
         
 class MainApplication(QMainWindow):
     def __init__(self):
         super().__init__()
+        # 设置窗口相关属性
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)  # 添加置顶标志
+        self.setAttribute(Qt.WA_ShowWithoutActivating, False)  # 确保显示时激活窗口
+        
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         
+        # 设置焦点策略
+        self.setFocusPolicy(Qt.StrongFocus)
+        
         self.graphics_view = CustomGraphicsView()
+        self.graphics_view.setFocusPolicy(Qt.StrongFocus)  # 设置视图的焦点策略
+        
         layout_item = self.ui.verticalLayout.replaceWidget(
             self.ui.graphicsView, 
             self.graphics_view
@@ -370,7 +410,19 @@ class MainApplication(QMainWindow):
             
             if os.path.exists(json_path):
                 self.load_page_marks()
-    
+
+
+    def showEvent(self, event):
+        """窗口显示时被调用"""
+        super().showEvent(event)
+        self.activateWindow()  # 激活窗口
+        self.raise_()  # 将窗口提升到最前
+        
+    def focusInEvent(self, event):
+        """窗口获得焦点时被调用"""
+        super().focusInEvent(event)
+        self.graphics_view.setFocus()  # 确保图形视图获得焦点
+
     def update_progress_label(self):
         total_pages = len(self.image_files)
         current_page = self.current_page + 1

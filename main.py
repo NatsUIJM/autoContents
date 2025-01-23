@@ -2,17 +2,62 @@ import os
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
-import os
 import json
 import shutil
 import subprocess
 import time
-import sys
+import io
+import threading
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QVBoxLayout, QWidget
 from UI.mainWindow import Ui_MainWindow
 from UI.pdfCard import Ui_Form
 from pdf2image import convert_from_path
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
+from queue import Queue
+
+class ScriptRunner(QThread):
+    progress = pyqtSignal(str)
+    status = pyqtSignal(str)
+    finished = pyqtSignal(bool)
+    
+    def __init__(self, script_name):
+        super().__init__()
+        self.script_name = script_name
+        self.output_queue = Queue()
+        self.process = None
+        
+    def run(self):
+        try:
+            self.process = subprocess.Popen(
+                [sys.executable, os.path.join("mainprogress", self.script_name)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+            
+            while True:
+                output = self.process.stdout.readline()
+                if output == '' and self.process.poll() is not None:
+                    break
+                if output:
+                    self.output_queue.put(output.strip())
+                    
+            success = self.process.poll() == 0
+            self.finished.emit(success)
+            
+        except Exception as e:
+            self.output_queue.put(f"错误 - {str(e)}")
+            self.finished.emit(False)
+
+    def get_latest_output(self):
+        """获取最新的输出内容"""
+        latest_output = None
+        while not self.output_queue.empty():
+            latest_output = self.output_queue.get()
+        return latest_output
+
 
 class PDFCard(QtWidgets.QWidget, Ui_Form):
     deleted = QtCore.pyqtSignal(str)  # 信号：删除PDF时发出
@@ -129,6 +174,20 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         
         # 初始加载已有PDF
         self.load_existing_pdfs()
+
+        self.current_script_index = 0
+        self.script_runner = None
+
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.check_progress)
+        self.update_timer.setInterval(1000)  # 1秒更新一次
+
+    def check_progress(self):
+        """定时检查并更新进度"""
+        if self.script_runner:
+            latest_output = self.script_runner.get_latest_output()
+            if latest_output is not None:
+                self.label_3.setText(f"当前进度：{latest_output}")
 
     def run_pic_mark(self):
         """运行image_marker.py"""
@@ -291,19 +350,30 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         except Exception as e:
             self.label_3.setText(f"当前进度：错误 - {str(e)}")
             return False
+    def update_progress(self, text):
+        self.label_3.setText(f"当前进度：{text}")
+
+    def handle_script_finished(self, success):
+        if success:
+            self.current_script_index += 1
+            self.run_next_script()
+        else:
+            self.update_timer.stop()
+            self.pushButton_6.setEnabled(True)  # 出错时重新启用OCR按钮
+            QMessageBox.critical(
+                self,
+                "错误",
+                f"执行{self.scripts_and_status[self.current_script_index][0]}时出错"
+            )
+
 
     def run_ocr_process(self):
         """执行OCR处理流程"""
-        # Get the selected service from combobox
         selected_service = self.service_select.currentText()
         
-        # Define scripts based on selected service
-        if selected_service == "Azure":
-            ocr_script = "ocr_azure.py"
-        else:  # Aliyun
-            ocr_script = "ocr_aliyun.py"
+        ocr_script = "ocr_azure.py" if selected_service == "Azure" else "ocr_aliyun.py"
         
-        scripts_and_status = [
+        self.scripts_and_status = [
             ("image_preprocessor.py", "当前进行：图像文件切分（1/7）"),
             (ocr_script, "当前进行：执行 OCR 处理（2/7）"),
             ("ocr_processor.py", "当前进行：处理 OCR 结果（3/7）"),
@@ -313,23 +383,43 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             ("result_merger.py", "当前进行：JSON 文件合并（7/7）")
         ]
         
+        # 禁用OCR按钮，防止重复点击
+        self.pushButton_6.setEnabled(False)
+        
         # 重置进度显示
         self.label_3.setText("当前进度：")
+        self.current_script_index = 0
         
-        for script, status in scripts_and_status:
-            script_path = os.path.join("mainprogress", script)
-            if not os.path.exists(script_path):
-                QMessageBox.critical(self, "错误", f"未找到脚本文件：{script}")
-                return
-                
-            if not self.run_script_with_output(script, status):
-                QMessageBox.critical(self, "错误", f"执行{script}时出错")
-                return
-                
-        # 完成后重置显示
-        self.label_2.setText("当前进行：（已完成）")
-        self.label_3.setText("当前进度：处理完成")
-        QMessageBox.information(self, "完成", "OCR处理流程已完成")
+        # 开始执行第一个脚本
+        self.run_next_script()
+
+    def run_next_script(self):
+        if self.current_script_index >= len(self.scripts_and_status):
+            # 所有脚本执行完成
+            self.label_2.setText("当前进行：处理完成")
+            self.label_3.setText("当前进度：处理完成")
+            self.update_timer.stop()
+            self.pushButton_6.setEnabled(True)  # 重新启用OCR按钮
+            QMessageBox.information(self, "完成", "OCR处理流程已完成")
+            return
+            
+        script, status = self.scripts_and_status[self.current_script_index]
+        script_path = os.path.join("mainprogress", script)
+        
+        if not os.path.exists(script_path):
+            QMessageBox.critical(self, "错误", f"未找到脚本文件：{script}")
+            self.pushButton_6.setEnabled(True)  # 出错时重新启用OCR按钮
+            return
+            
+        self.label_2.setText(status)
+        
+        # 创建新的脚本运行器
+        self.script_runner = ScriptRunner(script)
+        self.script_runner.finished.connect(self.handle_script_finished)
+        self.script_runner.start()
+        
+        # 启动定时器
+        self.update_timer.start()
 
     def run_confirm_content(self):
         """运行确认内容脚本"""

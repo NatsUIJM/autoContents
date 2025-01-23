@@ -27,18 +27,28 @@ def process_pdf_with_bookmarks():
         print(f"正在处理 {base_name}...")
 
         try:
-            # 读取content_start
+            # 读取content_start和toc_start
             with open(info_json_path, 'r', encoding='utf-8') as f:
                 info_data = json.load(f)
             content_start = info_data.get('content_start', 1)
+            toc_start = info_data.get('toc_start', 1)
             
             # 读取目录数据
             with open(content_json_path, 'r', encoding='utf-8') as f:
                 toc_data = json.load(f)
             
+            # 添加"目录"条目
+            toc_entry = {
+                'text': '目录',
+                'number': toc_start,
+                'level': 1
+            }
+            toc_data['items'].insert(0, toc_entry)
+            
             # 调整页码
             for item in toc_data['items']:
-                item['number'] = item['number'] + content_start - 1
+                if item['text'] != '目录':  # 不调整"目录"条目的页码
+                    item['number'] = item['number'] + content_start - 1
             
             # 使用pikepdf处理PDF
             pdf = pikepdf.Pdf.open(pdf_path)

@@ -4,3 +4,12 @@
 2025-01-23 14:22:25,902 - INFO - Processing book: 电机学
 2025-01-23 14:22:25,903 - INFO - Total original files: 3
 2025-01-23 14:22:25,903 - INFO - Total files after preprocessing: 7
+2025-01-23 15:32:25,491 - INFO - Processing book: file_info.json
+2025-01-23 15:32:25,491 - INFO - Processing book: 电机学
+2025-01-23 15:32:25,493 - INFO - Total original files: 8
+2025-01-23 15:32:25,493 - INFO - Total files after preprocessing: 15
+2025-01-23 15:36:53,970 - INFO - Processing book: file_info.json
+2025-01-23 15:36:53,970 - ERROR - Error processing book file_info.json: unhashable type: 'slice'
+2025-01-23 15:36:53,970 - INFO - Processing book: 电机学
+2025-01-23 15:36:53,974 - INFO - Total original files: 15
+2025-01-23 15:36:53,974 - INFO - Total files after preprocessing: 28
