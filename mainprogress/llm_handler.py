@@ -105,80 +105,52 @@ class TokenCounter:
 
 def get_system_prompt() -> str:
     """Generate system prompt"""
-    return """{
-    "promptName": "JSON Table of Contents Processor",
-    "version": "1.0",
-    "description": "Process and normalize table of contents data in JSON format",
-    "rules": {
-    "textProcessing": {
-      "operations": [
-      "Fix OCR errors (typically 1-2 similar character mistakes per entry)",
-      "Add space between chapter numbers and titles",
-      "Remove redundant spaces and abnormal symbols",
-      "Ignore English part if the title is bilingual (Chinese and English)"
-      ]
+    return """请协助我规范化JSON格式的目录数据。要求如下：
+
+1.  文本处理：
+   1. 修复OCR错误。通常情况下，每个条目最多有1-2个字符错误。
+   2. 在编号和标题正文之间添加空格
+   3. 删除多余的空格和异常符号
+   4. 如果标题是中英双语的，忽略英语部分
+2. 页码处理：
+   1. 某些标题原文有换行，导致被识别为两条，请将它们合并起来
+   2. 某些标题没有匹配到页码，请返回`number=null`
+3. 标题层级：在输入的文件中，最高级别的标题（一般为篇或者章）为`level=1`，标题层级越低则`level`值越大
+4. 其他注意事项：
+   1. 除了编号和标题正文之外，不要在中文和英文或数字之间加空格
+   2. 选择阿拉伯数字还是中文数字，请遵循输入原始信息，不要随意更改
+5. 处理案例：
+   1. `第1章 自动控制概述`正确；`第 1章 自动控制概述`错误；`第1 章 自动控制概述`错误
+   2. `第2章 超前滞后校正与PID校正`正确；`第2章 超前滞后校正与 PID校正`错误；`第2章 超前滞后校正与PID 校正`错误
+   
+请使用JSON格式输出，示例如下：
+
+``` json
+{
+  "items": [
+    {
+      "text": "第1章 自动控制概述",
+      "number": null,
+      "confirmed": false,
+      "level": 1
     },
-    "pageNumberProcessing": {
-      "scenarios": {
-      "unrecognizedOCR": {
-        "condition": "Single-digit page numbers at beginning",
-        "action": "Keep number as null",
-        "confirmed": false
-      },
-      "lineBreakTitle": {
-        "condition": "Long titles split across lines",
-        "action": "Merge with adjacent lines",
-        "useExistingNumber": true,
-        "confirmed": true
-      },
-      "unmarkedPages": {
-        "condition": "Level 1-2 titles without page numbers",
-        "action": "Use first child page number",
-        "confirmed": true
-      }
-      }
+    {
+      "text": "第一节 自动控制和自动控制技术",
+      "number": 1,
+      "confirmed": true,
+      "level": 2
     },
-    "titleMerging": {
-      "condition": "Incomplete entry with chapter number",
-      "actions": [
-      "Merge with next unnumbered entry",
-      "Use page number from next entry"
-      ],
-      "confirmed": true
-    },
-    "hierarchyRules": {
-      "twoLevels": {
-      "condition": "Chapter is highest level",
-      "mapping": {
-        "chapter": 1,
-        "section": 2
-      }
-      },
-      "threeLevels": {
-      "condition": "Title above chapter exists",
-      "mapping": {
-        "topLevel": 1,
-        "chapter": 2,
-        "section": 3
-      }
-      }
-    },
-    "outputFormat": {
-      "type": "JSON",
-      "structure": {
-      "items": {
-        "type": "array",
-        "elements": {
-        "text": "string",
-        "number": "integer|null",
-        "confirmed": "boolean",
-        "level": "integer(1-3)"
-        }
-      }
-      }
+    {
+      "text": "第二节 自动控制系统的组成及分类",
+      "number": 6,
+      "confirmed": true,
+      "level": 2
     }
-    }
-  }"""
+  ]
+}
+```
+
+"""
 
 system = """
 You are a helpful assistant for a data processing task. You need to process JSON-formatted directory data, correct text errors, and standardize the format.

@@ -406,6 +406,32 @@ def interpolate_null_numbers(results: List[dict], duplicate_titles: Dict[str, in
     
     return processed_results
 
+def final_post_process(results: List[dict]) -> List[dict]:
+    """
+    最终的后处理步骤:
+    1. 如果level的最小值不为1，将所有level减少到从1开始
+    2. 删除所有level >= 4的标题
+    """
+    if not results:
+        return results
+    
+    # 找到最小level
+    min_level = min(item['level'] for item in results)
+    
+    # 如果最小level不为1，调整所有level
+    if min_level != 1:
+        print(f"\n检测到最小level为{min_level}，将所有level减{min_level-1}")
+        results = [{**item, 'level': item['level'] - (min_level-1)} for item in results]
+    
+    # 过滤掉level >= 4的标题
+    original_count = len(results)
+    results = [item for item in results if item['level'] < 4]
+    filtered_count = original_count - len(results)
+    if filtered_count > 0:
+        print(f"\n删除了{filtered_count}个level >= 4的标题")
+    
+    return results
+
 def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: Path):
     """处理一本书的所有结果"""
     # 读取文件信息
@@ -578,8 +604,12 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         results_with_numbers = interpolate_null_numbers(results, duplicate_titles)
         
         print("\n修正确认状态...")
-        # 然后进行确认状态的修正
-        final_results = post_process_confirmation_status(results_with_numbers, book_files, duplicate_titles)
+        # 进行确认状态的修正
+        results_with_confirmation = post_process_confirmation_status(results_with_numbers, book_files, duplicate_titles)
+        
+        print("\n进行最终后处理...")
+        # 进行最终的后处理
+        final_results = final_post_process(results_with_confirmation)
         
         output_path = output_dir / f"{book_name}_final.json"
         write_json_file(output_path, final_results)
@@ -598,6 +628,11 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         original_confirmed = sum(1 for item in results if item['confirmed'])
         final_confirmed = sum(1 for item in final_results if item['confirmed'])
         
+        level_distribution = {}
+        for item in final_results:
+            level = item['level']
+            level_distribution[level] = level_distribution.get(level, 0) + 1
+        
         print(f"\n统计信息:")
         print(f"页码处理:")
         print(f"  - 原始空页码数: {original_null_numbers}")
@@ -606,6 +641,10 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         print(f"  - 处理前确认条目数: {original_confirmed}")
         print(f"  - 处理后确认条目数: {final_confirmed}")
         print(f"  - 修正条目数: {final_confirmed - original_confirmed}")
+        print(f"层级分布:")
+        for level in sorted(level_distribution.keys()):
+            print(f"  - Level {level}: {level_distribution[level]}条")
+
 
 def main():
     # 设置日志
