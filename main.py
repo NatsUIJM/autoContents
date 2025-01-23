@@ -1,7 +1,5 @@
 import os
 import sys
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
 import json
 import shutil
 import subprocess
@@ -16,15 +14,26 @@ from pdf2image import convert_from_path
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from queue import Queue
 
+import sys
+import traceback
+import logging
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget
+from PyQt5.QtCore import QThread, pyqtSignal
+
+logging.basicConfig(
+    filename='error.log',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 class ScriptRunner(QThread):
     progress = pyqtSignal(str)
-    status = pyqtSignal(str)
     finished = pyqtSignal(bool)
+    error = pyqtSignal(str)  # 新增错误信号
     
     def __init__(self, script_name):
         super().__init__()
         self.script_name = script_name
-        self.output_queue = Queue()
         self.process = None
         
     def run(self):
@@ -33,30 +42,48 @@ class ScriptRunner(QThread):
                 [sys.executable, os.path.join("mainprogress", self.script_name)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1
+                text=True,
+                encoding='utf-8'
             )
             
             while True:
-                output = self.process.stdout.readline()
-                if output == '' and self.process.poll() is not None:
+                if self.process is None:  # 检查进程是否存在
                     break
-                if output:
-                    self.output_queue.put(output.strip())
                     
-            success = self.process.poll() == 0
-            self.finished.emit(success)
+                try:
+                    line = self.process.stdout.readline()
+                    if not line and self.process.poll() is not None:
+                        break
+                    line = line.strip()
+                    if line:
+                        self.progress.emit(line)
+                except Exception as e:
+                    logging.error(f"读取输出错误: {str(e)}")
+                    logging.error(traceback.format_exc())
+                    self.error.emit(str(e))
+                    break
+            
+            if self.process and self.process.returncode is not None:
+                success = self.process.returncode == 0
+                self.finished.emit(success)
             
         except Exception as e:
-            self.output_queue.put(f"错误 - {str(e)}")
+            logging.error(f"运行脚本错误: {str(e)}")
+            logging.error(traceback.format_exc())
+            self.error.emit(str(e))
             self.finished.emit(False)
-
-    def get_latest_output(self):
-        """获取最新的输出内容"""
-        latest_output = None
-        while not self.output_queue.empty():
-            latest_output = self.output_queue.get()
-        return latest_output
+    
+    def stop(self):
+        """安全停止进程"""
+        try:
+            if self.process:
+                self.process.terminate()
+                self.process.wait(timeout=3)  # 等待最多3秒
+                if self.process.poll() is None:  # 如果进程还在运行
+                    self.process.kill()  # 强制结束
+        except Exception as e:
+            logging.error(f"停止进程错误: {str(e)}")
+            logging.error(traceback.format_exc())
 
 
 class PDFCard(QtWidgets.QWidget, Ui_Form):
@@ -154,40 +181,46 @@ class PDFCard(QtWidgets.QWidget, Ui_Form):
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self):
-        super().__init__()
-        self.setupUi(self)
+        try:
+            super().__init__()
+            self.setupUi(self)
         
-        # 初始化PDF文件夹
-        self.pdf_dir = os.path.join("data", "input_pdf")
-        os.makedirs(self.pdf_dir, exist_ok=True)
-        
-        # 设置滚动区域的布局
-        self.scroll_layout = QVBoxLayout(self.scrollAreaWidgetContents)
-        self.scroll_layout.setAlignment(QtCore.Qt.AlignTop)
-        
-        # 连接信号
-        self.pushButton_5.clicked.connect(self.add_pdfs)  # 添加PDF文件
-        self.pushButton_3.clicked.connect(self.run_pic_mark)  # 标记目录版面
-        self.pushButton_6.clicked.connect(self.run_ocr_process)  # OCR流程
-        self.pushButton_2.clicked.connect(self.run_confirm_content)  # 处理错误数据
-        self.pushButton.clicked.connect(self.run_process_pdf)  # 目录挂入PDF
-        
-        # 初始加载已有PDF
-        self.load_existing_pdfs()
+            # 初始化PDF文件夹
+            self.pdf_dir = os.path.join("data", "input_pdf")
+            os.makedirs(self.pdf_dir, exist_ok=True)
+            
+            # 设置滚动区域的布局
+            self.scroll_layout = QVBoxLayout(self.scrollAreaWidgetContents)
+            self.scroll_layout.setAlignment(QtCore.Qt.AlignTop)
+            
+            # 连接信号
+            self.pushButton_5.clicked.connect(self.add_pdfs)  # 添加PDF文件
+            self.pushButton_3.clicked.connect(self.run_pic_mark)  # 标记目录版面
+            self.pushButton_6.clicked.connect(self.run_ocr_process)  # OCR流程
+            self.pushButton_2.clicked.connect(self.run_confirm_content)  # 处理错误数据
+            self.pushButton.clicked.connect(self.run_process_pdf)  # 目录挂入PDF
+            
+            # 初始加载已有PDF
+            self.load_existing_pdfs()
 
-        self.current_script_index = 0
-        self.script_runner = None
+            self.current_script_index = 0
+            self.script_runner = None
 
-        self.update_timer = QTimer()
-        self.update_timer.timeout.connect(self.check_progress)
-        self.update_timer.setInterval(1000)  # 1秒更新一次
+        except Exception as e:
+            logging.error(f"初始化错误: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
+
 
     def check_progress(self):
         """定时检查并更新进度"""
         if self.script_runner:
             latest_output = self.script_runner.get_latest_output()
             if latest_output is not None:
-                self.label_3.setText(f"当前进度：{latest_output}")
+                # 确保输出不为空且不是空白字符
+                if latest_output.strip():
+                    self.label_3.setText(f"当前进度：{latest_output}")
+                    print(f"Debug - 更新进度: {latest_output}")  # 用于调试
 
     def run_pic_mark(self):
         """运行image_marker.py"""
@@ -383,43 +416,65 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             ("result_merger.py", "当前进行：JSON 文件合并（7/7）")
         ]
         
-        # 禁用OCR按钮，防止重复点击
-        self.pushButton_6.setEnabled(False)
-        
-        # 重置进度显示
+        self.pushButton_6.setEnabled(False)  # 禁用按钮
         self.label_3.setText("当前进度：")
         self.current_script_index = 0
-        
-        # 开始执行第一个脚本
         self.run_next_script()
 
     def run_next_script(self):
-        if self.current_script_index >= len(self.scripts_and_status):
-            # 所有脚本执行完成
-            self.label_2.setText("当前进行：处理完成")
+        try:
+            if self.current_script_index >= len(self.scripts_and_status):
+                self.finish_process()
+                return
+                
+            script, status = self.scripts_and_status[self.current_script_index]
+            script_path = os.path.join("mainprogress", script)
+            
+            if not os.path.exists(script_path):
+                self.handle_error(f"未找到脚本文件：{script}")
+                return
+                
+            self.label_2.setText(status)
+            
+            self.script_runner = ScriptRunner(script)
+            self.script_runner.progress.connect(self.update_progress)
+            self.script_runner.finished.connect(self.handle_script_finished)
+            self.script_runner.error.connect(self.handle_error)
+            self.script_runner.start()
+            
+        except Exception as e:
+            logging.error(f"运行脚本错误: {str(e)}")
+            logging.error(traceback.format_exc())
+            self.handle_error(str(e))
+   
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+        try:
+            if self.script_runner and self.script_runner.isRunning():
+                self.script_runner.stop()
+                self.script_runner.wait()
+            event.accept()
+        except Exception as e:
+            logging.error(f"关闭窗口错误: {str(e)}")
+            logging.error(traceback.format_exc())
+            event.accept()
+
+    def handle_error(self, error_msg):
+        """统一错误处理"""
+        logging.error(f"错误: {error_msg}")
+        self.pushButton_6.setEnabled(True)
+        QMessageBox.critical(self, "错误", error_msg)
+
+    def finish_process(self):
+        """完成处理"""
+        try:
+            self.label_2.setText("当前进行：（已完成）")
             self.label_3.setText("当前进度：处理完成")
-            self.update_timer.stop()
-            self.pushButton_6.setEnabled(True)  # 重新启用OCR按钮
+            self.pushButton_6.setEnabled(True)
             QMessageBox.information(self, "完成", "OCR处理流程已完成")
-            return
-            
-        script, status = self.scripts_and_status[self.current_script_index]
-        script_path = os.path.join("mainprogress", script)
-        
-        if not os.path.exists(script_path):
-            QMessageBox.critical(self, "错误", f"未找到脚本文件：{script}")
-            self.pushButton_6.setEnabled(True)  # 出错时重新启用OCR按钮
-            return
-            
-        self.label_2.setText(status)
-        
-        # 创建新的脚本运行器
-        self.script_runner = ScriptRunner(script)
-        self.script_runner.finished.connect(self.handle_script_finished)
-        self.script_runner.start()
-        
-        # 启动定时器
-        self.update_timer.start()
+        except Exception as e:
+            logging.error(f"完成处理错误: {str(e)}")
+            logging.error(traceback.format_exc())
 
     def run_confirm_content(self):
         """运行确认内容脚本"""
@@ -432,6 +487,22 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             subprocess.Popen([sys.executable, script_path])
         except Exception as e:
             QMessageBox.critical(self, "错误", f"运行content_validator.py失败：{str(e)}")
+    
+    def update_progress(self, text):
+        """更新进度显示"""
+        self.label_3.setText(f"当前进度：{text}")
+
+    def handle_script_finished(self, success):
+        if success:
+            self.current_script_index += 1
+            self.run_next_script()
+        else:
+            self.pushButton_6.setEnabled(True)
+            QMessageBox.critical(
+                self,
+                "错误",
+                f"执行{self.scripts_and_status[self.current_script_index][0]}时出错"
+            )
 
     def run_process_pdf(self):
         """运行PDF处理脚本"""
@@ -445,9 +516,18 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"运行pdf_generator.py失败：{str(e)}")
 
+def exception_hook(exctype, value, traceback):
+    logging.error('未捕获的异常:', exc_info=(exctype, value, traceback))
+    sys.__excepthook__(exctype, value, traceback)  # 调用默认的异常处理
+
+sys.excepthook = exception_hook
+
 if __name__ == '__main__':
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        window = MainWindow()
+        window.show()
+        sys.exit(app.exec_())
+    except Exception as e:
+        logging.error(f"程序启动错误: {str(e)}")
+        logging.error(traceback.format_exc())
