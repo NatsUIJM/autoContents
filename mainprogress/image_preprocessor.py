@@ -1,24 +1,32 @@
+"""
+文件名: image_preprocessor.py (原名: 2_picProcess.py)
+功能: 处理图像，包括裁剪、分割和拼接操作
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import os
 import json
 from PIL import Image
 import numpy as np
 from typing import Dict, List, Tuple
 import logging
+from config.paths import PathConfig
 
 class ImageProcessor:
-    def __init__(self, input_dir: str, json_dir: str, output_dir: str, cut_dir: str):
-        self.input_dir = input_dir
-        self.json_dir = json_dir
-        self.output_dir = output_dir
-        self.cut_dir = cut_dir
+    def __init__(self):
+        self.input_dir = PathConfig.IMAGE_PREPROCESSOR_INPUT
+        self.json_dir = PathConfig.IMAGE_PREPROCESSOR_JSON
+        self.output_dir = PathConfig.IMAGE_PREPROCESSOR_OUTPUT
+        self.cut_dir = PathConfig.IMAGE_PREPROCESSOR_CUT
         self.setup_dirs()
         self.setup_logging()
 
     def setup_dirs(self):
         """创建必要的目录"""
         for dir_path in [self.output_dir, self.cut_dir]:
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
+            os.makedirs(dir_path, exist_ok=True)
 
     def setup_logging(self):
         """设置日志"""
@@ -59,32 +67,23 @@ class ImageProcessor:
         return splits
 
     def get_vertical_split_info(self, points: Dict, y_start: float, y_end: float) -> Tuple[bool, float]:
-        """判断是否需要垂直分割
-        1. 如果没有E点，则返回不需要分割
-        2. 如果在指定区域内存在X点，则返回不需要分割
-        3. 否则返回需要在E点进行分割
-        """
-        # 先检查是否有E点
+        """判断是否需要垂直分割"""
         if 'E' not in points or 'x' not in points['E']:
             return (False, 0)
         
-        # 检查是否有X点表示不分割
         for key in points.keys():
             if key.startswith('X'):
                 if 'y' in points[key]:
                     y = points[key]['y']
                     if y_start <= y <= y_end:
-                        # 存在X点，表示不需要分割
                         return (False, 0)
         
-        # 没有X点，需要在E点分割
         return (True, points['E']['x'])
 
     def split_image(self, image: Image.Image, points: Dict) -> List[Image.Image]:
         """分割图片"""
         result_images = []
         
-        # 获取水平分割点，如果没有则只用AB点形成的矩形
         h_splits = self.get_horizontal_splits(points)
         h_splits = [points['A']['y']] + h_splits + [points['D']['y']]
         
@@ -97,7 +96,7 @@ class ImageProcessor:
             
             needs_split, split_x = self.get_vertical_split_info(points, y_start, y_end)
             
-            if needs_split and split_x > 0:  # 确保split_x有效
+            if needs_split and split_x > 0:
                 left_part = segment.crop((0, 0, split_x - points['A']['x'], segment.height))
                 right_part = segment.crop((split_x - points['A']['x'], 0, segment.width, segment.height))
                 result_images.extend([left_part, right_part])
@@ -166,12 +165,7 @@ class ImageProcessor:
                 self.process_image(image_path)
 
 def main():
-    processor = ImageProcessor(
-        input_dir='1_picMark/inputPic',
-        json_dir='1_picMark/picJSON',
-        output_dir='2_outputPic',
-        cut_dir='6_1_cutPic'
-    )
+    processor = ImageProcessor()
     processor.process_all_images()
 
 if __name__ == "__main__":

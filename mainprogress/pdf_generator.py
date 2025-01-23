@@ -1,24 +1,28 @@
+"""
+文件名: pdf_generator.py (原名: 7_processPDF.py)
+功能: 处理PDF文件，添加书签结构
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import json
 import os
 import pikepdf
+from config.paths import PathConfig
 
-def process_pdf_with_bookmarks(root_dir):
-    content_dir = os.path.join(root_dir, '6_confirmedContentInfo')
-    pdf_dir = os.path.join(root_dir, '0_originPDF')
-    output_dir = os.path.join(root_dir, '7_processedPDF')
+def process_pdf_with_bookmarks():
+    # 确保输出目录存在
+    os.makedirs(PathConfig.PDF_GENERATOR_OUTPUT_1, exist_ok=True)
     
-    # Create output directory if it doesn't exist
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    for filename in os.listdir(content_dir):
+    for filename in os.listdir(PathConfig.PDF_GENERATOR_INPUT_1):
         if not filename.endswith('_final.json'):
             continue
             
         base_name = filename.replace('_final.json', '')
-        pdf_path = os.path.join(pdf_dir, f'{base_name}.pdf')
-        info_json_path = os.path.join(pdf_dir, f'{base_name}.json')
-        content_json_path = os.path.join(content_dir, filename)
+        pdf_path = os.path.join(PathConfig.PDF_GENERATOR_INPUT_2, f'{base_name}.pdf')
+        info_json_path = os.path.join(PathConfig.PDF_GENERATOR_INPUT_2, f'{base_name}.json')
+        content_json_path = os.path.join(PathConfig.PDF_GENERATOR_INPUT_1, filename)
         
         print(f"正在处理 {base_name}...")
 
@@ -99,7 +103,7 @@ def process_pdf_with_bookmarks(root_dir):
                 outline.root.extend(bookmarks)
             
             # 保存处理后的PDF到新目录
-            output_path = os.path.join(output_dir, f'{base_name}_with_toc.pdf')
+            output_path = os.path.join(PathConfig.PDF_GENERATOR_OUTPUT_1, f'{base_name}_with_toc.pdf')
             pdf.save(output_path)
             print(f"\n已成功处理 {base_name}")
             
@@ -109,5 +113,4 @@ def process_pdf_with_bookmarks(root_dir):
             print(traceback.format_exc())
 
 if __name__ == '__main__':
-    root_dir = '.'  # 项目根目录
-    process_pdf_with_bookmarks(root_dir)
+    process_pdf_with_bookmarks()

@@ -1,9 +1,20 @@
+"""
+文件名: ocr_azure.py (原名: 3_1_AzureOCR.py)
+功能: 使用Azure OCR服务处理图片并生成文字识别结果
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import os
 import json
 from pathlib import Path
 import concurrent.futures
+from PIL import Image
+import io
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.formrecognizer import DocumentAnalysisClient
+from config.paths import PathConfig
 
 # Azure设置
 endpoint = os.getenv('AZURE_DOCUMENT_ENDPOINT')
@@ -21,11 +32,8 @@ def process_azure_json(result):
     output_data = []
     
     try:
-        # 处理每一页
         for page in result.get('pages', []):
-            # 处理每一行文本
             for line in page.get('lines', []):
-                # 获取多边形坐标
                 polygon = line.get('polygon', [])
                 if polygon:
                     item = {
@@ -40,20 +48,55 @@ def process_azure_json(result):
     
     return output_data
 
+def resize_image_if_needed(img_path):
+    """检查并在需要时调整图片尺寸"""
+    with Image.open(img_path) as img:
+        width, height = img.size
+        max_size = 9990
+        target_size = 9900
+        
+        if width > max_size or height > max_size:
+            # 计算缩放比例
+            if width > height:
+                if width > max_size:
+                    ratio = target_size / width
+                    new_width = target_size
+                    new_height = int(height * ratio)
+            else:
+                if height > max_size:
+                    ratio = target_size / height
+                    new_height = target_size
+                    new_width = int(width * ratio)
+            
+            # 调整图片尺寸
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # 将调整后的图片保存到内存
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format=img.format if img.format else 'JPEG')
+            return img_byte_arr.getvalue()
+            
+    # 如果不需要调整，返回None
+    return None
+
 def process_image(img_path, output_dir):
     """处理单张图片的OCR并保存结果"""
     try:
-        # 创建Azure客户端
         document_analysis_client = DocumentAnalysisClient(
             endpoint=endpoint,
             credential=AzureKeyCredential(key)
         )
         
-        # 读取图片
-        with open(str(img_path), "rb") as image_file:
-            image_data = image_file.read()
+        # 检查是否需要调整图片尺寸
+        resized_image = resize_image_if_needed(img_path)
         
-        # 调用Azure OCR
+        if resized_image:
+            print(f"图片 {img_path.name} 尺寸超过限制，已自动调整")
+            image_data = resized_image
+        else:
+            with open(str(img_path), "rb") as image_file:
+                image_data = image_file.read()
+        
         print(f"Starting OCR for {img_path.name}")
         poller = document_analysis_client.begin_analyze_document(
             "prebuilt-document",
@@ -61,11 +104,9 @@ def process_image(img_path, output_dir):
         )
         result = poller.result()
         
-        # 转换为字典并处理
         result_dict = result.to_dict()
         processed_data = process_azure_json(result_dict)
         
-        # 保存处理后的JSON
         json_path = output_dir / f"{img_path.stem}.json"
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(processed_data, f, ensure_ascii=False, indent=2)
@@ -79,16 +120,15 @@ def process_image(img_path, output_dir):
         print(traceback.format_exc())
 
 def main():
-    # 验证环境变量
     if not endpoint or not key:
         raise ValueError("Azure credentials not found in environment variables")
         
     # 创建输出目录
-    output_dir = Path('3_1_OCRServiceBack')
-    output_dir.mkdir(exist_ok=True)
+    output_dir = Path(PathConfig.OCR_AZURE_OUTPUT_1)
+    os.makedirs(output_dir, exist_ok=True)
     
     # 读取输入目录中的图片
-    input_dir = Path('2_outputPic')
+    input_dir = Path(PathConfig.OCR_AZURE_INPUT_1)
     if not input_dir.exists():
         raise ValueError(f"Input directory {input_dir} does not exist")
     
@@ -102,7 +142,6 @@ def main():
     
     print(f"Found {len(img_paths)} images to process")
     
-    # 使用线程池处理图片，最大并发数为10
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_image, img_path, output_dir) 
                   for img_path in img_paths]

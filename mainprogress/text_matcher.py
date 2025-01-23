@@ -1,6 +1,16 @@
+"""
+文件名: text_matcher.py (原名: 4_matchText.py)
+功能: 匹配文本和数字对，生成配对结果
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import json
+import os
 from pathlib import Path
 import numpy as np
+from config.paths import PathConfig
 
 def is_pure_number(text):
     """检查文本是否为纯数字"""
@@ -74,11 +84,11 @@ def find_text_pairs(results):
 
 def main():
     # 创建输出目录
-    output_dir = Path('4_initialContentInfo')
+    output_dir = Path(PathConfig.TEXT_MATCHER_OUTPUT)
     output_dir.mkdir(exist_ok=True)
     
     # 遍历OCR结果文件
-    input_dir = Path('3_OCRInfo')
+    input_dir = Path(PathConfig.TEXT_MATCHER_INPUT)
     for json_path in input_dir.glob('*.json'):
         # 跳过标注图片的文件名
         if json_path.stem.endswith('_annotated'):

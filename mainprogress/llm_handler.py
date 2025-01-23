@@ -1,3 +1,11 @@
+"""
+文件名: llm_handler.py (原名: 5_2_model_process.py)
+功能: 使用LLM服务处理原始内容数据，进行文本纠错和标准化
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import os
 import json
 import asyncio
@@ -6,6 +14,7 @@ from openai import AsyncOpenAI
 import platform
 from pathlib import Path
 from typing import Dict, NamedTuple
+from config.paths import PathConfig
 
 class ServiceConfig(NamedTuple):
     name: str
@@ -176,22 +185,22 @@ You are a helpful assistant for a data processing task. You need to process JSON
 """
 
 async def process_single_file(file_path: Path, output_dir: Path, service_manager: ServiceManager, token_counter: TokenCounter, retry_count: int = 1):
-    """Process a single file"""
+    """处理单个文件"""
     try:
-        # Read file data
+        # 读取文件数据
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Create model prompt
+        # 创建模型提示词
         prompt = f"{get_system_prompt()}\n\n{json.dumps(data, ensure_ascii=False, indent=2)}"
         
-        # Update input character count
+        # 更新输入字符计数
         progress_tracker.add_input_chars(len(prompt))
         
-        # Retry specified number of times
+        # 指定重试次数
         for attempt in range(retry_count + 1):
             try:
-                # Use streaming call to model
+                # 使用流式调用模型
                 response = await service_manager.client.chat.completions.create(
                     model=service_manager.config.model_name,
                     messages=[
@@ -209,7 +218,6 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                         full_response += content
                         progress_tracker.add_output_chars(len(content))
                         
-                        # Check if progress should be updated
                         if progress_tracker.should_update():
                             print(f"Progress: {progress_tracker.get_progress():.2f}% | Estimated time remaining: {progress_tracker.get_time_estimate()}")
                             
@@ -219,10 +227,10 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                             chunk.usage.prompt_tokens
                         )
                 
-                # Validate JSON format
+                # 验证JSON格式
                 processed_data = json.loads(full_response)
                 
-                # Save processed data
+                # 保存处理后的数据
                 output_file = output_dir / f"{file_path.stem}_processed.json"
                 with open(output_file, 'w', encoding='utf-8') as f:
                     json.dump(processed_data, f, ensure_ascii=False, indent=2)
@@ -235,7 +243,6 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                     print(f"Retry {attempt + 1} for {file_path.name} due to: {str(e)}")
                     continue
                 else:
-                    # Generate error message JSON
                     error_data = {
                         "items": [{
                             "text": f"错误码{str(e)}",
@@ -255,21 +262,21 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
         return False
 
 async def main():
-    # Get service selection from environment variable or use default
+    # 获取服务选择
     service_name = os.getenv('LLM_SERVICE', 'dashscope').lower()
     service_manager = ServiceManager(service_name)
     
-    input_dir = Path("4_initialContentInfo")
-    output_dir = Path("4_1_LLMProcessed")
+    input_dir = Path(PathConfig.LLM_HANDLER_INPUT)
+    output_dir = Path(PathConfig.LLM_HANDLER_OUTPUT)
     
-    # Create output directory
+    # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
     
-    # Read file information
+    # 读取文件信息
     with open(input_dir / "file_info.json", 'r', encoding='utf-8') as f:
         file_info = json.load(f)
     
-    # Create task list
+    # 创建任务列表
     tasks = []
     token_counters = {}
     
@@ -278,17 +285,17 @@ async def main():
         token_counters[file_path] = TokenCounter()
         tasks.append(process_single_file(file_path, output_dir, service_manager, token_counters[file_path]))
     
-    # Run all tasks
+    # 运行所有任务
     results = await asyncio.gather(*tasks)
     
-    # Summarize processing results
+    # 汇总处理结果
     success_count = sum(1 for r in results if r)
     fail_count = len(results) - success_count
     print(f"\nProcessing complete. Success: {success_count}, Failed: {fail_count}")
 
 if __name__ == '__main__':
-    # Set event loop policy for Windows
+    # 为Windows设置事件循环策略
     if platform.system() == 'Windows':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    # Run main coroutine
+    # 运行主协程
     asyncio.run(main())

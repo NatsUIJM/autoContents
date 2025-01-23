@@ -1,7 +1,6 @@
-mainWindow.py
-[0-9]_*/
 __pycache__/
+.venv/
+data/
+UI/pyuic5/
 .DS_Store
-info/
-*Window.py
-logs/
+*.UI

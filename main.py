@@ -1,4 +1,8 @@
 import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+import os
 import json
 import shutil
 import subprocess
@@ -6,8 +10,8 @@ import time
 import sys
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QVBoxLayout, QWidget
-from mainWindow import Ui_MainWindow
-from pdfCard import Ui_Form
+from UI.mainWindow import Ui_MainWindow
+from UI.pdfCard import Ui_Form
 from pdf2image import convert_from_path
 
 class PDFCard(QtWidgets.QWidget, Ui_Form):
@@ -109,7 +113,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         
         # 初始化PDF文件夹
-        self.pdf_dir = "0_originPDF"
+        self.pdf_dir = os.path.join("data", "input_pdf")
         os.makedirs(self.pdf_dir, exist_ok=True)
         
         # 设置滚动区域的布局
@@ -127,7 +131,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.load_existing_pdfs()
 
     def run_pic_mark(self):
-        """运行1_picMark.py"""
+        """运行image_marker.py"""
         try:
             # 检查是否有PDF文件
             if not os.path.exists(self.pdf_dir) or not any(f.lower().endswith('.pdf') for f in os.listdir(self.pdf_dir)):
@@ -138,26 +142,26 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 )
                 return
 
-            # 检查1_picMark.py是否存在
-            if not os.path.exists("1_picMark.py"):
+            # 检查脚本文件是否存在
+            if not os.path.exists(os.path.join("mainprogress", "image_marker.py")):
                 QMessageBox.critical(
                     self,
                     "错误",
-                    "未找到1_picMark.py文件！"
+                    "未找到image_marker.py文件！"
                 )
                 return
 
-            # 使用Python解释器运行1_picMark.py
+            # 使用Python解释器运行脚本
             python_executable = sys.executable
-            subprocess.Popen([python_executable, "0_pdf2jpg.py"])
+            subprocess.Popen([python_executable, os.path.join("mainprogress", "pdf_to_image.py")])
             time.sleep(1)
-            subprocess.Popen([python_executable, "1_picMark.py"])
+            subprocess.Popen([python_executable, os.path.join("mainprogress", "image_marker.py")])
 
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "错误",
-                f"运行1_picMark.py失败：{str(e)}"
+                f"运行image_marker.py失败：{str(e)}"
             )
 
     def generate_unique_filename(self, original_path):
@@ -179,7 +183,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             for filename in os.listdir(self.pdf_dir):
                 if filename.lower().endswith('.pdf'):
                     self.add_pdf_card(os.path.join(self.pdf_dir, filename))
- 
+
     def add_pdfs(self):
         files, _ = QFileDialog.getOpenFileNames(
             self,
@@ -257,6 +261,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             if isinstance(widget, PDFCard) and widget.pdf_path == pdf_path:
                 widget.deleteLater()
                 break
+
     def run_script_with_output(self, script_name, status_text):
         """运行脚本并更新状态"""
         try:
@@ -265,7 +270,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             
             # 运行脚本并捕获输出
             process = subprocess.Popen(
-                [sys.executable, script_name],
+                [sys.executable, os.path.join("mainprogress", script_name)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
@@ -289,20 +294,31 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def run_ocr_process(self):
         """执行OCR处理流程"""
+        # Get the selected service from combobox
+        selected_service = self.service_select.currentText()
+        
+        # Define scripts based on selected service
+        if selected_service == "Azure":
+            ocr_script = "ocr_azure.py"
+        else:  # Aliyun
+            ocr_script = "ocr_aliyun.py"
+        
         scripts_and_status = [
-            ("2_picProcess.py", "当前进行：图像文件切分（1/6）"),
-            ("3_OCRProcess.py", "当前进行：执行 OCR 处理（2/6）"),
-            ("4_matchText.py", "当前进行：匹配 OCR 结果（3/6）"),
-            ("5_1_json_preprocess.py", "当前进行：JSON 文件切分（4/6）"),
-            ("5_2_model_process.py", "当前进行：JSON 文件处理（5/6）"),
-            ("5_3_result_merge.py", "当前进行：JSON 文件合并（6/6）")
+            ("image_preprocessor.py", "当前进行：图像文件切分（1/7）"),
+            (ocr_script, "当前进行：执行 OCR 处理（2/7）"),
+            ("ocr_processor.py", "当前进行：处理 OCR 结果（3/7）"),
+            ("text_matcher.py", "当前进行：匹配 OCR 结果（4/7）"),
+            ("content_preprocessor.py", "当前进行：JSON 文件切分（5/7）"),
+            ("llm_handler.py", "当前进行：JSON 文件处理（6/7）"),
+            ("result_merger.py", "当前进行：JSON 文件合并（7/7）")
         ]
         
         # 重置进度显示
         self.label_3.setText("当前进度：")
         
         for script, status in scripts_and_status:
-            if not os.path.exists(script):
+            script_path = os.path.join("mainprogress", script)
+            if not os.path.exists(script_path):
                 QMessageBox.critical(self, "错误", f"未找到脚本文件：{script}")
                 return
                 
@@ -317,25 +333,27 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def run_confirm_content(self):
         """运行确认内容脚本"""
-        if not os.path.exists("6_confirmContent.py"):
-            QMessageBox.critical(self, "错误", "未找到6_confirmContent.py文件")
+        script_path = os.path.join("mainprogress", "content_validator.py")
+        if not os.path.exists(script_path):
+            QMessageBox.critical(self, "错误", "未找到content_validator.py文件")
             return
             
         try:
-            subprocess.Popen([sys.executable, "6_confirmContent.py"])
+            subprocess.Popen([sys.executable, script_path])
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"运行6_confirmContent.py失败：{str(e)}")
+            QMessageBox.critical(self, "错误", f"运行content_validator.py失败：{str(e)}")
 
     def run_process_pdf(self):
         """运行PDF处理脚本"""
-        if not os.path.exists("7_processPDF.py"):
-            QMessageBox.critical(self, "错误", "未找到7_processPDF.py文件")
+        script_path = os.path.join("mainprogress", "pdf_generator.py")
+        if not os.path.exists(script_path):
+            QMessageBox.critical(self, "错误", "未找到pdf_generator.py文件")
             return
             
         try:
-            subprocess.Popen([sys.executable, "7_processPDF.py"])
+            subprocess.Popen([sys.executable, script_path])
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"运行7_processPDF.py失败：{str(e)}")
+            QMessageBox.critical(self, "错误", f"运行pdf_generator.py失败：{str(e)}")
 
 if __name__ == '__main__':
     import sys

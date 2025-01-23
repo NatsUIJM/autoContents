@@ -1,3 +1,8 @@
+
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import sys
 import os
 import json
@@ -6,7 +11,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QGraphicsScene,
                             QGraphicsView, QGraphicsLineItem, QGraphicsEllipseItem)
 from PyQt5.QtGui import QPixmap, QImage, QPen, QPainter
 from PyQt5.QtCore import Qt, QPointF, QLineF, QRectF
-from markWindow import Ui_MainWindow
+from UI.markWindow import Ui_MainWindow
+from config.paths import PathConfig
 
 class DraggableLine(QGraphicsLineItem):
     def __init__(self, x1, y1, x2, y2, is_vertical=False, parent=None):
@@ -233,12 +239,10 @@ class MainApplication(QMainWindow):
             print(f"点X{i}: ({center_x:.2f}, {center_y:.2f})")
     
     def load_page_marks(self):
-        # 获取当前图片对应的JSON文件路径
         current_image = self.image_files[self.current_page]
         base_name = os.path.splitext(current_image)[0]
-        json_path = os.path.join('1_picMark', 'picJSON', f'{base_name}.json')
+        json_path = os.path.join(PathConfig.PICMARK_OUTPUT_DIR, f'{base_name}.json')
         
-        # 如果JSON文件不存在，直接返回
         if not os.path.exists(json_path):
             return
         
@@ -311,16 +315,14 @@ class MainApplication(QMainWindow):
             self.check_positions()
     
     def init_application(self):
-        input_dir = os.path.join('1_picMark', 'inputPic')
-        output_dir = os.path.join('1_picMark', 'picJSON')
-        
-        if not os.path.exists(input_dir):
-            os.makedirs(input_dir)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        # 确保输入输出目录存在
+        if not os.path.exists(PathConfig.PICMARK_INPUT_DIR):
+            os.makedirs(PathConfig.PICMARK_INPUT_DIR)
+        if not os.path.exists(PathConfig.PICMARK_OUTPUT_DIR):
+            os.makedirs(PathConfig.PICMARK_OUTPUT_DIR)
             
         valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
-        self.image_files = [f for f in os.listdir(input_dir) 
+        self.image_files = [f for f in os.listdir(PathConfig.PICMARK_INPUT_DIR) 
                            if f.lower().endswith(valid_extensions)]
         self.image_files.sort()
         
@@ -336,8 +338,8 @@ class MainApplication(QMainWindow):
         
     def load_current_image(self):
         if 0 <= self.current_page < len(self.image_files):
-            image_path = os.path.join('1_picMark', 'inputPic', self.image_files[self.current_page])
-            
+            image_path = os.path.join(PathConfig.PICMARK_INPUT_DIR, 
+                                    self.image_files[self.current_page])            
             # 获取原始图片尺寸
             with Image.open(image_path) as img:
                 _, self.original_height = img.size
@@ -364,7 +366,7 @@ class MainApplication(QMainWindow):
             # 检查并加载已存在的标记
             current_image = self.image_files[self.current_page]
             base_name = os.path.splitext(current_image)[0]
-            json_path = os.path.join('1_picMark', 'picJSON', f'{base_name}.json')
+            json_path = os.path.join(PathConfig.PICMARK_OUTPUT_DIR, f'{base_name}.json')
             
             if os.path.exists(json_path):
                 self.load_page_marks()
@@ -426,11 +428,10 @@ class MainApplication(QMainWindow):
         }
     
     def save_points_data(self):
-        # 先按照显示坐标保存
         data = self.collect_points_data()
         current_image = self.image_files[self.current_page]
         base_name = os.path.splitext(current_image)[0]
-        output_path = os.path.join('1_picMark', 'picJSON', f'{base_name}.json')
+        output_path = os.path.join(PathConfig.PICMARK_OUTPUT_DIR, f'{base_name}.json')
         
         # 保存初始JSON
         with open(output_path, 'w', encoding='utf-8') as f:

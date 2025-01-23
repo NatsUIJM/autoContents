@@ -1,13 +1,22 @@
+"""
+文件名: content_validator.py (原名: 6_confirmContent.py)
+功能: 内容确认GUI程序，用于验证和修正提取的内容
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import os
 import json
 import shutil
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtGui import QPixmap, QImage
-from confirmWindow import Ui_MainWindow
+from UI.confirmWindow import Ui_MainWindow
 import glob
 from pathlib import Path
 from PIL import Image
 import io
+from config.paths import PathConfig
 
 class ContentConfirmWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -35,11 +44,9 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         self.ui.prevItemButton.clicked.connect(self.prev_item)
         self.ui.nextItemButton.clicked.connect(self.next_item)
         
-        # 设置Enter键快捷键
+        # 设置快捷键
         self.next_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Return"), self)
         self.next_shortcut.activated.connect(self.next_item)
-        
-        # 设置Shift+Enter快捷键
         self.prev_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Shift+Return"), self)
         self.prev_shortcut.activated.connect(self.prev_item)
         
@@ -55,11 +62,11 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         self.process_files()
         
     def process_files(self):
-        source_dir = Path("5_processedContentInfo")
-        target_dir = Path("6_confirmedContentInfo")
+        source_dir = Path(PathConfig.CONTENT_VALIDATOR_INPUT)
+        target_dir = Path(PathConfig.CONTENT_VALIDATOR_OUTPUT)
         
-        if not target_dir.exists():
-            target_dir.mkdir(parents=True)
+        # 确保输出目录存在
+        os.makedirs(target_dir, exist_ok=True)
             
         # 先确保文件都复制到了目标文件夹
         json_files = sorted(source_dir.glob("*.json"))
@@ -96,29 +103,22 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         """垂直连接所有图片"""
         images = [Image.open(str(path)) for path in image_paths]
         
-        # 统一宽度为775像素
         target_width = 775
         resized_images = []
         for img in images:
-            # 计算等比例缩放后的高度
             ratio = target_width / img.width
             new_height = int(img.height * ratio)
             resized_img = img.resize((target_width, new_height), Image.Resampling.LANCZOS)
             resized_images.append(resized_img)
             
-        # 计算总高度
         total_height = sum(img.height for img in resized_images)
-        
-        # 创建新图片
         combined_image = Image.new('RGB', (target_width, total_height))
         
-        # 垂直拼接图片
         y_offset = 0
         for img in resized_images:
             combined_image.paste(img, (0, y_offset))
             y_offset += img.height
             
-        # 转换为QPixmap
         with io.BytesIO() as bio:
             combined_image.save(bio, format='PNG')
             bytes_data = bio.getvalue()
@@ -140,7 +140,6 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             print(f"{idx + 1}. [{task['source']}]-[{task['title']}]")
         print(f"\n当前正在处理第 {self.current_task_index + 1} 个任务，共 {len(self.all_tasks)} 个任务")
         
-        # 更新"下一条"按钮文本
         if self.current_task_index == len(self.all_tasks) - 1:
             self.ui.nextItemButton.setText("完成 (Enter)")
         else:
@@ -152,15 +151,12 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             
         item = self.current_json_data['items'][self.current_item_index]
         
-        # 更新UI
         self.ui.currentTitleLabel.setText(f"{item['text']}")
         self.ui.pageConfirmLineEdit.setText(str(item['number']) if item['number'] is not None else '')
         self.ui.progressLabel.setText(f"处理进度：{self.current_task_index + 1}/{len(self.all_tasks)}")
         
-        # 全选页码确认框中的内容
         self.ui.pageConfirmLineEdit.selectAll()
         
-        # 判断是否需要刷新图片
         need_refresh = True
         if self.current_task_index > 0:
             prev_task = self.all_tasks[self.current_task_index - 1]
@@ -177,7 +173,7 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             
         textbook_name = self.current_json_path.stem.replace('_final', '')
         
-        image_dir = Path("6_1_cutPic")
+        image_dir = Path(PathConfig.CONTENT_VALIDATOR_IMAGES)
         image_pattern = f"{textbook_name}_page_*.jpg"
         self.current_images = sorted(
             image_dir.glob(image_pattern),
@@ -190,31 +186,25 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         if not self.current_images:
             return
             
-        # 连接所有图片并显示
         combined_pixmap = self.concatenate_images(self.current_images)
         scene = QtWidgets.QGraphicsScene()
         scene.addPixmap(combined_pixmap)
         self.ui.imageView.setScene(scene)
         
-        # 重置滚动条位置
         self.ui.imageView.verticalScrollBar().setValue(0)
         
     def save_current_item(self):
         if not self.current_json_data or self.current_item_index < 0:
             return
             
-        # 获取页码
         number_text = self.ui.pageConfirmLineEdit.text().strip()
         number = int(number_text) if number_text.isdigit() else None
         
-        # 获取标题
         text = self.ui.currentTitleLabel.text().strip()
         
-        # 更新数据
         self.current_json_data['items'][self.current_item_index]['number'] = number
         self.current_json_data['items'][self.current_item_index]['text'] = text
         
-        # 保存到文件
         with open(self.current_json_path, 'w', encoding='utf-8') as f:
             json.dump(self.current_json_data, f, ensure_ascii=False, indent=2)
             
@@ -232,7 +222,6 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
             self.load_current_task()
             self.print_task_info()
         elif self.current_task_index == len(self.all_tasks) - 1:
-            # 如果是最后一个任务，保存后退出程序
             self.close()
 
 def main():

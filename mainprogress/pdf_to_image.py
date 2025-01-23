@@ -1,20 +1,28 @@
+"""
+文件名: pdf2jpg.py (原名: 0_pdf2jpg.py)
+功能: 将PDF文件转换为高质量JPG图片
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import os
 import json
 from pdf2image import convert_from_path
+from config.paths import PathConfig
 
 def convert_pdf_to_jpg():
-    # 确保目录存在
-    pdf_dir = "0_originPDF"
-    output_dir = os.path.join("1_picMark", "inputPic")
-    os.makedirs(output_dir, exist_ok=True)
+    # 确保输出目录存在
+    os.makedirs(PathConfig.PDF2JPG_OUTPUT, exist_ok=True)
     
     # 获取所有PDF文件
-    pdf_files = [f for f in os.listdir(pdf_dir) if f.lower().endswith('.pdf')]
+    pdf_files = [f for f in os.listdir(PathConfig.PDF2JPG_INPUT) 
+                 if f.lower().endswith('.pdf')]
     
     for pdf_file in pdf_files:
-        pdf_path = os.path.join(pdf_dir, pdf_file)
+        pdf_path = os.path.join(PathConfig.PDF2JPG_INPUT, pdf_file)
         pdf_name = os.path.splitext(pdf_file)[0]
-        json_path = os.path.join(pdf_dir, f"{pdf_name}.json")
+        json_path = os.path.join(PathConfig.PDF2JPG_INPUT, f"{pdf_name}.json")
         
         print(f"\n处理文件: {pdf_file}")
         try:
@@ -40,7 +48,10 @@ def convert_pdf_to_jpg():
             
             # 保存图片
             for i, page in enumerate(pages, start=toc_start):
-                output_path = os.path.join(output_dir, f"{pdf_name}_page_{i}.jpg")
+                output_path = os.path.join(
+                    PathConfig.PDF2JPG_OUTPUT,
+                    f"{pdf_name}_page_{i}.jpg"
+                )
                 page.save(output_path, 'JPEG')
                 print(f"已保存: {output_path}")
             

@@ -1,3 +1,11 @@
+"""
+文件名: ocr_processor.py (原名: 3_3_OCRProcess.py)
+功能: OCR结果后处理，包括文本行合并与可视化
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import os
 import json
 from pathlib import Path
@@ -5,6 +13,7 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 import concurrent.futures
+from config.paths import PathConfig
 
 def is_pure_number(text):
     """检查文本是否为纯数字"""
@@ -230,12 +239,12 @@ def process_image(img_path, json_dir, output_dir):
     height, width = image.shape[:2]
     
     # 读取对应的JSON文件
-    json_path = json_dir / f"{img_path.stem}.json"
+    json_path = Path(json_dir) / f"{img_path.stem}.json"
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
             json_results = json.load(f)
     except FileNotFoundError:
-        print(f"Warning: JSON file not found for {img_path.name}")
+        print(f"警告: 未找到图片{img_path.name}对应的JSON文件")
         return
 
     # 转换JSON结果为程序所需格式
@@ -260,34 +269,38 @@ def process_image(img_path, json_dir, output_dir):
         }
         json_results.append(result_dict)
     
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
+    
     # 保存合并后的JSON结果
-    merged_json_path = output_dir / f"{img_path.stem}_merged.json"
+    merged_json_path = Path(output_dir) / f"{img_path.stem}_merged.json"
     with open(merged_json_path, 'w', encoding='utf-8') as f:
         json.dump(json_results, f, ensure_ascii=False, indent=2)
     
     # 绘制带标注的图片和投影曲线图
     output_img = draw_ocr_results(image, merged_results, projection)
-    img_output_path = output_dir / f"{img_path.stem}_annotated.jpg"
+    img_output_path = Path(output_dir) / f"{img_path.stem}_annotated.jpg"
     cv2.imwrite(str(img_output_path), output_img)
     
-    print(f"Processed {img_path.name}")
+    print(f"已处理完成: {img_path.name}")
 
 def main():
-    # 创建输出目录
-    output_dir = Path('3_OCRInfo')
-    output_dir.mkdir(exist_ok=True)
-    
-    # JSON文件目录
-    json_dir = Path('3_1_OCRServiceBack')
+    # 确保输出目录存在
+    os.makedirs(PathConfig.OCRPROCESS_OUTPUT_1, exist_ok=True)
     
     # 遍历图片目录
-    input_dir = Path('2_outputPic')
-    img_paths = list(input_dir.glob('*.jpg'))
+    img_paths = list(Path(PathConfig.OCRPROCESS_INPUT_1).glob('*.jpg'))
     
     # 使用多线程处理图片
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_image, img_path, json_dir, output_dir) 
-                  for img_path in img_paths]
+        futures = [
+            executor.submit(
+                process_image,
+                img_path,
+                PathConfig.OCRPROCESS_INPUT_2,
+                PathConfig.OCRPROCESS_OUTPUT_1
+            ) for img_path in img_paths
+        ]
         for future in concurrent.futures.as_completed(futures):
             future.result()
 

@@ -1,9 +1,19 @@
+"""
+文件名: content_preprocessor.py (原名: 5_1_json_preprocess.py)
+功能: 预处理原始JSON内容文件，生成辅助文件和组合文件
+"""
+
 import os
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from dataclasses import dataclass
 import logging
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+from config.paths import PathConfig
 
 @dataclass
 class FileInfo:
@@ -138,7 +148,10 @@ def process_book_files(files: List[Path]) -> Dict[Path, FileInfo]:
 
 def main():
     setup_logging()
-    input_dir = Path("4_initialContentInfo")
+    
+    # 确保输入目录存在
+    input_dir = Path(PathConfig.CONTENT_PREPROCESSOR_INPUT)
+    os.makedirs(input_dir, exist_ok=True)
     
     # 获取所有JSON文件
     json_files = list(input_dir.glob("*.json"))

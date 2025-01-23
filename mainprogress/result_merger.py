@@ -1,8 +1,18 @@
+"""
+文件名: result_merger.py (原名: 5_3_result_merge.py)
+功能: 合并和处理LLM处理后的内容结果
+"""
+import os
+import sys
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 import json
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
 from dataclasses import dataclass
+import os
+from config.paths import PathConfig
 
 @dataclass
 class ProcessedFile:
@@ -596,15 +606,26 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         print(f"  - 修正条目数: {final_confirmed - original_confirmed}")
 
 def main():
-    setup_logging()
+    # 设置日志
+    logs_dir = Path(PathConfig.RESULT_MERGER_LOGS)
+    logs_dir.mkdir(exist_ok=True)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(logs_dir / 'result_merge.log', encoding='utf-8')
+        ]
+    )
     
-    # 设置目录路径
-    input_dir = Path("4_initialContentInfo")
-    processed_dir = Path("4_1_LLMProcessed")
-    output_dir = Path("5_processedContentInfo")
+    # 设置输入输出目录路径
+    input_dir = Path(PathConfig.RESULT_MERGER_INPUT_RAW)
+    processed_dir = Path(PathConfig.RESULT_MERGER_INPUT_LLM)
+    output_dir = Path(PathConfig.RESULT_MERGER_OUTPUT)
     
     # 创建输出目录
-    output_dir.mkdir(exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     
     # 处理结果
     process_book_results(
