@@ -36,21 +36,33 @@ def setup_logging():
         ]
     )
 
+def standardize_text(text: str) -> str:
+    """标准化文本，移除所有空格，处理空值情况"""
+    if text is None or text == "null":
+        return ""
+    return ''.join(text.split())
+
 def find_duplicate_titles(files: List[ProcessedFile]) -> Dict[str, int]:
-    """查找所有文件中重复出现的标题及其出现次数"""
+    """查找所有文件中重复出现的标题及其出现次数（忽略空格）"""
     title_count = {}
     # 收集所有标题的出现次数
     for file in files:
         for item in file.items:
-            title = item['text']
-            title_count[title] = title_count.get(title, 0) + 1
+            # 跳过无效条目
+            if (item.get('text') is None or item.get('text') == "null") and \
+               (item.get('number') is None or item.get('number') == "null"):
+                continue
+                
+            title = standardize_text(item['text'])
+            if title:  # 只处理非空标题
+                title_count[title] = title_count.get(title, 0) + 1
             
     # 只保留重复出现的标题
     return {title: count for title, count in title_count.items() if count > 2}
 
 
 def validate_context_match(list1: List[dict], list2: List[dict], idx1: int, idx2: int) -> bool:
-    """验证两个位置的上下文是否匹配"""
+    """验证两个位置的上下文是否匹配（忽略空格）"""
     matches = 0
     total_checks = 0
     
@@ -60,7 +72,7 @@ def validate_context_match(list1: List[dict], list2: List[dict], idx1: int, idx2
         pos2 = idx2 + offset
         if pos1 >= 0 and pos2 >= 0:
             total_checks += 1
-            if list1[pos1]['text'] == list2[pos2]['text']:
+            if standardize_text(list1[pos1]['text']) == standardize_text(list2[pos2]['text']):
                 matches += 1
 
     # 检查后两条
@@ -69,7 +81,7 @@ def validate_context_match(list1: List[dict], list2: List[dict], idx1: int, idx2
         pos2 = idx2 + offset
         if pos1 < len(list1) and pos2 < len(list2):
             total_checks += 1
-            if list1[pos1]['text'] == list2[pos2]['text']:
+            if standardize_text(list1[pos1]['text']) == standardize_text(list2[pos2]['text']):
                 matches += 1
     
     # 如果能检查的上下文太少（比如在文件开头或结尾），降低匹配要求
@@ -139,8 +151,9 @@ def write_json_file(file_path: Path, data: List[dict]):
 
 def check_exact_match(item1: dict, item2: dict) -> Tuple[bool, bool]:
     """检查两个条目是否匹配，返回是否完全匹配以及最终的confirmed状态"""
-    # 检查文本和页码是否匹配
-    basic_match = (item1['text'] == item2['text'] and item1['number'] == item2['number'])
+    # 检查文本(忽略空格)和页码是否匹配
+    basic_match = (standardize_text(item1['text']) == standardize_text(item2['text']) and 
+                  item1['number'] == item2['number'])
     if not basic_match:
         return False, False
     
@@ -156,8 +169,8 @@ def check_exact_match(item1: dict, item2: dict) -> Tuple[bool, bool]:
     return True, final_confirmed
 
 def check_title_match(item1: dict, item2: dict) -> bool:
-    """检查两个条目的标题是否匹配"""
-    return item1['text'] == item2['text']
+    """检查两个条目的标题是否匹配（忽略空格）"""
+    return standardize_text(item1['text']) == standardize_text(item2['text'])
 
 def find_overlap_indices(list1: List[dict], list2: List[dict]) -> Tuple[Optional[int], Optional[int]]:
     """从前向后查找两个列表的重叠部分起始索引"""
@@ -224,9 +237,10 @@ def determine_confirmation_status(item1: dict, item2: dict,
         pos2 = idx2 + offset
         if 0 <= pos1 < len(list1) and 0 <= pos2 < len(list2):
             total_checks += 1
-            if (list1[pos1]['text'] == list2[pos2]['text'] and 
+            if (standardize_text(list1[pos1]['text']) == standardize_text(list2[pos2]['text']) and 
                 list1[pos1].get('number') == list2[pos2].get('number')):
                 matches += 1
+
     
     # 如果在文件边界，降低要求
     min_required_matches = 3 if total_checks >= 4 else (2 if total_checks >= 3 else 1)
@@ -243,14 +257,44 @@ def check_level_consistency(list1: List[dict], list2: List[dict],
                           start_idx1: int, start_idx2: int,
                           end_idx1: int, end_idx2: int) -> bool:
     """检查重叠部分的层级是否一致"""
+    print("\n开始检查层级一致性:")
+    found_mismatch = False
+    mismatch_details = []
+    
     # 收集重叠部分的相同标题的层级信息
     for i, j in zip(range(start_idx1, end_idx1 + 1), 
                    range(start_idx2, end_idx2 + 1)):
         if list1[i]['text'] == list2[j]['text']:
-            # 只要发现任意一对相同标题的层级不同，就返回False
+            # 记录比较细节
             if list1[i]['level'] != list2[j]['level']:
-                return False
-    return True
+                found_mismatch = True
+                mismatch_details.append({
+                    'title': list1[i]['text'],
+                    'level1': list1[i]['level'],
+                    'level2': list2[j]['level']
+                })
+    
+    # 如果找到不匹配，打印详细信息
+    if found_mismatch:
+        print("\n发现层级不一致:")
+        print("文件1 vs 文件2:")
+        for detail in mismatch_details:
+            print(f"  标题: {detail['title']}")
+            print(f"    - 文件1层级: {detail['level1']}")
+            print(f"    - 文件2层级: {detail['level2']}")
+            print(f"    - 差异: {detail['level2'] - detail['level1']} 级")
+        
+        # 统计信息
+        level_diffs = [d['level2'] - d['level1'] for d in mismatch_details]
+        most_common_diff = max(set(level_diffs), key=level_diffs.count)
+        print(f"\n统计信息:")
+        print(f"  - 发现 {len(mismatch_details)} 处层级不一致")
+        print(f"  - 最常见的层级差异: {most_common_diff} 级")
+        print(f"  - 所有层级差异: {sorted(set(level_diffs))}")
+        return False
+    else:
+        print("层级检查通过: 所有匹配标题的层级都一致")
+        return True
 
 def adjust_levels(items: List[dict]) -> List[dict]:
     """将所有项的level加1"""
@@ -262,8 +306,18 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
     print(f"文件1: {file1.original_path.name}")
     print(f"文件2: {file2.original_path.name}")
     
+    # 预处理：过滤掉无效条目
+    file1.items = [item for item in file1.items 
+                   if not ((item.get('text') is None or item.get('text') == "null") and 
+                          (item.get('number') is None or item.get('number') == "null"))]
+    file2.items = [item for item in file2.items 
+                   if not ((item.get('text') is None or item.get('text') == "null") and 
+                          (item.get('number') is None or item.get('number') == "null"))]
+    
     # 查找重复标题
     duplicate_titles = find_duplicate_titles([file1, file2])
+    
+    # ... (rest of the function remains the same)
     
     # 查找可靠的重叠部分起始位置
     start_idx1, start_idx2 = find_reliable_overlap_indices(file1.items, file2.items, duplicate_titles)
@@ -584,20 +638,29 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
 
     print("\n=== 阶段3：保存结果 ===")
     for book_name, results in book_results.items():
+        # 首先过滤results
+        results = [item for item in results 
+                  if not ((item.get('text') is None or item.get('text') == "null") and 
+                         (item.get('number') is None or item.get('number') == "null"))]
+        
         # 获取这本书的所有分页文件
         book_files = [
             processed_file for processed_file in processed_files.values()
             if book_name in processed_file.original_path.stem and not processed_file.is_combined
         ]
         
-        # 查找重复标题（阈值为2）
+        # 查找重复标题
         duplicate_titles = {}
         for processed_file in book_files:
             for item in processed_file.items:
-                title = item['text']
-                duplicate_titles[title] = duplicate_titles.get(title, 0) + 1
+                if ((item.get('text') is None or item.get('text') == "null") and 
+                    (item.get('number') is None or item.get('number') == "null")):
+                    continue
+                title = standardize_text(item.get('text', ''))
+                if title:
+                    duplicate_titles[title] = duplicate_titles.get(title, 0) + 1
         duplicate_titles = {title: count for title, count in duplicate_titles.items() 
-                        if count > 2}
+                          if count > 2}
         
         print("\n处理空页码的重复标题...")
         # 先进行页码插值
@@ -605,11 +668,20 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         
         print("\n修正确认状态...")
         # 进行确认状态的修正
-        results_with_confirmation = post_process_confirmation_status(results_with_numbers, book_files, duplicate_titles)
+        results_with_confirmation = post_process_confirmation_status(
+            results_with_numbers, book_files, duplicate_titles)
         
         print("\n进行最终后处理...")
         # 进行最终的后处理
         final_results = final_post_process(results_with_confirmation)
+        
+        # 最后一次过滤，确保没有无效条目
+        final_results = [item for item in final_results 
+                        if not ((item.get('text') is None or item.get('text') == "null") and 
+                               (item.get('number') is None or item.get('number') == "null"))]
+        
+        output_path = output_dir / f"{book_name}_final.json"
+        write_json_file(output_path, final_results)
         
         output_path = output_dir / f"{book_name}_final.json"
         write_json_file(output_path, final_results)

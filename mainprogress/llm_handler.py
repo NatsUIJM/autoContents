@@ -119,11 +119,9 @@ def get_system_prompt() -> str:
 4. 其他注意事项：
    1. 除了编号和标题正文之外，不要在中文和英文或数字之间加空格
    2. 选择阿拉伯数字还是中文数字，请遵循输入原始信息，不要随意更改
-5. 处理案例：
-   1. `第1章 自动控制概述`正确；`第 1章 自动控制概述`错误；`第1 章 自动控制概述`错误
-   2. `第2章 超前滞后校正与PID校正`正确；`第2章 超前滞后校正与 PID校正`错误；`第2章 超前滞后校正与PID 校正`错误
-   
-请使用JSON格式输出，示例如下：
+   3. 附录一般是一级或者二级标题，不隶属于正文部分
+
+5. 请使用JSON格式输出，正确示例如下：
 
 ``` json
 {
@@ -150,6 +148,77 @@ def get_system_prompt() -> str:
 }
 ```
 
+6. 易错案例：
+   1. `第1章 自动控制概述`正确；`第 1章 自动控制概述`错误；`第1 章 自动控制概述`错误
+   2. `第2章 超前滞后校正与PID校正`正确；`第2章 超前滞后校正与 PID校正`错误；`第2章 超前滞后校正与PID 校正`错误
+   3. JSON错误格式案例：
+``` json
+{
+  [ // 错误：缺少键名
+    {
+      "text": "第1章 自动控制概述",
+      "number": 1,
+      "confirmed": true,
+      "level": 1
+    },
+    {
+      "text": "5.1 定时/计数器 T0 和 T1", // 错误：标题中T0和T1前后有多余空格
+      "number": 1,
+      "confirmed": false, // 错误：这里应为true，当且仅当页码缺失时为false
+      "level": 2
+    },
+  ]
+}
+```
+
+```json
+{
+    "items": [
+    {
+      "text": "接口篇",
+      "number": null,
+      "confirmed": false,
+      "level": 1
+    },
+    {
+      "text": "第6章 单片机总线与存储器的扩展",
+      "number": 139,
+      "confirmed": true,
+      "level": 1 // 错误：前面有“篇”，这里是“章”，所以应为2级标题
+    },
+  ]
+}
+```   
+
+```json
+{
+    "items": [
+    {
+      "text": "0.4 计算机的一般分类",
+      "number": 17,
+      "confirmed": true,
+      "level": 2 // 错误：下面的完整结构表明节标题是3级标题，所以这里应为3
+    },
+    {
+      "text": "基础篇",
+      "number": null,
+      "confirmed": false,
+      "level": 1
+    },
+    {
+      "text": "第1章 MCS-51单片机结构",
+      "number": 21,
+      "confirmed": true,
+      "level": 2
+    },
+    {
+      "text": "1.1 MCS-51单片机内部结构",
+      "number": 21,
+      "confirmed": true,
+      "level": 3
+    }
+  ]
+}
 """
 
 system = """
@@ -235,7 +304,7 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
 
 async def main():
     # 获取服务选择
-    service_name = os.getenv('LLM_SERVICE', 'dashscope').lower()
+    service_name = os.getenv('LLM_SERVICE', 'deepseek').lower()
     service_manager = ServiceManager(service_name)
     
     input_dir = Path(PathConfig.LLM_HANDLER_INPUT)

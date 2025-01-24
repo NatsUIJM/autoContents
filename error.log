@@ -4,3 +4,9 @@ Traceback (most recent call last):
     def closeEvent(self, event):
     
 KeyboardInterrupt
+2025-01-23 21:57:23,865 - ERROR - 未捕获的异常:
+Traceback (most recent call last):
+  File "/Users/shijian/VSCode/autoContents/main.py", line 450, in closeEvent
+    def closeEvent(self, event):
+    
+KeyboardInterrupt
