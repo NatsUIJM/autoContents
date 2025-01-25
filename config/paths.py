@@ -48,8 +48,19 @@ class PathConfig:
     RESULT_MERGER_OUTPUT = f"{BASE_DIR}/merged_content"  # 原 5_processedContentInfo
     RESULT_MERGER_LOGS = f"{BASE_DIR}/logs"  # 日志目录
 
+    # result_merger_trad.py（原 5_3_result_merge.py）相关路径配置
+    RESULT_MERGER_TRAD_INPUT_RAW = f"{BASE_DIR}/raw_content"  # 原 4_initialContentInfo
+    RESULT_MERGER_TRAD_INPUT_LLM = f"{BASE_DIR}/llm_processed_content"  # 原 4_1_LLMProcessed 
+    RESULT_MERGER_TRAD_OUTPUT = f"{BASE_DIR}/level_adjusted_content"  # 原 5_processedContentInfo
+    RESULT_MERGER_TRAD_LOGS = f"{BASE_DIR}/logs"  # 日志目录
+
+    # llm_level_adjuster相关路径配置
+    LEVEL_ADJUSTER_INPUT = f"{BASE_DIR}/merged_content"  # 输入目录
+    LEVEL_ADJUSTER_OUTPUT = f"{BASE_DIR}/level_adjusted_content"  # 输出目录
+    LEVEL_ADJUSTER_CACHE = f"{BASE_DIR}/level_adjuster_cache"  # 缓存目录
+
     # content_validator.py（原 6_confirmContent.py）相关路径配置
-    CONTENT_VALIDATOR_INPUT = f"{BASE_DIR}/merged_content"  # 原 5_processedContentInfo
+    CONTENT_VALIDATOR_INPUT = f"{BASE_DIR}/level_adjusted_content"  # 原 5_processedContentInfo
     CONTENT_VALIDATOR_OUTPUT = f"{BASE_DIR}/validated_content"  # 原 6_confirmedContentInfo
     CONTENT_VALIDATOR_IMAGES = f"{BASE_DIR}/image_cropper"  # 原 6_1_cutPic
 
@@ -57,3 +68,4 @@ class PathConfig:
     PDF_GENERATOR_INPUT_1 = f"{BASE_DIR}/validated_content"  # 原 6_confirmedContentInfo
     PDF_GENERATOR_INPUT_2 = f"{BASE_DIR}/input_pdf"  # 原 0_originPDF
     PDF_GENERATOR_OUTPUT_1 = f"{BASE_DIR}/output_pdf"  # 原 7_processedPDF
+

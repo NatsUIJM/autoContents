@@ -253,55 +253,8 @@ def determine_confirmation_status(item1: dict, item2: dict,
             item1.get('number') == item2.get('number') and 
             item1['confirmed'] and item2['confirmed'])
 
-def check_level_consistency(list1: List[dict], list2: List[dict], 
-                          start_idx1: int, start_idx2: int,
-                          end_idx1: int, end_idx2: int) -> bool:
-    """检查重叠部分的层级是否一致"""
-    print("\n开始检查层级一致性:")
-    found_mismatch = False
-    mismatch_details = []
-    
-    # 收集重叠部分的相同标题的层级信息
-    for i, j in zip(range(start_idx1, end_idx1 + 1), 
-                   range(start_idx2, end_idx2 + 1)):
-        if list1[i]['text'] == list2[j]['text']:
-            # 记录比较细节
-            if list1[i]['level'] != list2[j]['level']:
-                found_mismatch = True
-                mismatch_details.append({
-                    'title': list1[i]['text'],
-                    'level1': list1[i]['level'],
-                    'level2': list2[j]['level']
-                })
-    
-    # 如果找到不匹配，打印详细信息
-    if found_mismatch:
-        print("\n发现层级不一致:")
-        print("文件1 vs 文件2:")
-        for detail in mismatch_details:
-            print(f"  标题: {detail['title']}")
-            print(f"    - 文件1层级: {detail['level1']}")
-            print(f"    - 文件2层级: {detail['level2']}")
-            print(f"    - 差异: {detail['level2'] - detail['level1']} 级")
-        
-        # 统计信息
-        level_diffs = [d['level2'] - d['level1'] for d in mismatch_details]
-        most_common_diff = max(set(level_diffs), key=level_diffs.count)
-        print(f"\n统计信息:")
-        print(f"  - 发现 {len(mismatch_details)} 处层级不一致")
-        print(f"  - 最常见的层级差异: {most_common_diff} 级")
-        print(f"  - 所有层级差异: {sorted(set(level_diffs))}")
-        return False
-    else:
-        print("层级检查通过: 所有匹配标题的层级都一致")
-        return True
-
-def adjust_levels(items: List[dict]) -> List[dict]:
-    """将所有项的level加1"""
-    return [{**item, 'level': item['level'] + 1} for item in items]
-
 def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
-    """改进后的合并函数"""
+    """改进后的合并函数 - 忽略层级进行匹配"""
     print(f"\n开始合并文件:")
     print(f"文件1: {file1.original_path.name}")
     print(f"文件2: {file2.original_path.name}")
@@ -317,8 +270,6 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
     # 查找重复标题
     duplicate_titles = find_duplicate_titles([file1, file2])
     
-    # ... (rest of the function remains the same)
-    
     # 查找可靠的重叠部分起始位置
     start_idx1, start_idx2 = find_reliable_overlap_indices(file1.items, file2.items, duplicate_titles)
     if start_idx1 is None or start_idx2 is None:
@@ -330,14 +281,6 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
     if end_idx1 is None or end_idx2 is None:
         end_idx1 = len(file1.items)
         end_idx2 = len(file2.items)
-    
-    # 检查层级一致性并在需要时调整file2的层级
-    file2_items = file2.items
-    if not check_level_consistency(file1.items, file2_items, 
-                                 start_idx1, start_idx2,
-                                 end_idx1, end_idx2):
-        print(f"检测到层级不一致，调整文件2的层级")
-        file2_items = adjust_levels(file2_items)
     
     # 合并结果
     merged = []
@@ -352,11 +295,11 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
         
         # 在第二个文件中查找匹配项
         for j in range(start_idx2, end_idx2 + 1):
-            if item['text'] == file2_items[j]['text']:
+            if item['text'] == file2.items[j]['text']:  # Changed from file2_items to file2.items
                 # 确定确认状态
                 confirmed = determine_confirmation_status(
-                    item, file2_items[j],
-                    file1.items, file2_items,
+                    item, file2.items[j],  # Changed from file2_items to file2.items
+                    file1.items, file2.items,  # Changed from file2_items to file2.items
                     i, j,
                     duplicate_titles
                 )
@@ -370,10 +313,9 @@ def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
         merged.append(validate_page_number(item))
     
     # 添加第二个文件的后半部分
-    merged.extend([validate_page_number(item) for item in file2_items[end_idx2 + 1:]])
+    merged.extend([validate_page_number(item) for item in file2.items[end_idx2 + 1:]])  # Changed from file2_items to file2.items
     
     return merged
-
 def get_page_number(file_path: Path) -> int:
     """从文件名中提取页码"""
     parts = file_path.stem.split('_page_')

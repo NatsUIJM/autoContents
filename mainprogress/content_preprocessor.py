@@ -15,10 +15,25 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 from config.paths import PathConfig
 
+
 @dataclass
 class FileInfo:
     path: Path
     items_count: int
+
+def natural_sort_key(path: Path) -> tuple:
+    """自然排序键函数"""
+    import re
+    # 分割文件名中的数字和非数字部分
+    parts = re.split('(\d+)', path.name)
+    # 将数字部分转换为整数，非数字部分保持字符串
+    result = []
+    for part in parts:
+        try:
+            result.append(int(part))
+        except ValueError:
+            result.append(part)
+    return tuple(result)
 
 def setup_logging():
     # Create logs directory if it doesn't exist
@@ -153,12 +168,12 @@ def main():
     input_dir = Path(PathConfig.CONTENT_PREPROCESSOR_INPUT)
     os.makedirs(input_dir, exist_ok=True)
     
-    # 获取所有JSON文件
-    json_files = list(input_dir.glob("*.json"))
+    # 获取所有JSON文件并使用自然排序
+    json_files = sorted(input_dir.glob("*.json"), key=natural_sort_key)
     
     # 按书名分组
     books: Dict[str, List[Path]] = {}
-    for file_path in sorted(json_files):
+    for file_path in json_files:  # 这里不需要再次sorted，因为已经排序过了
         book_name = file_path.name.split('_page_')[0]
         if book_name not in books:
             books[book_name] = []

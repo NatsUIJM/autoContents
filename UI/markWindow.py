@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'mainWindow.ui'
+# Form implementation generated from reading ui file '/Users/shijian/VSCode/autoContents/UI/markWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -39,6 +39,12 @@ class Ui_MainWindow(object):
         self.deleteBanBtn = QtWidgets.QPushButton(self.centralwidget)
         self.deleteBanBtn.setObjectName("deleteBanBtn")
         self.horizontalLayout.addWidget(self.deleteBanBtn)
+        self.addProcessBtn = QtWidgets.QPushButton(self.centralwidget)
+        self.addProcessBtn.setObjectName("addProcessBtn")
+        self.horizontalLayout.addWidget(self.addProcessBtn)
+        self.deleteProcessBtn = QtWidgets.QPushButton(self.centralwidget)
+        self.deleteProcessBtn.setObjectName("deleteProcessBtn")
+        self.horizontalLayout.addWidget(self.deleteProcessBtn)
         self.verticalLayout.addLayout(self.horizontalLayout)
         self.graphicsView = QtWidgets.QGraphicsView(self.centralwidget)
         self.graphicsView.setMinimumSize(QtCore.QSize(8, 100))
@@ -70,6 +76,8 @@ class Ui_MainWindow(object):
         self.deleteSectionBtn.setText(_translate("MainWindow", "删除分节标记"))
         self.addBanBtn.setText(_translate("MainWindow", "添加分栏屏蔽"))
         self.deleteBanBtn.setText(_translate("MainWindow", "删除分栏屏蔽"))
+        self.addProcessBtn.setText(_translate("MainWindow", "添加处理屏蔽"))
+        self.deleteProcessBtn.setText(_translate("MainWindow", "删除处理屏蔽"))
         self.label.setText(_translate("MainWindow", "处理进度："))
         self.prevPageBtn.setText(_translate("MainWindow", "上一页"))
         self.nextPageBtn.setText(_translate("MainWindow", "下一页"))

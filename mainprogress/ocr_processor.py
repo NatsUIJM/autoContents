@@ -19,17 +19,38 @@ def is_pure_number(text):
     """检查文本是否为纯数字"""
     return text.replace('.', '').isdigit()
 
-def should_skip_merge(bbox, image_width, text):
+def has_text_box_on_right(current_bbox, all_bboxes, margin=50):
+    """检查当前文本框右侧是否有其他文本框"""
+    current_right = current_bbox[1][0]  # 当前文本框右边界的x坐标
+    current_y_center = (current_bbox[0][1] + current_bbox[2][1]) / 2  # 当前文本框的y轴中心
+
+    for other_bbox in all_bboxes:
+        # 跳过当前文本框自身
+        if np.array_equal(current_bbox, other_bbox):
+            continue
+
+        other_left = other_bbox[0][0]  # 其他文本框左边界的x坐标
+        other_y_center = (other_bbox[0][1] + other_bbox[2][1]) / 2  # 其他文本框的y轴中心
+
+        # 检查其他文本框是否在当前文本框右侧
+        # 且y轴中心点的差距在指定范围内
+        if (other_left > current_right and 
+            abs(other_y_center - current_y_center) <= margin):
+            return True
+    return False
+
+def should_skip_merge(bbox, all_bboxes, text):
     """检查是否应该跳过合并"""
-    # 获取文本框左端的x坐标
-    left_x = bbox[0][0]
-    # 如果文本框在图片右侧60%区域内且内容为纯数字，则跳过合并
-    return left_x > (image_width * 0.6) and is_pure_number(text)
+    # 如果是纯数字且右侧没有其他文本框，则跳过合并
+    return is_pure_number(text) and not has_text_box_on_right(bbox, all_bboxes)
 
 def merge_line_texts(results, image_height, image_width):
     """使用水平投影的方法合并同一行的文本"""
     # 创建投影数组
     projection = np.zeros(image_height, dtype=np.int32)
+    
+    # 获取所有文本框
+    all_bboxes = [result[0] for result in results]
     
     # 分离需要合并的文本框和独立的数字文本框
     merge_candidates = []
@@ -37,7 +58,7 @@ def merge_line_texts(results, image_height, image_width):
     
     for result in results:
         bbox, text, prob = result
-        if should_skip_merge(bbox, image_width, text):
+        if should_skip_merge(bbox, all_bboxes, text):
             independent_numbers.append(result)
         else:
             merge_candidates.append(result)
@@ -55,7 +76,7 @@ def merge_line_texts(results, image_height, image_width):
     split_positions = np.where((projection == 0))[0]
     
     # 如果开头不在分割位置中，添加0位置
-    if len(split_positions) == 0 or split_positions[0] != 0:
+    if len(split_positions) == 0 | split_positions[0] != 0:
         split_positions = np.concatenate(([0], split_positions))
     
     # 如果结尾不在分割位置中，添加最后一个位置

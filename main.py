@@ -246,7 +246,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             # 使用Python解释器运行脚本
             python_executable = sys.executable
             subprocess.Popen([python_executable, os.path.join("mainprogress", "pdf_to_image.py")])
-            time.sleep(1)
+            time.sleep(3)
             subprocess.Popen([python_executable, os.path.join("mainprogress", "image_marker.py")])
 
         except Exception as e:
@@ -413,7 +413,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             ("text_matcher.py", "当前进行：匹配 OCR 结果（4/7）"),
             ("content_preprocessor.py", "当前进行：JSON 文件切分（5/7）"),
             ("llm_handler.py", "当前进行：JSON 文件处理（6/7）"),
-            ("result_merger.py", "当前进行：JSON 文件合并（7/7）")
+            ("result_merger.py", "当前进行：JSON 文件合并（7/7）"),
+            ("llm_level_adjuster.py", "当前运行：目录层级归一化")
         ]
         
         self.pushButton_6.setEnabled(False)  # 禁用按钮
