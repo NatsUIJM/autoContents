@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass
 import os
 from config.paths import PathConfig
+import re
 
 @dataclass
 class ProcessedFile:
@@ -37,9 +38,16 @@ def setup_logging():
     )
 
 def standardize_text(text: str) -> str:
-    """标准化文本，移除所有空格，处理空值情况"""
+    """标准化文本:
+    1. 处理空值情况
+    2. 只保留中文、英文字母和数字
+    3. 移除所有空格
+    """
     if text is None or text == "null":
         return ""
+    # 使用正则表达式只保留中文、英文字母和数字
+    text = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9]', '', text)
+    # 移除所有空格
     return ''.join(text.split())
 
 def find_duplicate_titles(files: List[ProcessedFile]) -> Dict[str, int]:

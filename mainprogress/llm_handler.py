@@ -108,7 +108,7 @@ def get_system_prompt() -> str:
     return """请协助我规范化JSON格式的目录数据。要求如下：
 
 1.  文本处理：
-   1. 修复OCR错误。通常情况下，每个条目最多有1-2个字符错误。
+   1. 修复OCR错误。通常情况下，每个条目最多有1-2个字符错误
    2. 在编号和标题正文之间添加空格
    3. 删除多余的空格和异常符号
    4. 如果标题是中英双语的，忽略英语部分
@@ -120,7 +120,6 @@ def get_system_prompt() -> str:
    1. 除了编号和标题正文之外，不要在中文和英文或数字之间加空格
    2. 选择阿拉伯数字还是中文数字，请遵循输入原始信息，不要随意更改
    3. 附录一般是一级或者二级标题，不隶属于正文部分
-
 5. 请使用JSON格式输出，正确示例如下：
 
 ``` json
@@ -171,54 +170,24 @@ def get_system_prompt() -> str:
 }
 ```
 
-```json
-{
-    "items": [
-    {
-      "text": "接口篇",
-      "number": null,
-      "confirmed": false,
-      "level": 1
-    },
-    {
-      "text": "第6章 单片机总线与存储器的扩展",
-      "number": 139,
-      "confirmed": true,
-      "level": 1 // 错误：前面有“篇”，这里是“章”，所以应为2级标题
-    },
-  ]
-}
-```   
+常见错误示例：
 
-```json
-{
-    "items": [
-    {
-      "text": "0.4 计算机的一般分类",
-      "number": 17,
-      "confirmed": true,
-      "level": 2 // 错误：下面的完整结构表明节标题是3级标题，所以这里应为3
-    },
-    {
-      "text": "基础篇",
-      "number": null,
-      "confirmed": false,
-      "level": 1
-    },
-    {
-      "text": "第1章 MCS-51单片机结构",
-      "number": 21,
-      "confirmed": true,
-      "level": 2
-    },
-    {
-      "text": "1.1 MCS-51单片机内部结构",
-      "number": 21,
-      "confirmed": true,
-      "level": 3
-    }
-  ]
-}
+1. 输入：`今日物理趣闻A基本粒子`
+   错误输出：`今日物理趣闻 基本粒子` // 缺少输入中所包含的编号
+   正确输出：`今日物理趣闻A 基本粒子`
+2. 输入：`A. 1粒子的发现与特征`
+   错误输出：`粒子的发现与特征` // 缺少输入中所包含的编号
+   正确输出：`A.1 粒子的发现与特征`
+3. 输入：`第一章 电路模型和电路定律`
+   错误输出：`第1章 电路模型和电路定律` // 选择阿拉伯数字还是中文数字，请遵循输入原始信息，不要随意更改
+   正确输出：`第一章 电路模型和电路定律`
+4. 输入：`1-1 电路和电路模型`
+   错误输出：`第一节 电路和电路模型`，`第一章 电路和电路模型` // 选择阿拉伯数字还是中文数字，请遵循输入原始信息，不要随意更改
+   错误输出：`1.1 电路和电路模型` // 编号分隔符与输入不符
+   正确输出：`1-1 电路和电路模型`
+5. 输入：`*3-4 戴维南定理和诺顿定理`
+   错误输出：`3-4 戴维南定理和诺顿定理` // 丢失*号
+   正确输出：`*3-4 戴维南定理和诺顿定理`
 """
 
 system = """
@@ -271,17 +240,17 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                 # 验证JSON格式
                 processed_data = json.loads(full_response)
                 
-                # 保存处理后的数据
-                output_file = output_dir / f"{file_path.stem}_processed.json"
+                # 修改输出文件名，添加服务名称
+                output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
                 with open(output_file, 'w', encoding='utf-8') as f:
                     json.dump(processed_data, f, ensure_ascii=False, indent=2)
                 
-                print(f"Processed {file_path.name}")
+                print(f"Processed {file_path.name} using {service_manager.config.name}")
                 return True
                 
             except Exception as e:
                 if attempt < retry_count:
-                    print(f"Retry {attempt + 1} for {file_path.name} due to: {str(e)}")
+                    print(f"Retry {attempt + 1} for {file_path.name} using {service_manager.config.name} due to: {str(e)}")
                     continue
                 else:
                     error_data = {
@@ -292,20 +261,23 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                             "level": 1
                         }]
                     }
-                    output_file = output_dir / f"{file_path.stem}_processed.json"
+                    # 修改错误输出文件名，添加服务名称
+                    output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
                     with open(output_file, 'w', encoding='utf-8') as f:
                         json.dump(error_data, f, ensure_ascii=False, indent=2)
-                    print(f"Failed to process {file_path.name} after {retry_count} retries")
+                    print(f"Failed to process {file_path.name} using {service_manager.config.name} after {retry_count} retries")
                     return False
                 
     except Exception as e:
-        print(f"Error processing {file_path.name}: {str(e)}")
+        print(f"Error processing {file_path.name} using {service_manager.config.name}: {str(e)}")
         return False
-
+    
 async def main():
-    # 获取服务选择
-    service_name = os.getenv('LLM_SERVICE', 'deepseek').lower()
-    service_manager = ServiceManager(service_name)
+    # 创建两个服务管理器实例
+    service_managers = {
+        'dashscope': ServiceManager('dashscope'),
+        'deepseek': ServiceManager('deepseek')
+    }
     
     input_dir = Path(PathConfig.LLM_HANDLER_INPUT)
     output_dir = Path(PathConfig.LLM_HANDLER_OUTPUT)
@@ -317,14 +289,21 @@ async def main():
     with open(input_dir / "file_info.json", 'r', encoding='utf-8') as f:
         file_info = json.load(f)
     
-    # 创建任务列表
+# 创建任务列表
     tasks = []
     token_counters = {}
     
     for file_path_str in file_info.keys():
         file_path = Path(file_path_str)
-        token_counters[file_path] = TokenCounter()
-        tasks.append(process_single_file(file_path, output_dir, service_manager, token_counters[file_path]))
+        # 为每个服务创建一个计数器
+        for service_name in service_managers:
+            token_counters[f"{file_path}_{service_name}"] = TokenCounter()
+            tasks.append(process_single_file(
+                file_path, 
+                output_dir, 
+                service_managers[service_name],
+                token_counters[f"{file_path}_{service_name}"]
+            ))
     
     # 运行所有任务
     results = await asyncio.gather(*tasks)
