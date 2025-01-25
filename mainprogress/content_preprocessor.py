@@ -50,19 +50,58 @@ def setup_logging():
     )
 
 def read_json_file(file_path: Path) -> List[dict]:
-    """读取JSON文件并返回数据"""
+    """读取JSON文件并返回数据，统一返回列表格式"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+            # 如果是新格式，提取items内容
+            if isinstance(data, dict) and "items" in data:
+                return data["items"]
+            # 如果是旧格式的列表，直接返回
+            return data
     except Exception as e:
         logging.error(f"Error reading {file_path}: {str(e)}")
         return []
 
+def clean_text_content(data: List[dict]) -> List[dict]:
+    """清理JSON数据中text字段的内容，移除空格和§符号，转换¥为*"""
+    for item in data:
+        if 'text' in item and isinstance(item['text'], str):
+            item['text'] = (item['text']
+                          .replace(' ', '')
+                          .replace('§', '')
+                          .replace('¥', '*'))
+    return data
+
+def transform_data_structure(data: List[dict]) -> dict:
+    """将数据结构转换为带items键的字典格式"""
+    return {"items": data}
+
 def write_json_file(file_path: Path, data: List[dict]):
-    """写入JSON文件"""
+    """写入JSON文件并进行后处理"""
     try:
+        # 清理数据
+        cleaned_data = clean_text_content(data)
+        
+        # 检查文件是否存在并读取当前内容以检查格式
+        if file_path.exists():
+            with open(file_path, 'r', encoding='utf-8') as f:
+                try:
+                    current_data = json.load(f)
+                    # 如果已经是新格式，只更新items内容
+                    if isinstance(current_data, dict) and "items" in current_data:
+                        current_data["items"] = cleaned_data
+                        transformed_data = current_data
+                    else:
+                        transformed_data = {"items": cleaned_data}
+                except:
+                    transformed_data = {"items": cleaned_data}
+        else:
+            transformed_data = {"items": cleaned_data}
+            
+        # 写入文件
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, ensure_ascii=False, indent=2, fp=f)
+            json.dump(transformed_data, ensure_ascii=False, indent=2, fp=f)
     except Exception as e:
         logging.error(f"Error writing {file_path}: {str(e)}")
 
@@ -120,6 +159,7 @@ def process_book_files(files: List[Path]) -> Dict[Path, FileInfo]:
     for file_path in files:
         data = read_json_file(file_path)
         if data:
+            # 使用实际的Path对象作为键
             file_infos[file_path] = FileInfo(file_path, len(data))
     
     if not file_infos:
@@ -130,15 +170,19 @@ def process_book_files(files: List[Path]) -> Dict[Path, FileInfo]:
     
     # 处理首页辅助文件
     first_file, first_info = files_list[0]
-    first_data = read_json_file(first_info.path)
-    if aux_path := generate_auxiliary_file(first_info.path, first_data, first_info.items_count, True):
-        file_infos[aux_path] = FileInfo(aux_path, len(read_json_file(aux_path)))
+    first_data = read_json_file(first_file)  # 注意这里改用first_file而不是path
+    if aux_path := generate_auxiliary_file(first_file, first_data, first_info.items_count, True):
+        aux_data = read_json_file(aux_path)
+        if aux_data:
+            file_infos[aux_path] = FileInfo(aux_path, len(aux_data))
     
     # 处理尾页辅助文件
     last_file, last_info = files_list[-1]
-    last_data = read_json_file(last_info.path)
-    if aux_path := generate_auxiliary_file(last_info.path, last_data, last_info.items_count, False):
-        file_infos[aux_path] = FileInfo(aux_path, len(read_json_file(aux_path)))
+    last_data = read_json_file(last_file)  # 注意这里改用last_file而不是path
+    if aux_path := generate_auxiliary_file(last_file, last_data, last_info.items_count, False):
+        aux_data = read_json_file(aux_path)
+        if aux_data:
+            file_infos[aux_path] = FileInfo(aux_path, len(aux_data))
     
     # 生成相邻页面的组合文件
     for i in range(len(files_list) - 1):
@@ -161,6 +205,14 @@ def process_book_files(files: List[Path]) -> Dict[Path, FileInfo]:
     
     return file_infos
 
+def process_original_files(files: List[Path]):
+    """处理原始文件，清理内容并更新格式"""
+    for file_path in files:
+        data = read_json_file(file_path)
+        if data:
+            write_json_file(file_path, data)
+            logging.info(f"Processed original file: {file_path}")
+
 def main():
     setup_logging()
     
@@ -170,6 +222,9 @@ def main():
     
     # 获取所有JSON文件并使用自然排序
     json_files = sorted(input_dir.glob("*.json"), key=natural_sort_key)
+    
+    # 首先处理原始文件
+    process_original_files(json_files)
     
     # 按书名分组
     books: Dict[str, List[Path]] = {}

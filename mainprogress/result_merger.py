@@ -19,7 +19,9 @@ import re
 class ProcessedFile:
     original_path: Path
     processed_path: Path
+    backup_path: Optional[Path]  # 新增：备用文件路径
     items: List[dict]
+    backup_items: Optional[List[dict]] = None  # 新增：备用数据
     is_auxiliary: bool = False
     is_combined: bool = False
 
@@ -262,68 +264,105 @@ def determine_confirmation_status(item1: dict, item2: dict,
             item1['confirmed'] and item2['confirmed'])
 
 def merge_results(file1: ProcessedFile, file2: ProcessedFile) -> List[dict]:
-    """改进后的合并函数 - 忽略层级进行匹配"""
+    """改进后的合并函数 - 支持备用数据"""
     print(f"\n开始合并文件:")
     print(f"文件1: {file1.original_path.name}")
     print(f"文件2: {file2.original_path.name}")
     
-    # 预处理：过滤掉无效条目
-    file1.items = [item for item in file1.items 
-                   if not ((item.get('text') is None or item.get('text') == "null") and 
-                          (item.get('number') is None or item.get('number') == "null"))]
-    file2.items = [item for item in file2.items 
-                   if not ((item.get('text') is None or item.get('text') == "null") and 
-                          (item.get('number') is None or item.get('number') == "null"))]
-    
-    # 查找重复标题
-    duplicate_titles = find_duplicate_titles([file1, file2])
-    
-    # 查找可靠的重叠部分起始位置
-    start_idx1, start_idx2 = find_reliable_overlap_indices(file1.items, file2.items, duplicate_titles)
-    if start_idx1 is None or start_idx2 is None:
-        print(f"未找到可靠的重叠起始点！返回文件1的全部内容")
-        return [validate_page_number(item) for item in file1.items]
-    
-    # 查找可靠的重叠部分终止位置
-    end_idx1, end_idx2 = find_reliable_end_overlap_indices(file1.items, file2.items, duplicate_titles)
-    if end_idx1 is None or end_idx2 is None:
-        end_idx1 = len(file1.items)
-        end_idx2 = len(file2.items)
-    
-    # 合并结果
-    merged = []
-    
-    # 添加第一个文件的前半部分
-    merged.extend([validate_page_number(item) for item in file1.items[:start_idx1]])
-    
-    # 处理重叠部分
-    for i in range(start_idx1, end_idx1 + 1):
-        item = file1.items[i].copy()
-        matched = False
+    def try_merge_with_items(items1: List[dict], items2: List[dict], 
+                           is_backup: bool = False) -> Tuple[List[dict], bool]:
+        """尝试使用给定的两组数据进行合并"""
+        # 预处理：过滤掉无效条目
+        items1 = [item for item in items1 
+                if not ((item.get('text') is None or item.get('text') == "null") and 
+                       (item.get('number') is None or item.get('number') == "null"))]
+        items2 = [item for item in items2 
+                if not ((item.get('text') is None or item.get('text') == "null") and 
+                       (item.get('number') is None or item.get('number') == "null"))]
         
-        # 在第二个文件中查找匹配项
-        for j in range(start_idx2, end_idx2 + 1):
-            if item['text'] == file2.items[j]['text']:  # Changed from file2_items to file2.items
-                # 确定确认状态
-                confirmed = determine_confirmation_status(
-                    item, file2.items[j],  # Changed from file2_items to file2.items
-                    file1.items, file2.items,  # Changed from file2_items to file2.items
-                    i, j,
-                    duplicate_titles
-                )
-                item['confirmed'] = confirmed
-                matched = True
+        # 查找重复标题
+        duplicate_titles = find_duplicate_titles([
+            ProcessedFile(file1.original_path, file1.processed_path, None, items1),
+            ProcessedFile(file2.original_path, file2.processed_path, None, items2)
+        ])
+        
+        # 查找可靠的重叠部分起始位置
+        start_idx1, start_idx2 = find_reliable_overlap_indices(items1, items2, duplicate_titles)
+        if start_idx1 is None or start_idx2 is None:
+            if is_backup:
+                print(f"备用数据也未找到可靠的重叠起始点！")
+            return None, False
+        
+        # 查找可靠的重叠部分终止位置
+        end_idx1, end_idx2 = find_reliable_end_overlap_indices(items1, items2, duplicate_titles)
+        if end_idx1 is None or end_idx2 is None:
+            end_idx1 = len(items1)
+            end_idx2 = len(items2)
+        
+        # 合并结果
+        merged = []
+        
+        # 添加第一个文件的前半部分
+        merged.extend([validate_page_number(item) for item in items1[:start_idx1]])
+        
+        # 处理重叠部分
+        for i in range(start_idx1, end_idx1 + 1):
+            item = items1[i].copy()
+            matched = False
+            
+            # 在第二个文件中查找匹配项
+            for j in range(start_idx2, end_idx2 + 1):
+                if item['text'] == items2[j]['text']:  # Changed from file2_items to file2.items
+                    # 确定确认状态
+                    confirmed = determine_confirmation_status(
+                        item, items2[j],  # Changed from file2_items to file2.items
+                        items1, items2,  # Changed from file2_items to file2.items
+                        i, j,
+                        duplicate_titles
+                    )
+                    item['confirmed'] = confirmed
+                    matched = True
+                    break
+            
+            if not matched and item['text'] in duplicate_titles:
+                item['confirmed'] = False
+            
+            merged.append(validate_page_number(item))
+        
+        # 添加第二个文件的后半部分
+        merged.extend([validate_page_number(item) for item in items2[end_idx2 + 1:]])  # Changed from file2_items to file2.items
+        
+        return merged, True
+
+    # 首先尝试使用主数据合并
+    merged_results, success = try_merge_with_items(file1.items, file2.items)
+    
+    # 如果主数据合并失败，尝试使用备用数据
+    if not success:
+        print(f"\n主数据合并失败，尝试使用备用数据...")
+        
+        # 尝试不同的备用数据组合
+        backup_combinations = [
+            (file1.backup_items, file2.items),  # 文件1使用备用
+            (file1.items, file2.backup_items),  # 文件2使用备用
+            (file1.backup_items, file2.backup_items)  # 都使用备用
+        ]
+        
+        for items1, items2 in backup_combinations:
+            if items1 is None or items2 is None:
+                continue
+                
+            merged_results, success = try_merge_with_items(items1, items2, True)
+            if success:
+                print(f"使用备用数据合并成功")
                 break
         
-        if not matched and item['text'] in duplicate_titles:
-            item['confirmed'] = False
+    if not success:
+        print(f"所有合并尝试均失败！返回文件1的全部内容")
+        return [validate_page_number(item) for item in file1.items]
         
-        merged.append(validate_page_number(item))
-    
-    # 添加第二个文件的后半部分
-    merged.extend([validate_page_number(item) for item in file2.items[end_idx2 + 1:]])  # Changed from file2_items to file2.items
-    
-    return merged
+    return merged_results
+
 def get_page_number(file_path: Path) -> int:
     """从文件名中提取页码"""
     parts = file_path.stem.split('_page_')
@@ -444,19 +483,31 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
     
     # 创建ProcessedFile对象列表
     processed_files: Dict[str, ProcessedFile] = {}
-    
+
+    def get_backup_path(processed_path: Path) -> Optional[Path]:
+        """根据deepseek处理文件路径获取dashscope备用文件路径"""
+        if '_deepseek_processed' not in processed_path.stem:
+            return None
+        return processed_path.parent / f"{processed_path.stem.replace('_deepseek_', '_dashscope_')}.json"
+
     print("\n=== 阶段1：文件加载 ===")
     for original_path_str in file_info.keys():
         original_path = Path(original_path_str)
-        processed_path = processed_dir / f"{original_path.stem}_processed.json"
+        # 修改为查找deepseek处理文件
+        processed_path = processed_dir / f"{original_path.stem}_deepseek_processed.json"
+        backup_path = get_backup_path(processed_path)
         
         if not processed_path.exists():
-            print(f"未找到处理文件: {processed_path}")
+            print(f"未找到主处理文件: {processed_path}")
             continue
         
         items = read_json_file(processed_path)
-        if not items:
-            print(f"文件为空: {processed_path}")
+        backup_items = None
+        if backup_path and backup_path.exists():
+            backup_items = read_json_file(backup_path)
+        
+        if not items and not backup_items:
+            print(f"主文件和备用文件均为空: {processed_path}")
             continue
         
         # 改进文件类型判断逻辑
@@ -467,13 +518,17 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         is_combined = stem.count(book_name) > 1
         
         print(f"加载文件: {original_path.stem}")
-        print(f"  - 条目数: {len(items)}")
+        print(f"  - 主数据条目数: {len(items)}")
+        if backup_items:
+            print(f"  - 备用数据条目数: {len(backup_items)}")
         print(f"  - 类型: {'辅助文件' if is_auxiliary else '链接文件' if is_combined else '基础文件'}")
         
         processed_files[original_path.stem] = ProcessedFile(
             original_path=original_path,
             processed_path=processed_path,
+            backup_path=backup_path,
             items=items,
+            backup_items=backup_items,
             is_auxiliary=is_auxiliary,
             is_combined=is_combined
         )
@@ -578,6 +633,7 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
                     ProcessedFile(
                         original_path=merge_sequence[i-1].original_path,
                         processed_path=merge_sequence[i-1].processed_path,
+                        backup_path=None,
                         items=current_result
                     ),
                     merge_sequence[i]
