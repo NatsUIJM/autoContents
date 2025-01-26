@@ -60,7 +60,116 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         
         # 初始化文件处理
         self.process_files()
+
+    def find_reference_files(self, book_name):
+        """查找参考文件"""
+        reference_dir = Path(PathConfig.CONTENT_VALIDATOR_INPUT_2)
+        reference_files = []
         
+        for file_path in reference_dir.glob("*.json"):
+            file_name = file_path.name
+            # 检查文件名是否以书本名开头
+            if not file_name.startswith(book_name):
+                continue
+            # 检查书本名是否只出现一次
+            if file_name.count(book_name) > 1:
+                continue
+            # 检查文件名是否包含"辅助"
+            if "辅助" in file_name:
+                continue
+            reference_files.append(file_path)
+            
+        return reference_files
+    def convert_number_field(self, target_file):
+        """处理步骤1: 转换number字段的类型"""
+        modified = False
+        with open(target_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        for item in data['items']:
+            if isinstance(item['number'], str):
+                try:
+                    # 尝试转换为整数
+                    item['number'] = int(item['number'])
+                    modified = True
+                except ValueError:
+                    # 如果转换失败，设置为null并取消确认状态
+                    item['number'] = None
+                    item['confirmed'] = False
+                    modified = True
+                    
+        if modified:
+            with open(target_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        return data if modified else None
+
+    def auto_confirm_matching_items(self, target_file, target_data):
+        """处理步骤2: 自动确认匹配的条目"""
+        # 获取书本名（去除_final后缀）
+        book_name = target_file.stem.replace('_final', '')
+        
+        # 查找参考文件
+        reference_files = self.find_reference_files(book_name)
+        
+        # 从参考文件中读取所有条目
+        reference_items = []
+        for ref_file in reference_files:
+            with open(ref_file, 'r', encoding='utf-8') as f:
+                ref_data = json.load(f)
+                reference_items.extend(ref_data['items'])
+        
+        # 处理每个未确认的条目
+        modified = False
+        for item in target_data['items']:
+            if not item['confirmed']:
+                # 在参考条目中查找匹配项
+                for ref_item in reference_items:
+                    if (item['text'] == ref_item['text'] and 
+                        item['number'] is not None and
+                        item['number'] == ref_item['number']):
+                        item['confirmed'] = True
+                        modified = True
+                        break
+        
+        if modified:
+            with open(target_file, 'w', encoding='utf-8') as f:
+                json.dump(target_data, f, ensure_ascii=False, indent=2)
+        
+        return target_data if modified else None
+
+    def fill_null_numbers(self, target_file, target_data):
+        """处理步骤3: 填充null的number字段"""
+        modified = False
+        items = target_data['items']
+        
+        for i in range(len(items) - 1):
+            if items[i]['number'] is None:
+                items[i]['number'] = items[i + 1]['number']
+                modified = True
+        
+        if modified:
+            with open(target_file, 'w', encoding='utf-8') as f:
+                json.dump(target_data, f, ensure_ascii=False, indent=2)
+        
+        return target_data if modified else None
+
+    def preprocess_json_file(self, target_file):
+        """按顺序执行所有预处理步骤"""
+        # 步骤1: 转换number字段类型
+        data = self.convert_number_field(target_file)
+        if data is None:  # 如果没有修改，重新读取数据
+            with open(target_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        
+        # 步骤2: 自动确认匹配项
+        data = self.auto_confirm_matching_items(target_file, data)
+        if data is None:  # 如果没有修改，重新读取数据
+            with open(target_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        
+        # 步骤3: 填充null的number字段
+        data = self.fill_null_numbers(target_file, data)        
     def process_files(self):
         source_dir = Path(PathConfig.CONTENT_VALIDATOR_INPUT)
         target_dir = Path(PathConfig.CONTENT_VALIDATOR_OUTPUT)
@@ -68,12 +177,14 @@ class ContentConfirmWindow(QtWidgets.QMainWindow):
         # 确保输出目录存在
         os.makedirs(target_dir, exist_ok=True)
             
-        # 先确保文件都复制到了目标文件夹
+        # 先确保文件都复制到了目标文件夹并进行预处理
         json_files = sorted(source_dir.glob("*.json"))
         for source_file in json_files:
             target_file = target_dir / source_file.name
             if not target_file.exists():
                 shutil.copy2(source_file, target_file)
+                # 对新复制的文件进行预处理
+                self.preprocess_json_file(target_file)
         
         # 只从目标文件夹加载任务
         self.all_tasks = []

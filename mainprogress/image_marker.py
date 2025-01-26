@@ -1,3 +1,4 @@
+
 import os
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -78,7 +79,7 @@ class DraggableCircle(QGraphicsEllipseItem):
         self.setFlag(self.ItemIsMovable)
         self.setFlag(self.ItemSendsScenePositionChanges)
         self.setAcceptHoverEvents(True)  # 允许接收悬停事件
-        self.setPen(QPen(Qt.green, 5))
+        self.setPen(QPen(Qt.red, 5))
         self.setPos(x - diameter/2, y - diameter/2)
         self.main_window = None
         
@@ -151,7 +152,6 @@ class MainApplication(QMainWindow):
         self.green_line = None
         self.blue_lines = []  # 存储所有蓝线
         self.ban_symbols = []  # 存储禁止符号
-        self.process_symbols = []  # 存储处理标记（红点）
         self.original_height = 0  # 添加原始高度属性
         self.setup_lines()
         
@@ -162,8 +162,6 @@ class MainApplication(QMainWindow):
         self.ui.deleteSectionBtn.clicked.connect(self.remove_blue_line)
         self.ui.addBanBtn.clicked.connect(self.add_ban_symbol)
         self.ui.deleteBanBtn.clicked.connect(self.remove_ban_symbol)
-        self.ui.addProcessBtn.clicked.connect(self.add_process_symbol)
-        self.ui.deleteProcessBtn.clicked.connect(self.remove_process_symbol)
         
         self.init_application()
     
@@ -271,7 +269,6 @@ class MainApplication(QMainWindow):
         self.green_line = None
         self.blue_lines = []
         self.ban_symbols = []
-        self.process_symbols = []
         
         # 重置绿线按钮文本
         self.ui.addColumnBtn.setText("添加分栏标记")
@@ -288,11 +285,6 @@ class MainApplication(QMainWindow):
             center_x = symbol.pos().x() + symbol.rect().width()/2
             center_y = symbol.pos().y() + symbol.rect().height()/2
             print(f"点X{i}: ({center_x:.2f}, {center_y:.2f})")
-        
-        for i, symbol in enumerate(self.process_symbols, 1):
-            center_x = symbol.pos().x() + symbol.rect().width()/2
-            center_y = symbol.pos().y() + symbol.rect().height()/2
-            print(f"点Y{i}: ({center_x:.2f}, {center_y:.2f})")
     
     def load_page_marks(self):
         current_image = self.image_files[self.current_page]
@@ -347,22 +339,9 @@ class MainApplication(QMainWindow):
             y = x_point['y'] * scale
             diameter = 10
             ban_symbol = DraggableCircle(x, y, diameter)
-            ban_symbol.setPen(QPen(Qt.green, 5))  # 改为绿色
             ban_symbol.main_window = self
             self.scene.addItem(ban_symbol)
             self.ban_symbols.append(ban_symbol)
-
-        # 添加处理标记
-        y_points = [(k, v) for k, v in points.items() if k.startswith('Y')]
-        for _, y_point in y_points:
-            x = y_point['x'] * scale
-            y = y_point['y'] * scale
-            diameter = 10
-            process_symbol = DraggableCircle(x, y, diameter)
-            process_symbol.setPen(QPen(Qt.red, 5))
-            process_symbol.main_window = self
-            self.scene.addItem(process_symbol)
-            self.process_symbols.append(process_symbol)
 
     def add_ban_symbol(self):
         y_pos = 400 + len(self.ban_symbols) * 50
@@ -371,7 +350,6 @@ class MainApplication(QMainWindow):
         
         diameter = 10  # 线宽的2倍
         ban_symbol = DraggableCircle(400, y_pos, diameter)
-        ban_symbol.setPen(QPen(Qt.green, 5))  # 改为绿色
         ban_symbol.main_window = self
         self.scene.addItem(ban_symbol)
         self.ban_symbols.append(ban_symbol)
@@ -384,25 +362,7 @@ class MainApplication(QMainWindow):
             self.scene.removeItem(symbol)
             self.check_positions()
     
-    def add_process_symbol(self):
-        y_pos = 400 + len(self.process_symbols) * 50
-        if y_pos > 800:
-            y_pos = 400
-        
-        diameter = 10  # 线宽的2倍
-        process_symbol = DraggableCircle(400, y_pos, diameter)
-        process_symbol.setPen(QPen(Qt.red, 5))  # 设置为红色
-        process_symbol.main_window = self
-        self.scene.addItem(process_symbol)
-        self.process_symbols.append(process_symbol)
-        
-        self.check_positions()
 
-    def remove_process_symbol(self):
-        if self.process_symbols:
-            symbol = self.process_symbols.pop()
-            self.scene.removeItem(symbol)
-            self.check_positions()
 
     def init_application(self):
         # 确保输入输出目录存在
@@ -524,12 +484,6 @@ class MainApplication(QMainWindow):
             center_x = symbol.pos().x() + symbol.rect().width()/2
             center_y = symbol.pos().y() + symbol.rect().height()/2
             points[f'X{i}'] = {'x': round(center_x, 2), 'y': round(center_y, 2)}
-
-        # Y点（处理标记）
-        for i, symbol in enumerate(self.process_symbols, 1):
-            center_x = symbol.pos().x() + symbol.rect().width()/2
-            center_y = symbol.pos().y() + symbol.rect().height()/2
-            points[f'Y{i}'] = {'x': round(center_x, 2), 'y': round(center_y, 2)}
         
         return {
             'original_height': self.original_height,
@@ -615,22 +569,6 @@ class MainApplication(QMainWindow):
                 if k.startswith('X'):
                     data['points'].pop(k)
             data['points'].update(temp_x_points)
-
-        # 重排Y点
-        y_points = [(k, v) for k, v in data['points'].items() if k.startswith('Y')]
-        if y_points:
-            y_points.sort(key=lambda x: x[1]['y'])
-            
-            # 创建临时字典存储重排后的Y点
-            temp_y_points = {}
-            for i, (_, point) in enumerate(y_points, 1):
-                temp_y_points[f'Y{i}'] = point
-            
-            # 更新原字典中的Y点
-            for k in list(data['points'].keys()):
-                if k.startswith('Y'):
-                    data['points'].pop(k)
-            data['points'].update(temp_y_points)
         
         # 保存修改后的JSON
         with open(output_path, 'w', encoding='utf-8') as f:

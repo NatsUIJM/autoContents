@@ -156,7 +156,7 @@ def get_system_prompt() -> str:
   [ // 错误：缺少键名
     {
       "text": "第1章 自动控制概述",
-      "number": 1,
+      "number": "1", // 错误：应为数字（int），不要加引号（str）
       "confirmed": true,
       "level": 1
     },

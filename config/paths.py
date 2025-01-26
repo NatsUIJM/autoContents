@@ -61,6 +61,7 @@ class PathConfig:
 
     # content_validator.py（原 6_confirmContent.py）相关路径配置
     CONTENT_VALIDATOR_INPUT = f"{BASE_DIR}/level_adjusted_content"  # 原 5_processedContentInfo
+    CONTENT_VALIDATOR_INPUT_2 = f"{BASE_DIR}/llm_processed_content"  # 原 4_1_LLMProcessed
     CONTENT_VALIDATOR_OUTPUT = f"{BASE_DIR}/validated_content"  # 原 6_confirmedContentInfo
     CONTENT_VALIDATOR_IMAGES = f"{BASE_DIR}/image_cropper"  # 原 6_1_cutPic
 
