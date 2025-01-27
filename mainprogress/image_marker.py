@@ -393,15 +393,29 @@ class MainApplication(QMainWindow):
                                     self.image_files[self.current_page])            
             # 获取原始图片尺寸
             with Image.open(image_path) as img:
-                _, self.original_height = img.size
+                self.original_width, self.original_height = img.size
             
             pixmap = QPixmap(image_path)
+            original_width = pixmap.width()
+            original_height = pixmap.height()
             
+            # 先按照高度850进行缩放
             target_height = 850
-            scaled_width = int((target_height / pixmap.height()) * pixmap.width())
-            scaled_pixmap = pixmap.scaled(scaled_width, target_height, 
-                                        Qt.KeepAspectRatio, 
-                                        Qt.SmoothTransformation)
+            scaled_width = int((target_height / original_height) * original_width)
+            
+            # 检查缩放后的宽度是否超过780
+            if scaled_width > 780:
+                # 如果超过780，则按宽度进行缩放
+                target_width = 780
+                scaled_height = int((target_width / original_width) * original_height)
+                scaled_pixmap = pixmap.scaled(target_width, scaled_height, 
+                                            Qt.KeepAspectRatio, 
+                                            Qt.SmoothTransformation)
+            else:
+                # 如果不超过780，则保持按高度850缩放
+                scaled_pixmap = pixmap.scaled(scaled_width, target_height, 
+                                            Qt.KeepAspectRatio, 
+                                            Qt.SmoothTransformation)
             
             for item in self.scene.items():
                 if isinstance(item, QGraphicsLineItem):
