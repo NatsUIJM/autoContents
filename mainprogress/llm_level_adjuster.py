@@ -94,7 +94,27 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                 system_prompt = """请协助我处理这份JSON文件。这是一份目录文件，包含了一本书的完整目录。
 你的任务是为每个目录项添加合适的层级（level）。请先总览整个文档，判断出第一级标题的结构特点（它们一般是篇或者章），然后判断第二级和第三级标题的特征。
 这个文件可能一共有两级标题也可能是三级标题，但不会更少或更多。请给出完整的JSON文件，为每个条目添加正确的level字段。
-直接输出结果，不要附带任何说明或者解释。"""
+直接输出结果，不要附带任何说明或者解释。
+输出格式要求：
+```json
+{
+  "items": [
+    {
+      "text": "第一章",
+      "level": 1
+    },
+    {
+      "text": "第一节",
+      "level": 2
+    },
+    {
+      "text": "第一小节",
+      "level": 3
+    }
+    ]
+}
+
+"""
                 user_content = model_input_json
             else:
                 system_prompt = """请继续处理之前的JSON文件，为每个目录项添加合适的层级（level）。

@@ -224,10 +224,10 @@ def main():
         max_y = max(all_y)
         
         points = {
-            'A': (min_x, min_y),
-            'B': (max_x, min_y),
-            'C': (min_x, max_y),
-            'D': (max_x, max_y)
+            'A': (min_x - 5, min_y),  # A点左移5像素
+            'B': (max_x + 5, min_y),  # B点右移5像素
+            'C': (min_x - 5, max_y),  # C点左移5像素
+            'D': (max_x + 5, max_y)   # D点右移5像素
         }
         
         # 计算投影并查找E点

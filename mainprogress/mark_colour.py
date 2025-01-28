@@ -219,16 +219,67 @@ def check_rules(text, coordinates, page_info, image_name, all_lines):
     
     # 模式定义
     catalog_patterns = [
-        r'^目$', r'^录$', r'^目录$', 
+        r'^国$', r'^目$', r'^录$', r'^目录$', 
         r'^contents$', r'^CONTENTS$',
         r'^mulu$', r'^MULU$'
     ]
-    
+
+    is_catalog_match = any(re.match(pattern, text, re.IGNORECASE) for pattern in catalog_patterns)
+    results['is_catalog'] = is_catalog_match
+
+    # 如果文本是单独的"目"或"录"字，尝试寻找配对的文字
+    if not is_catalog_match and text in ['目', '录']:
+        # 获取当前文本框的中心坐标
+        x1 = min(coordinates[0], coordinates[2], coordinates[4], coordinates[6])
+        y1 = min(coordinates[1], coordinates[3], coordinates[5], coordinates[7])
+        x2 = max(coordinates[0], coordinates[2], coordinates[4], coordinates[6])
+        y2 = max(coordinates[1], coordinates[3], coordinates[5], coordinates[7])
+        current_center_x = (x1 + x2) / 2
+        current_center_y = (y1 + y2) / 2
+        
+        # 寻找可能的配对文字
+        potential_pairs = []
+        for line in all_lines:
+            other_text = line.get('content', '').strip()
+            other_coords = line.get('polygon', [])
+            
+            # 跳过自身和非单字文本
+            if (other_coords == coordinates or 
+                len(other_text) != 1 or 
+                not '\u4e00' <= other_text <= '\u9fff'):
+                continue
+            
+            # 计算另一个文本框的中心坐标
+            other_x1 = min(other_coords[0], other_coords[2], other_coords[4], other_coords[6])
+            other_y1 = min(other_coords[1], other_coords[3], other_coords[5], other_coords[7])
+            other_x2 = max(other_coords[0], other_coords[2], other_coords[4], other_coords[6])
+            other_y2 = max(other_coords[1], other_coords[3], other_coords[5], other_coords[7])
+            other_center_x = (other_x1 + other_x2) / 2
+            other_center_y = (other_y1 + other_y2) / 2
+            
+            # 判断是否在同一行（y坐标在20%误差范围内）
+            height = y2 - y1
+            y_diff_ratio = abs(current_center_y - other_center_y) / height
+            
+            # 检查相对位置
+            if y_diff_ratio <= 0.2:  # 20%误差范围
+                if text == '目' and other_text == '录' and other_center_x > current_center_x:
+                    potential_pairs.append(other_coords)
+                elif text == '录' and other_text == '目' and other_center_x < current_center_x:
+                    potential_pairs.append(other_coords)
+        
+        # 如果只找到一个匹配对象，则将当前文本框标记为目录
+        if len(potential_pairs) == 1:
+            results['is_catalog'] = True
+            # 这里可以添加一个新的字段来标记配对的文本框，供后续处理使用
+            results['catalog_pair'] = potential_pairs[0]
+
     preface_patterns = [
         r'^前言$', 
         r'^\（.+\）前言$', 
         r'^【.+】前言$', 
         r'^［.+］前言$', 
+        r'^.+前言$', 
         r'^[.+]前言$'
     ]
 
@@ -297,6 +348,9 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
     red_boxes = []
     output_data = []
     
+    # 保存配对的目录文本框
+    catalog_pairs = []
+    
     # 第一次遍历：执行所有规则检查并标记红框
     for line in lines:
         text = line.get('content', '')
@@ -308,6 +362,10 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
         # 检查所有规则
         results = check_rules(text, polygon, page_info, image_name, lines)
         
+        # 如果是目录文本框，且有配对项
+        if results['is_catalog'] and 'catalog_pair' in results:
+            catalog_pairs.append(results['catalog_pair'])
+        
         # 如果满足任何红框条件，添加到红框列表
         if any([
             results['is_catalog'], 
@@ -318,6 +376,11 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
             results['is_large_text']
         ]):
             red_boxes.append(polygon)
+    
+    # 将配对的目录文本框添加到红框列表
+    for pair in catalog_pairs:
+        if pair not in red_boxes:
+            red_boxes.append(pair)
     
     # 第二次遍历：对empty_directions >= 2的文本框重新检查
     for line in lines:
@@ -367,9 +430,12 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
     with open(output_json_path, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-def process_directory(input_dir, output_dir):
+def process_directory(input_dir, input_image_dir, output_dir):
     """
     处理输入目录中的所有文件
+    input_dir: JSON文件所在目录
+    input_image_dir: JPG图像文件所在目录
+    output_dir: 输出目录
     """
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
@@ -378,12 +444,12 @@ def process_directory(input_dir, output_dir):
     for filename in os.listdir(input_dir):
         if filename.endswith('_raw_response.json'):
             # 获取对应的图像文件名和输出JSON文件名
-            image_filename = filename.replace('_raw_response.json', '_annotated.jpg')
+            image_filename = filename.replace('_raw_response.json', '.jpg')
             output_json_filename = filename.replace('_raw_response.json', '_boxes.json')
             
             # 构建完整的文件路径
             json_path = os.path.join(input_dir, filename)
-            image_path = os.path.join(input_dir, image_filename)
+            image_path = os.path.join(input_image_dir, image_filename)
             output_image_path = os.path.join(output_dir, image_filename)
             output_json_path = os.path.join(output_dir, output_json_filename)
             
@@ -395,4 +461,6 @@ def process_directory(input_dir, output_dir):
                 print(f"找不到对应的图像文件: {image_filename}")
 
 if __name__ == "__main__":
-    process_directory(PathConfig.MARK_COLOR_INPUT, PathConfig.MARK_COLOR_OUTPUT)
+    process_directory(PathConfig.MARK_COLOR_INPUT, 
+                     PathConfig.MARK_COLOR_INPUT_IMAGE, 
+                     PathConfig.MARK_COLOR_OUTPUT)

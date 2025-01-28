@@ -67,9 +67,14 @@ class PathConfig:
     # ocr_and_projection_azure.py（原 OCR和投影（标准版）.py）相关路径配置
     OCR_PROJ_AZURE_INPUT = f"{BASE_DIR}/mark/input_image"  # 原input目录
     OCR_PROJ_AZURE_OUTPUT = f"{BASE_DIR}/automark_raw_data"  # 原output目录
+
+    # ocr_processor.py（原 main.py）相关路径配置
+    OCR_PROJ_ALIYUN_INPUT = f"{BASE_DIR}/mark/input_image"  # OCR输入图片目录
+    OCR_PROJ_ALIYUN_OUTPUT = f"{BASE_DIR}/automark_raw_data"  # OCR结果输出目录
     
     # mark_color.py（原 1_分颜色标记.py）相关路径配置
     MARK_COLOR_INPUT = f"{BASE_DIR}/automark_raw_data"  
+    MARK_COLOR_INPUT_IMAGE = f"{BASE_DIR}/mark/input_image"  # 原input_image
     MARK_COLOR_OUTPUT = f"{BASE_DIR}/automarker_colour"
     
     # ABCD标记（原 2_ABCD标记.py）相关路径配置

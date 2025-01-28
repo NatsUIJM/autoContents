@@ -223,7 +223,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                     print(f"Debug - 更新进度: {latest_output}")  # 用于调试
 
     def run_pic_mark(self):
-        """运行image_marker.py"""
+        """运行image_marker.py及其依赖脚本"""
         try:
             # 检查是否有PDF文件
             if not os.path.exists(self.pdf_dir) or not any(f.lower().endswith('.pdf') for f in os.listdir(self.pdf_dir)):
@@ -234,26 +234,70 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 )
                 return
 
-            # 检查脚本文件是否存在
-            if not os.path.exists(os.path.join("mainprogress", "image_marker.py")):
-                QMessageBox.critical(
-                    self,
-                    "错误",
-                    "未找到image_marker.py文件！"
-                )
-                return
+            # 检查所需脚本文件是否存在
+            required_scripts = [
+                "pdf_to_image.py",
+                "ocr_and_projection_azure.py",
+                "mark_colour.py",
+                "abcd_marker.py",
+                "image_marker.py"
+            ]
+            
+            for script in required_scripts:
+                if not os.path.exists(os.path.join("mainprogress", script)):
+                    QMessageBox.critical(
+                        self,
+                        "错误",
+                        f"未找到{script}文件！"
+                    )
+                    return
 
-            # 使用Python解释器运行脚本
-            python_executable = sys.executable
-            subprocess.Popen([python_executable, os.path.join("mainprogress", "pdf_to_image.py")])
-            time.sleep(3)
-            subprocess.Popen([python_executable, os.path.join("mainprogress", "image_marker.py")])
+            # 使用QThread运行脚本序列
+            self.script_sequence = [
+                ("pdf_to_image.py", "正在将PDF转换为图像"),
+                ("ocr_and_projection_azure.py", "正在执行OCR和投影分析"),
+                ("mark_colour.py", "正在进行颜色标记"),
+                ("abcd_marker.py", "正在进行ABCD标记"),
+                ("image_marker.py", "正在执行图像标记")
+            ]
+            
+            self.current_script_index = 0
+            self.run_next_marking_script()
 
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "错误",
-                f"运行image_marker.py失败：{str(e)}"
+                f"运行标记流程失败：{str(e)}"
+            )
+
+    def run_next_marking_script(self):
+        """运行下一个标记脚本"""
+        if self.current_script_index >= len(self.script_sequence):
+            QMessageBox.information(self, "完成", "标记流程已完成")
+            return
+            
+        script, status = self.script_sequence[self.current_script_index]
+        self.label_2.setText(f"当前进行：{status}")
+        
+        self.script_runner = ScriptRunner(script)
+        self.script_runner.progress.connect(self.update_progress)
+        self.script_runner.finished.connect(self.handle_marking_script_finished)
+        self.script_runner.error.connect(self.handle_error)
+        self.script_runner.start()
+
+    def handle_marking_script_finished(self, success):
+        """处理标记脚本完成事件"""
+        if success:
+            self.current_script_index += 1
+            # 在脚本之间添加短暂延时
+            QTimer.singleShot(1000, self.run_next_marking_script)
+        else:
+            script_name = self.script_sequence[self.current_script_index][0]
+            QMessageBox.critical(
+                self,
+                "错误",
+                f"执行{script_name}时出错"
             )
 
     def generate_unique_filename(self, original_path):
