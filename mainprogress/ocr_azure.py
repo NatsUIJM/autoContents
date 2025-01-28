@@ -17,8 +17,8 @@ from azure.ai.formrecognizer import DocumentAnalysisClient
 from config.paths import PathConfig
 
 # Azure设置
-endpoint = os.getenv('AZURE_DOCUMENT_ENDPOINT')
-key = os.getenv('AZURE_DOCUMENT_KEY')
+endpoint = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT')
+key = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_KEY')
 
 def convert_polygon_points(polygon_points):
     """将Azure OCR返回的点数组转换为bbox格式"""

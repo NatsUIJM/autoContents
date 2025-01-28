@@ -64,3 +64,15 @@ class PathConfig:
     PDF_GENERATOR_INPUT_2 = f"{BASE_DIR}/input_pdf"  # 原 0_originPDF
     PDF_GENERATOR_OUTPUT_1 = f"{BASE_DIR}/output_pdf"  # 原 7_processedPDF
     
+    # ocr_and_projection_azure.py（原 OCR和投影（标准版）.py）相关路径配置
+    OCR_PROJ_AZURE_INPUT = f"{BASE_DIR}/mark/input_image"  # 原input目录
+    OCR_PROJ_AZURE_OUTPUT = f"{BASE_DIR}/automark_raw_data"  # 原output目录
+    
+    # mark_color.py（原 1_分颜色标记.py）相关路径配置
+    MARK_COLOR_INPUT = f"{BASE_DIR}/automark_raw_data"  
+    MARK_COLOR_OUTPUT = f"{BASE_DIR}/automarker_colour"
+    
+    # ABCD标记（原 2_ABCD标记.py）相关路径配置
+    ABCD_INPUT_JSON = f"{BASE_DIR}/automarker_colour"  # 原json_folder
+    ABCD_INPUT_JPG = f"{BASE_DIR}/mark/input_image"  # 原jpg_folder
+    ABCD_OUTPUT = f"{BASE_DIR}/mark/image_metadata"  # 原output_folder
