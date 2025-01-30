@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'pdfCard.ui'
+# Form implementation generated from reading ui file '/Users/shijian/VSCode/autoContents/UI/pdfCard.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -14,24 +14,20 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Form(object):
     def setupUi(self, Form):
         Form.setObjectName("Form")
-        Form.resize(623, 184)
-        Form.setMinimumSize(QtCore.QSize(0, 184))
-        Form.setMaximumSize(QtCore.QSize(16777215, 184))
+        Form.resize(731, 150)
+        Form.setMinimumSize(QtCore.QSize(600, 150))
+        Form.setMaximumSize(QtCore.QSize(800, 150))
         self.horizontalLayout_2 = QtWidgets.QHBoxLayout(Form)
-        self.horizontalLayout_2.setContentsMargins(12, 12, 12, 12)
-        self.horizontalLayout_2.setSpacing(16)
         self.horizontalLayout_2.setObjectName("horizontalLayout_2")
         self.graphicsView = QtWidgets.QGraphicsView(Form)
-        self.graphicsView.setMinimumSize(QtCore.QSize(120, 160))
-        self.graphicsView.setMaximumSize(QtCore.QSize(120, 160))
+        self.graphicsView.setMinimumSize(QtCore.QSize(100, 140))
+        self.graphicsView.setMaximumSize(QtCore.QSize(100, 140))
         self.graphicsView.setObjectName("graphicsView")
         self.horizontalLayout_2.addWidget(self.graphicsView)
         self.verticalLayout = QtWidgets.QVBoxLayout()
-        self.verticalLayout.setSpacing(12)
         self.verticalLayout.setObjectName("verticalLayout")
-        spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout.addItem(spacerItem)
         self.pdfNameLabel = QtWidgets.QLabel(Form)
+        self.pdfNameLabel.setMinimumSize(QtCore.QSize(0, 40))
         font = QtGui.QFont()
         font.setPointSize(-1)
         font.setBold(True)
@@ -39,18 +35,15 @@ class Ui_Form(object):
         self.pdfNameLabel.setFont(font)
         self.pdfNameLabel.setObjectName("pdfNameLabel")
         self.verticalLayout.addWidget(self.pdfNameLabel)
-        spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout.addItem(spacerItem1)
         self.pageSettingsLayout = QtWidgets.QHBoxLayout()
-        self.pageSettingsLayout.setSpacing(12)
+        self.pageSettingsLayout.setSpacing(16)
         self.pageSettingsLayout.setObjectName("pageSettingsLayout")
         self.tocStartLabel = QtWidgets.QLabel(Form)
+        self.tocStartLabel.setMinimumSize(QtCore.QSize(0, 32))
         self.tocStartLabel.setObjectName("tocStartLabel")
         self.pageSettingsLayout.addWidget(self.tocStartLabel)
         self.tocStartSpinBox = QtWidgets.QSpinBox(Form)
-        font = QtGui.QFont()
-        font.setKerning(True)
-        self.tocStartSpinBox.setFont(font)
+        self.tocStartSpinBox.setMinimumSize(QtCore.QSize(80, 32))
         self.tocStartSpinBox.setMinimum(1)
         self.tocStartSpinBox.setObjectName("tocStartSpinBox")
         self.pageSettingsLayout.addWidget(self.tocStartSpinBox)
@@ -58,6 +51,7 @@ class Ui_Form(object):
         self.tocEndLabel.setObjectName("tocEndLabel")
         self.pageSettingsLayout.addWidget(self.tocEndLabel)
         self.tocEndSpinBox = QtWidgets.QSpinBox(Form)
+        self.tocEndSpinBox.setMinimumSize(QtCore.QSize(80, 32))
         self.tocEndSpinBox.setMinimum(1)
         self.tocEndSpinBox.setObjectName("tocEndSpinBox")
         self.pageSettingsLayout.addWidget(self.tocEndSpinBox)
@@ -65,15 +59,23 @@ class Ui_Form(object):
         self.contentStartLabel.setObjectName("contentStartLabel")
         self.pageSettingsLayout.addWidget(self.contentStartLabel)
         self.contentStartSpinBox = QtWidgets.QSpinBox(Form)
+        self.contentStartSpinBox.setMinimumSize(QtCore.QSize(80, 32))
         self.contentStartSpinBox.setMinimum(1)
         self.contentStartSpinBox.setObjectName("contentStartSpinBox")
         self.pageSettingsLayout.addWidget(self.contentStartSpinBox)
         self.verticalLayout.addLayout(self.pageSettingsLayout)
-        spacerItem2 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout.addItem(spacerItem2)
+        self.horizontalLayout = QtWidgets.QHBoxLayout()
+        self.horizontalLayout.setObjectName("horizontalLayout")
+        self.deletePDF_2 = QtWidgets.QPushButton(Form)
+        self.deletePDF_2.setMinimumSize(QtCore.QSize(0, 40))
+        self.deletePDF_2.setObjectName("deletePDF_2")
+        self.horizontalLayout.addWidget(self.deletePDF_2)
         self.deletePDF = QtWidgets.QPushButton(Form)
+        self.deletePDF.setMinimumSize(QtCore.QSize(100, 40))
+        self.deletePDF.setMaximumSize(QtCore.QSize(100, 16777215))
         self.deletePDF.setObjectName("deletePDF")
-        self.verticalLayout.addWidget(self.deletePDF)
+        self.horizontalLayout.addWidget(self.deletePDF)
+        self.verticalLayout.addLayout(self.horizontalLayout)
         self.horizontalLayout_2.addLayout(self.verticalLayout)
 
         self.retranslateUi(Form)
@@ -84,81 +86,149 @@ class Ui_Form(object):
         Form.setWindowTitle(_translate("Form", "Form"))
         Form.setStyleSheet(_translate("Form", "\n"
 "    QWidget#Form {\n"
-"        background-color: white;\n"
-"        border: 1px solid #E5E7EB;\n"
-"        border-radius: 8px;\n"
+"        background-color: #FFFFFF;\n"
+"        border: 1px solid #EEF2F6;\n"
+"        border-radius: 12px;\n"
 "    }\n"
 "   "))
         self.graphicsView.setStyleSheet(_translate("Form", "\n"
 "       QGraphicsView {\n"
-"           background-color: #F3F4F6;\n"
-"           border: 1px solid #E5E7EB;\n"
-"           border-radius: 4px;\n"
+"           background-color: #F8FAFC;\n"
+"           border: 1px solid #E2E8F0;\n"
+"           border-radius: 8px;\n"
 "       }\n"
 "      "))
         self.pdfNameLabel.setStyleSheet(_translate("Form", "\n"
 "         QLabel {\n"
-"             font-size: 14px;\n"
+"             font-size: 15px;\n"
 "             font-weight: bold;\n"
-"             color: #374151;\n"
-"             background-color: #F9FAFB;\n"
-"             padding: 4px 8px;\n"
-"             border-radius: 4px;\n"
+"             color: #1E293B;\n"
+"             background-color: #F1F5F9;\n"
+"             padding: 8px 12px;\n"
+"             border-radius: 6px;\n"
 "         }\n"
 "        "))
         self.pdfNameLabel.setText(_translate("Form", "PDF 名称"))
         self.tocStartLabel.setStyleSheet(_translate("Form", "\n"
 "           QLabel {\n"
-"               color: #374151;\n"
-"               font-size: 13px;\n"
+"               color: #475569;\n"
+"               font-size: 14px;\n"
 "           }\n"
 "          "))
         self.tocStartLabel.setText(_translate("Form", "目录起始页"))
         self.tocStartSpinBox.setStyleSheet(_translate("Form", "\n"
 "           QSpinBox {\n"
-"               padding: 4px;\n"
-"               border: 1px solid #D1D5DB;\n"
-"               border-radius: 4px;\n"
+"               padding: 4px 8px;\n"
+"               border: 2px solid #E2E8F0;\n"
+"               border-radius: 6px;\n"
 "               background-color: white;\n"
+"               color: #1E293B;\n"
+"               font-size: 14px;\n"
 "           }\n"
 "           QSpinBox:focus {\n"
 "               border-color: #3B82F6;\n"
+"               background-color: #F8FAFC;\n"
+"           }\n"
+"           QSpinBox::up-button, QSpinBox::down-button {\n"
+"               border: none;\n"
+"               background-color: transparent;\n"
+"               width: 20px;\n"
+"           }\n"
+"           QSpinBox::up-button:hover, QSpinBox::down-button:hover {\n"
+"               background-color: #F1F5F9;\n"
 "           }\n"
 "          "))
         self.tocEndLabel.setStyleSheet(_translate("Form", "\n"
 "           QLabel {\n"
-"               color: #374151;\n"
-"               font-size: 13px;\n"
+"               color: #475569;\n"
+"               font-size: 14px;\n"
 "           }\n"
 "          "))
         self.tocEndLabel.setText(_translate("Form", "目录结束页"))
         self.tocEndSpinBox.setStyleSheet(_translate("Form", "\n"
 "           QSpinBox {\n"
-"               padding: 4px;\n"
-"               border: 1px solid #D1D5DB;\n"
-"               border-radius: 4px;\n"
+"               padding: 4px 8px;\n"
+"               border: 2px solid #E2E8F0;\n"
+"               border-radius: 6px;\n"
 "               background-color: white;\n"
+"               color: #1E293B;\n"
+"               font-size: 14px;\n"
 "           }\n"
 "           QSpinBox:focus {\n"
 "               border-color: #3B82F6;\n"
+"               background-color: #F8FAFC;\n"
+"           }\n"
+"           QSpinBox::up-button, QSpinBox::down-button {\n"
+"               border: none;\n"
+"               background-color: transparent;\n"
+"               width: 20px;\n"
+"           }\n"
+"           QSpinBox::up-button:hover, QSpinBox::down-button:hover {\n"
+"               background-color: #F1F5F9;\n"
 "           }\n"
 "          "))
         self.contentStartLabel.setStyleSheet(_translate("Form", "\n"
 "           QLabel {\n"
-"               color: #374151;\n"
-"               font-size: 13px;\n"
+"               color: #475569;\n"
+"               font-size: 14px;\n"
 "           }\n"
 "          "))
         self.contentStartLabel.setText(_translate("Form", "正文起始页"))
         self.contentStartSpinBox.setStyleSheet(_translate("Form", "\n"
 "           QSpinBox {\n"
-"               padding: 4px;\n"
-"               border: 1px solid #D1D5DB;\n"
-"               border-radius: 4px;\n"
+"               padding: 4px 8px;\n"
+"               border: 2px solid #E2E8F0;\n"
+"               border-radius: 6px;\n"
 "               background-color: white;\n"
+"               color: #1E293B;\n"
+"               font-size: 14px;\n"
 "           }\n"
 "           QSpinBox:focus {\n"
 "               border-color: #3B82F6;\n"
+"               background-color: #F8FAFC;\n"
+"           }\n"
+"           QSpinBox::up-button, QSpinBox::down-button {\n"
+"               border: none;\n"
+"               background-color: transparent;\n"
+"               width: 20px;\n"
+"           }\n"
+"           QSpinBox::up-button:hover, QSpinBox::down-button:hover {\n"
+"               background-color: #F1F5F9;\n"
 "           }\n"
 "          "))
+        self.deletePDF_2.setStyleSheet(_translate("Form", "\n"
+"         QPushButton {\n"
+"             background-color: #DCFCE7;\n"
+"             border: none;\n"
+"             border-radius: 6px;\n"
+"             color: #16A34A;\n"
+"             font-size: 14px;\n"
+"             font-weight: bold;\n"
+"             padding: 8px 16px;\n"
+"         }\n"
+"         QPushButton:hover {\n"
+"             background-color: #BBF7D0;\n"
+"         }\n"
+"         QPushButton:pressed {\n"
+"             background-color: #86EFAC;\n"
+"         }\n"
+"        "))
+        self.deletePDF_2.setText(_translate("Form", "打开 PDF"))
+        self.deletePDF.setStyleSheet(_translate("Form", "\n"
+"         QPushButton {\n"
+"             background-color: #FEE2E2;\n"
+"             border: none;\n"
+"             border-radius: 6px;\n"
+"             color: #DC2626;\n"
+"             font-size: 14px;\n"
+"             font-weight: bold;\n"
+"             padding: 8px 16px;\n"
+"         }\n"
+"         QPushButton:hover {\n"
+"             background-color: #FEE2E2;\n"
+"         }\n"
+"         QPushButton:pressed {\n"
+"             background-color: #FEE2E2;\n"
+"         }\n"
+"        "))
         self.deletePDF.setText(_translate("Form", "删除 PDF"))
