@@ -38,7 +38,8 @@ def clean_text(text: str) -> str:
         'Ⅰ': 'I', 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV', 'Ⅴ': 'V',
         'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X',
         '=': 'II',  # 将等号视为罗马数字II
-        '貝': 'II'  # 将貝字视为罗马数字II
+        '貝': 'XII',  # 将貝字视为罗马数字XII
+        'Ị': 'I'  # 将Ị视为罗马数字I
     }
     
     for k, v in roman_number_map.items():

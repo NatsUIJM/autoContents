@@ -255,7 +255,7 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                 else:
                     error_data = {
                         "items": [{
-                            "text": f"错误码{str(e)}",
+                            "text": f"模型错误，错误码{str(e)}",
                             "number": 1,
                             "confirmed": True,
                             "level": 1

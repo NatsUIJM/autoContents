@@ -19,11 +19,19 @@ import re
 class ProcessedFile:
     original_path: Path
     processed_path: Path
-    backup_path: Optional[Path]  # 新增：备用文件路径
+    backup_path: Optional[Path]
     items: List[dict]
-    backup_items: Optional[List[dict]] = None  # 新增：备用数据
+    backup_items: Optional[List[dict]] = None
     is_auxiliary: bool = False
     is_combined: bool = False
+
+    def __post_init__(self):
+        """初始化后检查并处理模型错误"""
+        if check_model_error(self.items):
+            if self.backup_items:
+                # 如果主文件有错误且存在备用文件，则交换
+                self.items, self.backup_items = self.backup_items, self.items
+                print(f"检测到模型错误，切换到备用结果: {self.processed_path}")
 
 def setup_logging():
 
@@ -141,14 +149,35 @@ def find_reliable_end_overlap_indices(list1: List[dict], list2: List[dict],
     
     return None, None
 
+def check_model_error(items: List[dict]) -> bool:
+    """检查是否存在模型错误"""
+    if not items:
+        return True
+    first_text = items[0].get('text', '')
+    return first_text.startswith('模型错误，错误码')
+
 def read_json_file(file_path: Path) -> List[dict]:
     """读取JSON文件并返回数据"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            return data.get('items', [])
+            items = data.get('items', [])
+            
+            # 检查是否为空列表
+            if not items:
+                logging.warning(f"文件为空: {file_path}")
+                return []
+            
+            return items
+            
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON解析错误 {file_path}: {str(e)}")
+        return []
+    except FileNotFoundError:
+        logging.error(f"文件不存在: {file_path}")
+        return []
     except Exception as e:
-        logging.error(f"Error reading {file_path}: {str(e)}")
+        logging.error(f"读取文件时发生错误 {file_path}: {str(e)}")
         return []
 
 def write_json_file(file_path: Path, data: List[dict]):
@@ -493,7 +522,7 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
     print("\n=== 阶段1：文件加载 ===")
     for original_path_str in file_info.keys():
         original_path = Path(original_path_str)
-        # 修改为查找deepseek处理文件
+        # 查找deepseek处理文件
         processed_path = processed_dir / f"{original_path.stem}_deepseek_processed.json"
         backup_path = get_backup_path(processed_path)
         
@@ -505,6 +534,14 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         backup_items = None
         if backup_path and backup_path.exists():
             backup_items = read_json_file(backup_path)
+        
+        # 检查主文件是否有模型错误
+        if check_model_error(items):
+            if backup_items:
+                print(f"检测到模型错误，使用备用文件: {backup_path}")
+                items, backup_items = backup_items, items
+            else:
+                print(f"警告：检测到模型错误但没有可用的备用文件: {processed_path}")
         
         if not items and not backup_items:
             print(f"主文件和备用文件均为空: {processed_path}")
