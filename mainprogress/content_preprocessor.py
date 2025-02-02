@@ -70,7 +70,9 @@ def clean_text_content(data: List[dict]) -> List[dict]:
             item['text'] = (item['text']
                           .replace(' ', '')
                           .replace('§', '')
-                          .replace('¥', '*'))
+                          .replace('¥', '*')
+                          .replace('$', '')
+                          .replace('+', ''))
     return data
 
 def transform_data_structure(data: List[dict]) -> dict:

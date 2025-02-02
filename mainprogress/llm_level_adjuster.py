@@ -3,11 +3,9 @@
 功能: 使用DeepSeek模型调整目录层级结构，带重试机制
 """
 import os
-import os
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
-import sys
 import json
 import re
 import asyncio
@@ -17,58 +15,76 @@ from openai import AsyncOpenAI
 from datetime import datetime
 from config.paths import PathConfig
 
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
-
 def clean_text_for_matching(text):
     """仅保留中文字符"""
     return ''.join(char for char in text if '\u4e00' <= char <= '\u9fff')
 
 def match_text_with_model_output(original_text, model_items):
     """尝试匹配文本并返回对应的level值"""
-    # 第一次尝试：精确匹配
-    for item in model_items:
-        if item['text'] == original_text:
-            return item.get('level')
+    for text, level in model_items:
+        if text == original_text:
+            return level
     
     # 第二次尝试：仅匹配中文字符
     cleaned_original = clean_text_for_matching(original_text)
-    for item in model_items:
-        cleaned_model = clean_text_for_matching(item['text'])
+    for text, level in model_items:
+        cleaned_model = clean_text_for_matching(text)
         if cleaned_original == cleaned_model:
-            return item.get('level')
+            return level
     
     return None
 
 def prepare_data_for_model(data):
-    """移除number和level字段"""
+    """移除number和confirmed字段"""
     if isinstance(data, dict):
         return {
             key: prepare_data_for_model(value)
             for key, value in data.items()
-            if key not in ['number', 'level']
+            if key not in ['number', 'confirmed']
         }
     elif isinstance(data, list):
         return [prepare_data_for_model(item) for item in data]
     return data
 
-def remove_entries(data):
-    if isinstance(data, list):
-        return [remove_entries(item) for item in data if not (isinstance(item, dict) and re.match(r'^\d+\.\d+\.\d+', item.get('text', '')))]
-    elif isinstance(data, dict):
-        return {key: remove_entries(value) for key, value in data.items()}
-    else:
-        return data
+def convert_compressed_to_full(compressed_data):
+    """将压缩格式转换为完整JSON格式"""
+    items = []
+    for text, level in compressed_data:
+        items.append({
+            "text": text,
+            "level": level
+        })
+    return {"items": items}
 
 def is_complete_json(text):
-    """检查JSON是否完整"""
-    return text.strip().endswith("}\n  ]\n}")
+    """检查压缩格式JSON是否完整"""
+    # 检查是否以方括号结尾，并且包含至少一个有效的条目
+    text = text.strip()
+    if not (text.startswith("[") and text.endswith("]")):
+        return False
+    
+    try:
+        # 尝试解析JSON
+        json.loads(text)
+        return True
+    except json.JSONDecodeError:
+        return False
 
-def save_response(content, input_filename, attempt, cache_dir):
-    """保存响应到缓存目录，使用输入文件名作为前缀"""
+def save_response(content, input_filename, attempt, cache_dir, is_compressed=True):
+    """保存响应到缓存目录"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"response_{input_filename}_attempt_{attempt}_{timestamp}.json"
     filepath = cache_dir / filename
+    
+    if is_compressed:
+        # 如果是压缩格式，先转换为完整格式
+        try:
+            compressed_data = json.loads(content)
+            full_data = convert_compressed_to_full(compressed_data)
+            content = json.dumps(full_data, ensure_ascii=False, indent=2)
+        except json.JSONDecodeError:
+            print("警告：压缩格式转换失败，保存原始内容")
+    
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(content)
     return filepath
@@ -89,43 +105,30 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
         current_response = ""
         
         while True:
-            # 创建模型提示
             if attempt == 1:
                 system_prompt = """请协助我处理这份JSON文件。这是一份目录文件，包含了一本书的完整目录。
 你的任务是为每个目录项添加合适的层级（level）。请先总览整个文档，判断出第一级标题的结构特点（它们一般是篇或者章），然后判断第二级和第三级标题的特征。
-这个文件可能一共有两级标题也可能是三级标题，但不会更少或更多。请给出完整的JSON文件，为每个条目添加正确的level字段。
-直接输出结果，不要附带任何说明或者解释。
-输出格式要求：
-```json
-{
-  "items": [
-    {
-      "text": "第一章",
-      "level": 1
-    },
-    {
-      "text": "第一节",
-      "level": 2
-    },
-    {
-      "text": "第一小节",
-      "level": 3
-    }
-    ]
-}
+这个文件可能一共有两级标题也可能是三级标题，但不会更少或更多。请按照下面的输出格式，为每个条目添加正确的level字段。
 
+请使用以下格式输出结果（示例）：
+```json
+[["第一章 绪论", 1],
+["第一节 概述", 2],
+["第二节 基本原理", 2]]
+```
+
+请注意，这是一个压缩格式的输出，每个条目是一个包含两个元素的列表，第一个元素是目录项的文本，第二个元素是level值。请直接输出结果，不要附带任何说明或者解释。
 """
                 user_content = model_input_json
             else:
                 system_prompt = """请继续处理之前的JSON文件，为每个目录项添加合适的层级（level）。
-请基于这份不完整的结果继续处理。直接输出结果，不要附带任何说明或者解释。"""
+请基于这份不完整的结果继续处理。使用相同的压缩格式输出。"""
                 user_content = f"原始文件：\n{model_input_json}\n\n不完整的处理结果：\n{current_response}"
 
             print(f"\nAttempt {attempt}: Sending request to API...")
             
-            # 获取流式响应
             stream = await client.chat.completions.create(
-                model="qwen-long",
+                model="qwen-max",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content}
@@ -153,14 +156,13 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 
             current_response = accumulated_response
 
-            # 检查响应是否完整
             if is_complete_json(accumulated_response):
                 try:
                     model_output = json.loads(accumulated_response)
                     
                     # 更新原始数据的level值
                     for item in original_data['items']:
-                        new_level = match_text_with_model_output(item['text'], model_output['items'])
+                        new_level = match_text_with_model_output(item['text'], model_output)
                         if new_level is not None:
                             item['level'] = new_level
                     

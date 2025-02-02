@@ -22,6 +22,24 @@ class ServiceConfig(NamedTuple):
     base_url: str
     model_name: str
 
+def strip_items_wrapper(data: dict) -> list:
+    """Remove the 'items' wrapper from input JSON"""
+    return data["items"]
+
+def convert_to_full_format(compressed_data: list) -> dict:
+    """Convert compressed format to full format"""
+    return {
+        "items": [
+            {
+                "text": item[0],
+                "number": item[1],
+                "confirmed": item[2],
+                "level": item[3]
+            }
+            for item in compressed_data
+        ]
+    }
+
 SERVICES = {
     'dashscope': ServiceConfig(
         name='DashScope',
@@ -67,7 +85,7 @@ class ProgressTracker:
     def get_progress(self) -> float:
         if self.total_output_chars == 0:
             return 0.0
-        return self.total_output_chars / (self.total_input_chars / 0.65) * 100
+        return self.total_output_chars / (self.total_input_chars / 3 ) * 100
 
     def get_time_estimate(self) -> str:
         if self.processed_chars == 0:
@@ -123,28 +141,8 @@ def get_system_prompt() -> str:
 5. 请使用JSON格式输出，正确示例如下：
 
 ``` json
-{
-  "items": [
-    {
-      "text": "第1章 自动控制概述",
-      "number": null,
-      "confirmed": false,
-      "level": 1
-    },
-    {
-      "text": "第一节 自动控制和自动控制技术",
-      "number": 1,
-      "confirmed": true,
-      "level": 2
-    },
-    {
-      "text": "第二节 自动控制系统的组成及分类",
-      "number": 6,
-      "confirmed": true,
-      "level": 2
-    }
-  ]
-}
+[["第二节 零件图的视图选择及尺寸标注", 196, true, 2],
+ ["第三节 零件结构工艺性简介", 206, true, 2]]
 ```
 
 6. 易错案例：
@@ -152,22 +150,8 @@ def get_system_prompt() -> str:
    2. `第2章 超前滞后校正与PID校正`正确；`第2章 超前滞后校正与 PID校正`错误；`第2章 超前滞后校正与PID 校正`错误
    3. JSON错误格式案例：
 ``` json
-{
-  [ // 错误：缺少键名
-    {
-      "text": "第1章 自动控制概述",
-      "number": "1", // 错误：应为数字（int），不要加引号（str）
-      "confirmed": true,
-      "level": 1
-    },
-    {
-      "text": "5.1 定时/计数器 T0 和 T1", // 错误：标题中T0和T1前后有多余空格
-      "number": 1,
-      "confirmed": false, // 错误：这里应为true，当且仅当页码缺失时为false
-      "level": 2
-    },
-  ]
-}
+[["第二节 零件图的视图选择及尺寸标注", "196", true, 2], // 错误：应为数字（int），不要加引号（str）
+ ["第三节 零件结构工艺性简介", 206, false, 2]] // 错误：这里应为true，当且仅当页码缺失时为false
 ```
 
 常见错误示例：
@@ -201,8 +185,11 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
+        # Strip the 'items' wrapper before sending to LLM
+        stripped_data = strip_items_wrapper(data)
+        
         # 创建模型提示词
-        prompt = f"{get_system_prompt()}\n\n{json.dumps(data, ensure_ascii=False, indent=2)}"
+        prompt = f"{get_system_prompt()}\n\n{json.dumps(stripped_data, ensure_ascii=False, indent=2)}"
         
         # 更新输入字符计数
         progress_tracker.add_input_chars(len(prompt))
@@ -237,8 +224,11 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                             chunk.usage.prompt_tokens
                         )
                 
-                # 验证JSON格式
-                processed_data = json.loads(full_response)
+                # 验证JSON格式并转换为压缩格式
+                compressed_data = json.loads(full_response)
+                
+                # 转换为完整格式
+                processed_data = convert_to_full_format(compressed_data)
                 
                 # 修改输出文件名，添加服务名称
                 output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"

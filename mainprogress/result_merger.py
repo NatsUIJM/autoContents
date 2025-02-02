@@ -153,8 +153,28 @@ def check_model_error(items: List[dict]) -> bool:
     """检查是否存在模型错误"""
     if not items:
         return True
+        
+    # 检查第一个错误类型：以"模型错误，错误码"开头
     first_text = items[0].get('text', '')
-    return first_text.startswith('模型错误，错误码')
+    if first_text.startswith('模型错误，错误码'):
+        return True
+        
+    # 检查第二个错误类型：四个字段分别为'i', 't', 'e', 'm'
+    if len(items) >= 4:
+        error_pattern = ['i', 't', 'e', 'm']
+        for i, expected in enumerate(error_pattern):
+            if i >= len(items):
+                break
+            if items[i].get('text', '') == expected:
+                # 如果找到一个匹配，继续检查后续项
+                continue
+            # 如果有不匹配，说明不是这种错误
+            break
+        else:
+            # 如果所有项都匹配，说明是这种错误
+            return True
+            
+    return False
 
 def read_json_file(file_path: Path) -> List[dict]:
     """读取JSON文件并返回数据"""

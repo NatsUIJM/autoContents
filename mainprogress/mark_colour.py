@@ -4,14 +4,14 @@
 """
 import os
 import sys
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 import json
 import cv2
-import numpy as np
 import re
-import csv
 import jieba
 from config.paths import PathConfig
 
@@ -327,6 +327,39 @@ def check_rules(text, coordinates, page_info, image_name, all_lines):
 
     return results
 
+def put_chinese_text(img, text, position, color):
+    """
+    在图片上绘制中文文字
+    """
+    img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img_pil)
+    
+    # 尝试加载中文字体
+    fontsize = 20
+    fonts = [
+        'C:\\Windows\\Fonts\\simhei.ttf',  # Windows
+        'C:\\Windows\\Fonts\\simsun.ttc',  # Windows
+        '/usr/share/fonts/truetype/arphic/uming.ttc',  # Ubuntu
+        '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',  # Ubuntu
+        '/System/Library/Fonts/PingFang.ttc',  # macOS
+        '/System/Library/Fonts/STHeiti Light.ttc',  # macOS
+    ]
+    
+    font = None
+    for font_path in fonts:
+        try:
+            font = ImageFont.truetype(font_path, fontsize)
+            break
+        except:
+            continue
+    
+    if font is None:
+        font = ImageFont.load_default()
+    
+    draw.text(position, text, font=font, fill=color[::-1])  # RGB转BGR
+    img_opencv = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+    return img_opencv
+
 def draw_boxes(image_path, json_path, output_image_path, output_json_path):
     """
     在图像上绘制文本框并输出对应的JSON文件
@@ -348,8 +381,6 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
     
     red_boxes = []
     output_data = []
-    
-    # 保存配对的目录文本框
     catalog_pairs = []
     
     # 第一次遍历：执行所有规则检查并标记红框
@@ -400,7 +431,7 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
                 if polygon not in red_boxes:
                     red_boxes.append(polygon)
     
-    # 绘制文本框并收集JSON数据
+    # 绘制文本框和文字
     for line in lines:
         polygon = line.get('polygon', [])
         text = line.get('content', '')
@@ -410,12 +441,14 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
         
         points = np.array(polygon).reshape((-1, 2)).astype(np.int32)
         is_red = polygon in red_boxes
-        color = (0, 0, 255) if is_red else (0, 255, 0)
+        color = (0, 0, 255) if is_red else (0, 255, 0)  # BGR格式
         
         # 绘制文本框
         cv2.polylines(image, [points], True, color, 2)
+        
+        # 绘制中文文字
         x, y = points[0]
-        cv2.putText(image, text, (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        image = put_chinese_text(image, text, (x, y-25), color)
         
         # 收集JSON数据
         box_data = {
@@ -430,6 +463,7 @@ def draw_boxes(image_path, json_path, output_image_path, output_json_path):
     # 保存JSON
     with open(output_json_path, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, ensure_ascii=False, indent=2)
+
 
 def process_directory(input_dir, input_image_dir, output_dir):
     """
