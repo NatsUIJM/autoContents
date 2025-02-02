@@ -11,6 +11,7 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw
 import io
+import time
 from alibabacloud_ocr_api20210707.client import Client as ocr_api20210707Client
 from alibabacloud_tea_openapi import models as open_api_models
 from alibabacloud_darabonba_stream.client import Client as StreamClient
@@ -22,6 +23,26 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 
 from config.paths import PathConfig
+
+def retry_with_delay(max_retries=10, delay=10):
+    """重试装饰器"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries == max_retries:
+                        print(f"达到最大重试次数 {max_retries}，操作失败")
+                        raise
+                    print(f"发生错误: {str(e)}")
+                    print(f"第 {retries} 次重试，等待 {delay} 秒...")
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator
 
 class AliyunOCRProcessor:
     def __init__(self):
@@ -261,66 +282,60 @@ class AliyunOCRProcessor:
         final_img = np.vstack((combined_h, v_plot_combined))
         
         return final_img
-
+    @retry_with_delay(max_retries=10, delay=10)
     def process_image(self, img_path):
         """处理单张图片"""
-        try:
-            print(f"\n=== 开始处理图片: {img_path} ===")
+        print(f"\n=== 开始处理图片: {img_path} ===")
+        
+        output_dir = Path(PathConfig.OCR_PROJ_ALIYUN_OUTPUT)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        resized_image = self.resize_image_if_needed(img_path)
+        if resized_image:
+            print("图片尺寸超过限制，已自动调整")
+            body_stream = resized_image
+        else:
+            body_stream = StreamClient.read_from_file_path(str(img_path))
+        
+        recognize_request = ocr_api_20210707_models.RecognizeGeneralRequest(
+            body=body_stream
+        )
+        runtime = util_models.RuntimeOptions(
+            read_timeout=10000,
+            connect_timeout=10000
+        )
+        
+        print("调用阿里云OCR API...")
+        response = self.client.recognize_general_with_options(recognize_request, runtime)
+        result = response.to_map()
+        
+        if 'body' in result and 'Data' in result['body']:
+            data_str = result['body']['Data']
+            raw_response = json.loads(data_str)
             
-            output_dir = Path(PathConfig.OCR_PROJ_ALIYUN_OUTPUT)
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # 转换响应格式并保存
+            standard_format, azure_format = self.convert_response(raw_response, img_path)
             
-            resized_image = self.resize_image_if_needed(img_path)
-            if resized_image:
-                print("图片尺寸超过限制，已自动调整")
-                body_stream = resized_image
-            else:
-                body_stream = StreamClient.read_from_file_path(str(img_path))
+            # 保存标准格式结果
+            output_json_path = output_dir / f"{img_path.stem}_result.json"
+            with open(output_json_path, 'w', encoding='utf-8') as f:
+                json.dump(standard_format, f, ensure_ascii=False, indent=2)
             
-            recognize_request = ocr_api_20210707_models.RecognizeGeneralRequest(
-                body=body_stream
-            )
-            runtime = util_models.RuntimeOptions(
-                read_timeout=10000,
-                connect_timeout=10000
-            )
+            # 生成可视化结果
+            image = cv2.imread(str(img_path))
+            height, width = image.shape[:2]
             
-            print("调用阿里云OCR API...")
-            response = self.client.recognize_general_with_options(recognize_request, runtime)
-            result = response.to_map()
+            h_projection, v_projection = self.calculate_projections(standard_format, height, width)
+            output_img = self.draw_visualization(image, standard_format, h_projection, v_projection)
             
-            if 'body' in result and 'Data' in result['body']:
-                data_str = result['body']['Data']
-                raw_response = json.loads(data_str)
-                
-                # 转换响应格式并保存
-                standard_format, azure_format = self.convert_response(raw_response, img_path)
-                
-                # 保存标准格式结果
-                output_json_path = output_dir / f"{img_path.stem}_result.json"
-                with open(output_json_path, 'w', encoding='utf-8') as f:
-                    json.dump(standard_format, f, ensure_ascii=False, indent=2)
-                
-                # 生成可视化结果
-                image = cv2.imread(str(img_path))
-                height, width = image.shape[:2]
-                
-                h_projection, v_projection = self.calculate_projections(standard_format, height, width)
-                output_img = self.draw_visualization(image, standard_format, h_projection, v_projection)
-                
-                output_img_path = output_dir / f"{img_path.stem}_annotated.jpg"
-                cv2.imwrite(str(output_img_path), output_img)
-                
-                print(f"处理完成，结果已保存：")
-                print(f"- 原始响应：{output_dir}/{img_path.stem}_initial.json")
-                print(f"- Azure格式：{output_dir}/{img_path.stem}_raw_response.json")
-                print(f"- 标准格式：{output_json_path}")
-                print(f"- 标注图片：{output_img_path}")
+            output_img_path = output_dir / f"{img_path.stem}_annotated.jpg"
+            cv2.imwrite(str(output_img_path), output_img)
             
-        except Exception as e:
-            print(f"处理 {img_path.name} 时发生错误: {str(e)}")
-            import traceback
-            print(traceback.format_exc())
+            print(f"处理完成，结果已保存：")
+            print(f"- 原始响应：{output_dir}/{img_path.stem}_initial.json")
+            print(f"- Azure格式：{output_dir}/{img_path.stem}_raw_response.json")
+            print(f"- 标准格式：{output_json_path}")
+            print(f"- 标注图片：{output_img_path}")
 
     def process_directory(self, input_dir, max_workers=5):
         """处理目录中的所有图片"""

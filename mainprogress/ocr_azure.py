@@ -8,6 +8,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 import os
 import json
+import time
 from pathlib import Path
 import concurrent.futures
 from PIL import Image
@@ -19,6 +20,26 @@ from config.paths import PathConfig
 # Azure设置
 endpoint = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT')
 key = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_KEY')
+
+def retry_with_delay(max_retries=10, delay=10):
+    """重试装饰器"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries == max_retries:
+                        print(f"达到最大重试次数 {max_retries}，操作失败")
+                        raise
+                    print(f"发生错误: {str(e)}")
+                    print(f"第 {retries} 次重试，等待 {delay} 秒...")
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator
 
 def convert_polygon_points(polygon_points):
     """将Azure OCR返回的点数组转换为bbox格式"""
@@ -79,45 +100,39 @@ def resize_image_if_needed(img_path):
     # 如果不需要调整，返回None
     return None
 
+@retry_with_delay(max_retries=10, delay=10)
 def process_image(img_path, output_dir):
     """处理单张图片的OCR并保存结果"""
-    try:
-        document_analysis_client = DocumentAnalysisClient(
-            endpoint=endpoint,
-            credential=AzureKeyCredential(key)
-        )
-        
-        # 检查是否需要调整图片尺寸
-        resized_image = resize_image_if_needed(img_path)
-        
-        if resized_image:
-            print(f"图片 {img_path.name} 尺寸超过限制，已自动调整")
-            image_data = resized_image
-        else:
-            with open(str(img_path), "rb") as image_file:
-                image_data = image_file.read()
-        
-        print(f"Starting OCR for {img_path.name}")
-        poller = document_analysis_client.begin_analyze_document(
-            "prebuilt-document",
-            document=image_data
-        )
-        result = poller.result()
-        
-        result_dict = result.to_dict()
-        processed_data = process_azure_json(result_dict)
-        
-        json_path = output_dir / f"{img_path.stem}.json"
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(processed_data, f, ensure_ascii=False, indent=2)
-        
-        print(f"Successfully processed {img_path.name}")
-        
-    except Exception as e:
-        print(f"Error processing {img_path.name}: {str(e)}")
-        print("Full error details:")
-        import traceback
-        print(traceback.format_exc())
+    document_analysis_client = DocumentAnalysisClient(
+        endpoint=endpoint,
+        credential=AzureKeyCredential(key)
+    )
+    
+    # 检查是否需要调整图片尺寸
+    resized_image = resize_image_if_needed(img_path)
+    
+    if resized_image:
+        print(f"图片 {img_path.name} 尺寸超过限制，已自动调整")
+        image_data = resized_image
+    else:
+        with open(str(img_path), "rb") as image_file:
+            image_data = image_file.read()
+    
+    print(f"Starting OCR for {img_path.name}")
+    poller = document_analysis_client.begin_analyze_document(
+        "prebuilt-document",
+        document=image_data
+    )
+    result = poller.result()
+    
+    result_dict = result.to_dict()
+    processed_data = process_azure_json(result_dict)
+    
+    json_path = output_dir / f"{img_path.stem}.json"
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(processed_data, f, ensure_ascii=False, indent=2)
+    
+    print(f"Successfully processed {img_path.name}")
 
 def main():
     if not endpoint or not key:

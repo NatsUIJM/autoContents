@@ -90,6 +90,10 @@ def read_json_file(file_path: Path) -> List[dict]:
         logging.error(f"Error reading {file_path}: {str(e)}")
         return []
 
+def filter_preface_items(data: List[dict]) -> List[dict]:
+    """过滤掉text字段以'前言'结尾的条目"""
+    return [item for item in data if not (isinstance(item.get('text'), str) and item['text'].endswith('前言'))]
+
 def remove_items_prefix(file_path: Path):
     """删除JSON文件中的"items": 前缀和最外层的大括号"""
     try:
@@ -134,6 +138,9 @@ def post_process_all_files(directory: Path):
 
 def clean_text_content(data: List[dict]) -> List[dict]:
     """清理JSON数据中text和number字段的内容"""
+    # 首先过滤掉前言条目
+    data = filter_preface_items(data)
+    
     for item in data:
         # 清理text字段
         if 'text' in item and isinstance(item['text'], str):

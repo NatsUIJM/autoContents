@@ -8,6 +8,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 import os
 import json
+import time
 from pathlib import Path
 import concurrent.futures
 from PIL import Image
@@ -18,6 +19,26 @@ from alibabacloud_darabonba_stream.client import Client as StreamClient
 from alibabacloud_ocr_api20210707 import models as ocr_api_20210707_models
 from alibabacloud_tea_util import models as util_models
 from config.paths import PathConfig
+
+def retry_with_delay(max_retries=10, delay=10):
+    """重试装饰器"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries == max_retries:
+                        print(f"达到最大重试次数 {max_retries}，操作失败")
+                        raise
+                    print(f"发生错误: {str(e)}")
+                    print(f"第 {retries} 次重试，等待 {delay} 秒...")
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator
 
 def create_client():
     """创建阿里云OCR客户端"""
@@ -78,61 +99,56 @@ def resize_image_if_needed(img_path):
     # 如果不需要调整，返回None
     return None
 
+@retry_with_delay(max_retries=10, delay=10)
 def process_image(img_path, output_dir):
     """处理单张图片的OCR并保存结果"""
-    try:
-        print(f"\n=== 开始处理图片: {img_path} ===")
-        
-        client = create_client()
-        
-        # 检查是否需要调整图片尺寸
-        resized_image = resize_image_if_needed(img_path)
-        
-        if resized_image:
-            print("图片尺寸超过限制，已自动调整")
-            body_stream = resized_image
-        else:
-            body_stream = StreamClient.read_from_file_path(str(img_path))
-        
-        recognize_request = ocr_api_20210707_models.RecognizeGeneralRequest(
-            body=body_stream
-        )
-        
-        runtime = util_models.RuntimeOptions(
-            read_timeout=10000,
-            connect_timeout=10000
-        )
-        
-        print("调用阿里云OCR API...")
-        response = client.recognize_general_with_options(recognize_request, runtime)
-        result = response.to_map()
-        
-        if 'body' in result and 'Data' in result['body']:
-            data_str = result['body']['Data']
-            try:
-                data_json = json.loads(data_str)
-                processed_data = process_aliyun_json(data_json)
-                
-                print(f"处理完成，共转换 {len(processed_data)} 个文本块")
-                
-                json_path = output_dir / f"{img_path.stem}.json"
-                with open(json_path, 'w', encoding='utf-8') as f:
-                    json.dump(processed_data, f, ensure_ascii=False, indent=2)
-                
-                print(f"结果已保存到: {json_path}")
-                
-            except json.JSONDecodeError as e:
-                print(f"解析Data字段失败: {str(e)}")
-                print("Data内容:")
-                print(data_str[:200] + "...") 
-        
-        print(f"=== 处理完成: {img_path} ===\n")
-        
-    except Exception as e:
-        print(f"Error processing {img_path.name}: {str(e)}")
-        print("Full error details:")
-        import traceback
-        print(traceback.format_exc())
+    print(f"\n=== 开始处理图片: {img_path} ===")
+    
+    client = create_client()
+    
+    # 检查是否需要调整图片尺寸
+    resized_image = resize_image_if_needed(img_path)
+    
+    if resized_image:
+        print("图片尺寸超过限制，已自动调整")
+        body_stream = resized_image
+    else:
+        body_stream = StreamClient.read_from_file_path(str(img_path))
+    
+    recognize_request = ocr_api_20210707_models.RecognizeGeneralRequest(
+        body=body_stream
+    )
+    
+    runtime = util_models.RuntimeOptions(
+        read_timeout=10000,
+        connect_timeout=10000
+    )
+    
+    print("调用阿里云OCR API...")
+    response = client.recognize_general_with_options(recognize_request, runtime)
+    result = response.to_map()
+    
+    if 'body' in result and 'Data' in result['body']:
+        data_str = result['body']['Data']
+        try:
+            data_json = json.loads(data_str)
+            processed_data = process_aliyun_json(data_json)
+            
+            print(f"处理完成，共转换 {len(processed_data)} 个文本块")
+            
+            json_path = output_dir / f"{img_path.stem}.json"
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(processed_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"结果已保存到: {json_path}")
+            
+        except json.JSONDecodeError as e:
+            print(f"解析Data字段失败: {str(e)}")
+            print("Data内容:")
+            print(data_str[:200] + "...") 
+            raise
+    
+    print(f"=== 处理完成: {img_path} ===\n")
 
 def main():
     # 验证环境变量

@@ -13,12 +13,33 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 import io
+import time
 import concurrent.futures
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
 from datetime import datetime
 from config.paths import PathConfig
+
+def retry_with_delay(max_retries=10, delay=10):
+    """重试装饰器"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries == max_retries:
+                        print(f"达到最大重试次数 {max_retries}，操作失败")
+                        raise
+                    print(f"发生错误: {str(e)}")
+                    print(f"第 {retries} 次重试，等待 {delay} 秒...")
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator
 
 class OCRProcessor:
     def __init__(self):
@@ -135,87 +156,83 @@ class OCRProcessor:
             
         return h_projection, v_projection
 
+    @retry_with_delay(max_retries=10, delay=10)
     def process_single_image(self, img_path):
-        try:
-            raw_response_path = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_raw_response.json"
-            
-            if raw_response_path.exists():
-                print(f"找到缓存的响应数据，正在处理 {img_path.name}")
-                with open(raw_response_path, 'r', encoding='utf-8') as f:
-                    result = json.load(f)
-            else:
-                print(f"未找到缓存数据，正在请求Azure处理 {img_path.name}")
-                document_intelligence_client = DocumentIntelligenceClient(
-                    endpoint=self.endpoint,
-                    credential=AzureKeyCredential(self.key)
-                )
+        """处理单张图片"""
+        raw_response_path = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_raw_response.json"
+        
+        if raw_response_path.exists():
+            print(f"找到缓存的响应数据，正在处理 {img_path.name}")
+            with open(raw_response_path, 'r', encoding='utf-8') as f:
+                result = json.load(f)
+        else:
+            print(f"未找到缓存数据，正在请求Azure处理 {img_path.name}")
+            document_intelligence_client = DocumentIntelligenceClient(
+                endpoint=self.endpoint,
+                credential=AzureKeyCredential(self.key)
+            )
 
-                resized_image = self.resize_image_if_needed(img_path)
-                image_data = resized_image if resized_image else open(img_path, "rb").read()
+            resized_image = self.resize_image_if_needed(img_path)
+            image_data = resized_image if resized_image else open(img_path, "rb").read()
+            
+            poller = document_intelligence_client.begin_analyze_document(
+                "prebuilt-read",
+                image_data
+            )
+            result = poller.result()
+            
+            # 保存原始响应
+            with open(raw_response_path, 'w', encoding='utf-8') as f:
+                result_dict = {
+                    "content": result.content,
+                    "pages": []
+                }
                 
-                poller = document_intelligence_client.begin_analyze_document(
-                    "prebuilt-read",
-                    image_data
-                )
-                result = poller.result()
-                
-                # 保存原始响应
-                with open(raw_response_path, 'w', encoding='utf-8') as f:
-                    result_dict = {
-                        "content": result.content,
-                        "pages": []
+                for page in result.pages:
+                    page_dict = {
+                        "page_number": page.page_number,
+                        "width": page.width,
+                        "height": page.height,
+                        "unit": page.unit,
+                        "lines": [],
+                        "words": []
                     }
                     
-                    for page in result.pages:
-                        page_dict = {
-                            "page_number": page.page_number,
-                            "width": page.width,
-                            "height": page.height,
-                            "unit": page.unit,
-                            "lines": [],
-                            "words": []
+                    for line in page.lines:
+                        line_dict = {
+                            "content": line.content,
+                            "polygon": line.polygon if line.polygon else None
                         }
-                        
-                        for line in page.lines:
-                            line_dict = {
-                                "content": line.content,
-                                "polygon": line.polygon if line.polygon else None
-                            }
-                            page_dict["lines"].append(line_dict)
-                        
-                        for word in page.words:
-                            word_dict = {
-                                "content": word.content,
-                                "confidence": word.confidence,
-                                "polygon": word.polygon if word.polygon else None
-                            }
-                            page_dict["words"].append(word_dict)
-                        
-                        result_dict["pages"].append(page_dict)
+                        page_dict["lines"].append(line_dict)
                     
-                    json.dump(result_dict, f, ensure_ascii=False, indent=2)
+                    for word in page.words:
+                        word_dict = {
+                            "content": word.content,
+                            "confidence": word.confidence,
+                            "polygon": word.polygon if word.polygon else None
+                        }
+                        page_dict["words"].append(word_dict)
+                    
+                    result_dict["pages"].append(page_dict)
+                
+                json.dump(result_dict, f, ensure_ascii=False, indent=2)
 
-            ocr_results = self.process_azure_result(result)
-            
-            image = cv2.imread(str(img_path))
-            height, width = image.shape[:2]
-            
-            h_projection, v_projection = self.calculate_projections(ocr_results, height, width)
-            
-            output_json = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_result.json"
-            with open(output_json, 'w', encoding='utf-8') as f:
-                json.dump(ocr_results, f, ensure_ascii=False, indent=2)
-            
-            output_img = self.draw_ocr_results(image, ocr_results, h_projection, v_projection)
-            output_img_path = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_annotated.jpg"
-            cv2.imwrite(str(output_img_path), output_img)
-            
-            print(f"已完成处理 {img_path.name}")
-            
-        except Exception as e:
-            print(f"处理 {img_path.name} 时出错: {str(e)}")
-            import traceback
-            print(traceback.format_exc())
+        ocr_results = self.process_azure_result(result)
+        
+        image = cv2.imread(str(img_path))
+        height, width = image.shape[:2]
+        
+        h_projection, v_projection = self.calculate_projections(ocr_results, height, width)
+        
+        output_json = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_result.json"
+        with open(output_json, 'w', encoding='utf-8') as f:
+            json.dump(ocr_results, f, ensure_ascii=False, indent=2)
+        
+        output_img = self.draw_ocr_results(image, ocr_results, h_projection, v_projection)
+        output_img_path = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_annotated.jpg"
+        cv2.imwrite(str(output_img_path), output_img)
+        
+        print(f"已完成处理 {img_path.name}")
 
     def draw_ocr_results(self, image, results, h_projection, v_projection):
         """在图片上绘制OCR结果和投影图"""
