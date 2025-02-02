@@ -1,6 +1,6 @@
 """
 文件名: pdf2jpg.py (原名: 0_pdf2jpg.py)
-功能: 将PDF文件转换为高质量JPG图片
+功能: 将PDF文件转换为高质量JPG图片，并进行二值化处理
 """
 import os
 import sys
@@ -10,6 +10,23 @@ import os
 import json
 from pdf2image import convert_from_path
 from config.paths import PathConfig
+from PIL import Image
+import numpy as np
+
+def binarize_image(image_path, threshold=200):
+    """对图片进行二值化处理"""
+    # 打开图片
+    img = Image.open(image_path)
+    # 转换为灰度图
+    img = img.convert('L')
+    # 转换为numpy数组
+    img_array = np.array(img)
+    # 二值化处理
+    binary_array = (img_array > threshold) * 255
+    # 转回PIL图片
+    binary_img = Image.fromarray(binary_array.astype(np.uint8))
+    # 覆盖保存
+    binary_img.save(image_path, 'JPEG')
 
 def convert_pdf_to_jpg():
     # 确保输出目录存在
@@ -46,14 +63,22 @@ def convert_pdf_to_jpg():
                 dpi=300
             )
             
-            # 保存图片
+            # 保存图片并进行二值化处理
+            saved_images = []  # 记录保存的图片路径
             for i, page in enumerate(pages, start=toc_start):
                 output_path = os.path.join(
                     PathConfig.PDF2JPG_OUTPUT,
                     f"{pdf_name}_page_{i}.jpg"
                 )
                 page.save(output_path, 'JPEG')
+                saved_images.append(output_path)
                 print(f"已保存: {output_path}")
+            
+            # 对保存的图片进行二值化处理
+            print("\n开始二值化处理...")
+            for image_path in saved_images:
+                binarize_image(image_path, threshold=200)
+                print(f"已完成二值化: {image_path}")
             
         except json.JSONDecodeError as e:
             print(f"JSON文件格式错误 {json_path}: {e}")

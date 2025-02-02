@@ -534,16 +534,16 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
     processed_files: Dict[str, ProcessedFile] = {}
 
     def get_backup_path(processed_path: Path) -> Optional[Path]:
-        """根据deepseek处理文件路径获取dashscope备用文件路径"""
-        if '_deepseek_processed' not in processed_path.stem:
+        """根据dashscope处理文件路径获取deepseek备用文件路径"""
+        if '_dashscope_processed' not in processed_path.stem:
             return None
-        return processed_path.parent / f"{processed_path.stem.replace('_deepseek_', '_dashscope_')}.json"
+        return processed_path.parent / f"{processed_path.stem.replace('_dashscope_', '_deepseek_')}.json"
 
     print("\n=== 阶段1：文件加载 ===")
     for original_path_str in file_info.keys():
         original_path = Path(original_path_str)
         # 查找deepseek处理文件
-        processed_path = processed_dir / f"{original_path.stem}_deepseek_processed.json"
+        processed_path = processed_dir / f"{original_path.stem}_dashscope_processed.json"
         backup_path = get_backup_path(processed_path)
         
         if not processed_path.exists():

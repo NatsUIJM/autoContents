@@ -49,6 +49,33 @@ def setup_logging():
         ]
     )
 
+def clean_number_field(value: str) -> int:
+    """清理number字段，仅保留数字并转换为整数"""
+    if not isinstance(value, str):
+        return value
+    # 仅保留数字字符
+    digits = ''.join(c for c in value if c.isdigit())
+    return int(digits) if digits else 0
+
+def clean_text_field(text: str) -> str:
+    """清理text字段，处理特殊字符和截断规则"""
+    if not isinstance(text, str):
+        return text
+    
+    # 查找 "…" 并截断
+    ellipsis_pos = text.find('…')
+    if ellipsis_pos != -1:
+        text = text[:ellipsis_pos]
+    
+    # 查找连续的 "·" 或 "." 并截断
+    for i in range(len(text) - 1):
+        if (text[i] == '·' and text[i+1] == '·') or (text[i] == '.' and text[i+1] == '.'):
+            text = text[:i]
+            break
+    
+    return text
+
+
 def read_json_file(file_path: Path) -> List[dict]:
     """读取JSON文件并返回数据，统一返回列表格式"""
     try:
@@ -63,16 +90,64 @@ def read_json_file(file_path: Path) -> List[dict]:
         logging.error(f"Error reading {file_path}: {str(e)}")
         return []
 
+def remove_items_prefix(file_path: Path):
+    """删除JSON文件中的"items": 前缀和最外层的大括号"""
+    try:
+        # 读取文件内容
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 删除"items": 前缀
+        content = content.replace('"items": ', '')
+        
+        # 删除第一行的左大括号和最后一行的右大括号
+        lines = content.splitlines()
+        if lines:
+            # 删除第一行的左大括号
+            if lines[0].strip() == '{':
+                lines = lines[1:]
+            elif lines[0].strip().startswith('{'):
+                lines[0] = lines[0].replace('{', '', 1).lstrip()
+            
+            # 删除最后一行的右大括号
+            if lines and lines[-1].strip() == '}':
+                lines = lines[:-1]
+            elif lines and lines[-1].strip().endswith('}'):
+                lines[-1] = lines[-1].rstrip().rstrip('}').rstrip()
+            
+            # 重新组合内容
+            content = '\n'.join(line for line in lines if line.strip())
+        
+        # 写回文件
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        logging.info(f"Removed 'items' prefix and braces from: {file_path}")
+    except Exception as e:
+        logging.error(f"Error processing {file_path}: {str(e)}")
+
+def post_process_all_files(directory: Path):
+    """对目录下所有JSON文件进行后处理"""
+    for file_path in directory.glob("*.json"):
+        if file_path.name != "file_info.json":  # 跳过文件信息JSON
+            remove_items_prefix(file_path)
+
 def clean_text_content(data: List[dict]) -> List[dict]:
-    """清理JSON数据中text字段的内容，移除空格和§符号，转换¥为*"""
+    """清理JSON数据中text和number字段的内容"""
     for item in data:
+        # 清理text字段
         if 'text' in item and isinstance(item['text'], str):
-            item['text'] = (item['text']
+            item['text'] = (clean_text_field(item['text'])
                           .replace(' ', '')
                           .replace('§', '')
                           .replace('¥', '*')
                           .replace('$', '')
                           .replace('+', ''))
+        
+        # 清理number字段
+        if 'number' in item:
+            item['number'] = clean_number_field(item['number'])
+    
     return data
 
 def transform_data_structure(data: List[dict]) -> dict:
@@ -260,6 +335,8 @@ def main():
     
     with open(input_dir / "file_info.json", 'w', encoding='utf-8') as f:
         json.dump(file_info_json, f, ensure_ascii=False, indent=2)
+    
+    post_process_all_files(input_dir)
 
 if __name__ == "__main__":
     main()

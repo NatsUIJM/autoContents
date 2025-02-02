@@ -317,12 +317,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def generate_script_sequence(self):
         service = self.service_select.currentText().lower()
-        return [
+        mode = self.AutoSelectBtn.currentText()  # 获取自动化模式选择
+        
+        base_sequence = [
             "pdf_to_image.py",
             f"ocr_and_projection_{service}.py",
             "mark_colour.py",
             "abcd_marker.py",
-            "image_marker.py",
             "image_preprocessor.py",
             f"ocr_{service}.py",
             "ocr_processor.py",
@@ -330,10 +331,24 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             "content_preprocessor.py",
             "llm_handler.py",
             "result_merger.py",
-            "llm_level_adjuster.py",
-            "content_validator.py",
-            "pdf_generator.py"
+            "llm_level_adjuster.py"
         ]
+        
+        if mode == "半自动":
+            # 在abcd_marker.py之后插入image_marker.py
+            marker_index = base_sequence.index("abcd_marker.py") + 1
+            base_sequence.insert(marker_index, "image_marker.py")
+            
+            # 在llm_level_adjuster.py之后插入content_validator.py
+            base_sequence.append("content_validator.py")
+        else:
+            # 全自动模式使用content_validator_auto.py
+            base_sequence.append("content_validator_auto.py")
+        
+        # 最后添加pdf生成脚本
+        base_sequence.append("pdf_generator.py")
+        
+        return base_sequence
 
     def run_next_script(self):
         if self.current_script_index >= len(self.scripts):

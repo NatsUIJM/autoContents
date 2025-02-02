@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '/Users/shijian/VSCode/autoContents/UI/mainWindow 2.ui'
+# Form implementation generated from reading ui file '/Users/shijian/VSCode/autoContents/UI/mainWindow_2.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(720, 700)
+        MainWindow.resize(720, 840)
         MainWindow.setMinimumSize(QtCore.QSize(600, 700))
         MainWindow.setMaximumSize(QtCore.QSize(720, 1280))
         self.centralwidget = QtWidgets.QWidget(MainWindow)
@@ -41,7 +41,7 @@ class Ui_MainWindow(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setObjectName("scrollArea")
         self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 662, 163))
+        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 662, 303))
         self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
         self.scrollArea.setWidget(self.scrollAreaWidgetContents)
         self.verticalLayout_4.addWidget(self.scrollArea)
@@ -49,7 +49,7 @@ class Ui_MainWindow(object):
         self.horizontalLayout_3 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_3.setObjectName("horizontalLayout_3")
         self.label_4 = QtWidgets.QLabel(self.groupBox)
-        self.label_4.setMaximumSize(QtCore.QSize(100, 16777215))
+        self.label_4.setMaximumSize(QtCore.QSize(70, 16777215))
         self.label_4.setObjectName("label_4")
         self.horizontalLayout_3.addWidget(self.label_4)
         self.service_select = QtWidgets.QComboBox(self.groupBox)
@@ -58,6 +58,16 @@ class Ui_MainWindow(object):
         self.service_select.addItem("")
         self.service_select.addItem("")
         self.horizontalLayout_3.addWidget(self.service_select)
+        self.label_2 = QtWidgets.QLabel(self.groupBox)
+        self.label_2.setMaximumSize(QtCore.QSize(70, 16777215))
+        self.label_2.setObjectName("label_2")
+        self.horizontalLayout_3.addWidget(self.label_2)
+        self.AutoSelectBtn = QtWidgets.QComboBox(self.groupBox)
+        self.AutoSelectBtn.setMaximumSize(QtCore.QSize(120, 16777215))
+        self.AutoSelectBtn.setObjectName("AutoSelectBtn")
+        self.AutoSelectBtn.addItem("")
+        self.AutoSelectBtn.addItem("")
+        self.horizontalLayout_3.addWidget(self.AutoSelectBtn)
         self.start_process = QtWidgets.QPushButton(self.groupBox)
         self.start_process.setObjectName("start_process")
         self.horizontalLayout_3.addWidget(self.start_process)
@@ -151,9 +161,12 @@ class Ui_MainWindow(object):
         self.groupBox.setTitle(_translate("MainWindow", "选取 PDF 并标记页码数据"))
         self.add_pdf.setText(_translate("MainWindow", "添加 PDF 文件"))
         self.num_of_pdf.setText(_translate("MainWindow", "已选择"))
-        self.label_4.setText(_translate("MainWindow", "OCR 服务选择："))
+        self.label_4.setText(_translate("MainWindow", "OCR 服务："))
         self.service_select.setItemText(0, _translate("MainWindow", "Azure"))
         self.service_select.setItemText(1, _translate("MainWindow", "Aliyun"))
+        self.label_2.setText(_translate("MainWindow", "自动化模式："))
+        self.AutoSelectBtn.setItemText(0, _translate("MainWindow", "全自动"))
+        self.AutoSelectBtn.setItemText(1, _translate("MainWindow", "半自动"))
         self.start_process.setText(_translate("MainWindow", "保存并开始执行"))
         self.groupBox_2.setTitle(_translate("MainWindow", "Step 1/3 版面分析"))
         self.pdf_to_image.setText(_translate("MainWindow", "1. 转换 PDF 为 JPEG"))

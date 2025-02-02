@@ -81,3 +81,7 @@ class PathConfig:
     ABCD_INPUT_JSON = f"{BASE_DIR}/automarker_colour"  # 原json_folder
     ABCD_INPUT_JPG = f"{BASE_DIR}/mark/input_image"  # 原jpg_folder
     ABCD_OUTPUT = f"{BASE_DIR}/mark/image_metadata"  # 原output_folder
+
+    # content_validator_auto.py（原content_validator_auto.py）相关路径配置
+    CONTENT_VALIDATOR_AUTO_INPUT = f"{BASE_DIR}/level_adjusted_content"  # 输入目录
+    CONTENT_VALIDATOR_AUTO_OUTPUT = f"{BASE_DIR}/validated_content"  # 输出目录

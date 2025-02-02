@@ -22,21 +22,23 @@ class ServiceConfig(NamedTuple):
     base_url: str
     model_name: str
 
-def strip_items_wrapper(data: dict) -> list:
+def strip_items_wrapper(data: dict | list) -> list:
     """Remove the 'items' wrapper from input JSON"""
-    return data["items"]
+    if isinstance(data, dict) and "items" in data:
+        return data["items"]
+    return data
 
-def convert_to_full_format(compressed_data: list) -> dict:
-    """Convert compressed format to full format"""
+def convert_to_full_format(data: list) -> dict:
+    """Convert input format to full format"""
     return {
         "items": [
             {
-                "text": item[0],
-                "number": item[1],
-                "confirmed": item[2],
-                "level": item[3]
+                "text": item[0],           # 第一个元素是文本
+                "number": item[1],         # 第二个元素是页码
+                "confirmed": item[2],      # 第三个元素是确认状态
+                "level": item[3]           # 第四个元素是层级
             }
-            for item in compressed_data
+            for item in data
         ]
     }
 
@@ -138,6 +140,7 @@ def get_system_prompt() -> str:
    1. 除了编号和标题正文之外，不要在中文和英文或数字之间加空格
    2. 选择阿拉伯数字还是中文数字，请遵循输入原始信息，不要随意更改
    3. 附录一般是一级或者二级标题，不隶属于正文部分
+   4. 请不要包含任何解释性文字，直接输出要求的JSON文件
 5. 请使用JSON格式输出，正确示例如下：
 
 ``` json
