@@ -26,7 +26,7 @@ def process_level(items: List[Dict[str, Any]]) -> None:
             item["level"] = 1
 
 def process_null_numbers(items: List[Dict[str, Any]]) -> None:
-    """处理number为null的情况"""
+    """处理number为null的情况，确保输出为整数"""
     for i in range(len(items)):
         if items[i]["number"] is None:
             # 获取level=1的下一个number
@@ -42,15 +42,15 @@ def process_null_numbers(items: List[Dict[str, Any]]) -> None:
                 if next_number is None:
                     for j in range(i-1, -1, -1):
                         if items[j]["number"] is not None:
-                            items[i]["number"] = items[j]["number"] + 1
+                            items[i]["number"] = int(items[j]["number"]) + 1
                             break
                     # 如果还是没找到，设为1
                     if items[i]["number"] is None:
                         items[i]["number"] = 1
                 else:
-                    items[i]["number"] = next_number
+                    items[i]["number"] = int(next_number)
             
-            # 非level=1的情况,取前后均值
+            # 非level=1的情况,取前后均值并取整
             else:
                 prev_number = None
                 next_number = None
@@ -69,11 +69,11 @@ def process_null_numbers(items: List[Dict[str, Any]]) -> None:
                 
                 # 根据找到的number情况处理
                 if prev_number is not None and next_number is not None:
-                    items[i]["number"] = (prev_number + next_number) / 2
+                    items[i]["number"] = int((prev_number + next_number) / 2)
                 elif prev_number is not None:
-                    items[i]["number"] = prev_number + 1
+                    items[i]["number"] = int(prev_number) + 1
                 elif next_number is not None:
-                    items[i]["number"] = next_number - 1
+                    items[i]["number"] = int(next_number) - 1
                 else:
                     items[i]["number"] = 1
 

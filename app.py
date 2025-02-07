@@ -9,10 +9,19 @@ from datetime import datetime
 import random
 import string
 import socket
+from pypinyin import lazy_pinyin
+import sys
+import concurrent.futures
+import asyncio
+
 
 logger = logging.getLogger('gunicorn.error')
 
 app = Flask(__name__)
+
+def convert_to_pinyin(text):
+    """将中文字符转换为拼音"""
+    return ''.join(lazy_pinyin(text))
 
 SCRIPT_TIMEOUT = 300
 DATA_FOLDERS = [
@@ -37,11 +46,11 @@ DATA_FOLDERS = [
 
 SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像'),
-    ('ocr_and_projection_aliyun', 'Azure OCR识别与投影'),
+    ('ocr_and_projection_hybrid', 'OCR识别与投影'),  # Changed from aliyun to hybrid
     ('mark_colour', '颜色标记处理'),
     ('abcd_marker', 'ABCD标记处理'),
     ('image_preprocessor', '图像预处理'),
-    ('ocr_aliyun', 'Azure OCR识别'),
+    ('ocr_hybrid', 'OCR识别'),  # Changed from aliyun to hybrid
     ('ocr_processor', 'OCR后处理'),
     ('text_matcher', '文本匹配'),
     ('content_preprocessor', '内容预处理'),
@@ -93,8 +102,13 @@ def upload_files():
         if not all([toc_start, toc_end, content_start]):
             return jsonify({'status': 'error', 'message': '页码信息不完整'})
             
+        # 转换文件名为拼音
+        original_filename = pdf_file.filename
+        filename_without_ext, file_extension = os.path.splitext(original_filename)
+        pinyin_filename = convert_to_pinyin(filename_without_ext) + file_extension
+        
         upload_folder = os.path.join(base_dir, 'input_pdf')
-        pdf_path = os.path.join(upload_folder, pdf_file.filename)
+        pdf_path = os.path.join(upload_folder, pinyin_filename)
         pdf_file.save(pdf_path)
         
         json_data = {
@@ -103,7 +117,8 @@ def upload_files():
             "content_start": int(content_start)
         }
         
-        json_filename = os.path.splitext(pdf_file.filename)[0] + '.json'
+        # JSON文件名也使用拼音
+        json_filename = convert_to_pinyin(filename_without_ext) + '.json'
         json_path = os.path.join(upload_folder, json_filename)
         
         with open(json_path, 'w', encoding='utf-8') as f:
@@ -140,8 +155,44 @@ def download_result(session_id):
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
+AZURE_TIMEOUT = 15  # Azure服务超时时间（秒）
+
+async def run_azure_with_timeout(python_executable, script_path, env, script_dir):
+    """运行Azure OCR脚本，带有超时控制"""
+    try:
+        process = await asyncio.create_subprocess_exec(
+            python_executable,
+            script_path,
+            env=env,
+            cwd=script_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=AZURE_TIMEOUT)
+            return {
+                'success': process.returncode == 0,
+                'stdout': stdout.decode(),
+                'stderr': stderr.decode()
+            }
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+            except:
+                pass
+            return {
+                'success': False,
+                'error': 'Azure OCR timeout'
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
-def run_script(session_id, script_index, retry_count):
+async def run_script(session_id, script_index, retry_count):
     if script_index >= len(SCRIPT_SEQUENCE):
         return jsonify({
             'status': 'completed',
@@ -150,14 +201,47 @@ def run_script(session_id, script_index, retry_count):
     
     script_name, script_desc = SCRIPT_SEQUENCE[script_index]
     try:
-        script_path = os.path.join('mainprogress', f'{script_name}.py')
-        start_time = time.time()
+        # 获取脚本的完整路径
+        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'mainprogress'))
+        script_path = os.path.join(script_dir, f'{script_name}.py')
         
-        # 设置基础目录
-        base_dir = os.path.join('data', session_id)
+        # 设置基础目录（使用绝对路径）
+        base_dir = os.path.abspath(os.path.join('data', session_id))
         
-        # 设置环境变量
-        env = os.environ.copy()
+        # 构建新的环境变量
+        env = {}  # 创建新的环境变量字典，而不是继承现有的
+        
+        # 添加系统必要的环境变量
+        if os.name == 'nt':  # Windows系统
+            # 添加系统路径
+            env['PATH'] = os.environ.get('PATH', '')
+            env['SYSTEMROOT'] = os.environ.get('SYSTEMROOT', '')
+            env['TEMP'] = os.environ.get('TEMP', '')
+            env['TMP'] = os.environ.get('TMP', '')
+            # 添加Python相关路径
+            env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
+            # 添加API相关的环境变量
+            env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
+            env['DEEPSEEK_API_KEY'] = os.environ.get('DEEPSEEK_API_KEY', '')
+            env['ALIBABA_CLOUD_ACCESS_KEY_ID'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID', '')
+            env['ALIBABA_CLOUD_ACCESS_KEY_SECRET'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET', '')
+            env['AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT', '')
+            env['AZURE_DOCUMENT_INTELLIGENCE_KEY'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_KEY', '')
+        elif os.name == 'posix':  # macOS系统
+            # 添加系统路径
+            env['PATH'] = os.environ.get('PATH', '')
+            env['TMPDIR'] = os.environ.get('TMPDIR', '')
+            # 添加Python相关路径
+            env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
+            # 添加API相关的环境变量
+            env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
+            env['DEEPSEEK_API_KEY'] = os.environ.get('DEEPSEEK_API_KEY', '')
+            env['ALIBABA_CLOUD_ACCESS_KEY_ID'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID', '')
+            env['ALIBABA_CLOUD_ACCESS_KEY_SECRET'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET', '')
+            env['AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT', '')
+            env['AZURE_DOCUMENT_INTELLIGENCE_KEY'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_KEY', '')
+        
+        # 添加应用所需的环境变量（使用绝对路径）
         env.update({
             'BASE_DIR': base_dir,
             
@@ -244,51 +328,115 @@ def run_script(session_id, script_index, retry_count):
             'CONTENT_VALIDATOR_AUTO_OUTPUT': f"{base_dir}/validated_content"
         })
         
-        process = subprocess.Popen(
-            ['python', script_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-            env=env
-        )
+        # 获取Python解释器的完整路径
+        python_executable = sys.executable
         
-        try:
-            stdout, stderr = process.communicate(timeout=SCRIPT_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            stdout, stderr = process.communicate()
-            logger.error(f"脚本执行超时: {script_desc}")
-            return jsonify({
-                'status': 'error',
-                'currentScript': script_desc,
-                'message': f'脚本执行超时（{SCRIPT_TIMEOUT}秒）',
-                'retryCount': retry_count,
-                'scriptIndex': script_index,
-                'session_id': session_id
-            })
+        # 对于OCR相关的脚本，使用带有超时和故障转移的逻辑
+        if script_name in ['ocr_hybrid', 'ocr_and_projection_hybrid']:
+            # 首先尝试Azure
+            azure_script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
+            azure_result = await run_azure_with_timeout(python_executable, azure_script_path, env, script_dir)
             
-        execution_time = time.time() - start_time
-        logger.info(f"脚本 {script_desc} 执行时间: {execution_time:.2f}秒")
+            if azure_result.get('success', False):
+                return jsonify({
+                    'status': 'success',
+                    'currentScript': script_desc,
+                    'message': f'{script_desc} (Azure) 执行成功',
+                    'nextIndex': script_index + 1,
+                    'totalScripts': len(SCRIPT_SEQUENCE),
+                    'retryCount': 0,
+                    'session_id': session_id,
+                    'stdout': azure_result.get('stdout', ''),
+                    'stderr': azure_result.get('stderr', '')
+                })
+            
+            # Azure失败，尝试Aliyun
+            aliyun_script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "aliyun")}.py')
+            result = subprocess.run(
+                [python_executable, aliyun_script_path],
+                env=env,
+                cwd=script_dir,
+                capture_output=True,
+                text=True,
+                timeout=SCRIPT_TIMEOUT
+            )
+            
+            if result.returncode == 0:
+                return jsonify({
+                    'status': 'success',
+                    'currentScript': script_desc,
+                    'message': f'{script_desc} (Aliyun) 执行成功',
+                    'nextIndex': script_index + 1,
+                    'totalScripts': len(SCRIPT_SEQUENCE),
+                    'retryCount': 0,
+                    'session_id': session_id,
+                    'stdout': result.stdout,
+                    'stderr': result.stderr
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'currentScript': script_desc,
+                    'message': f'{script_desc}执行失败 (Azure和Aliyun均失败)',
+                    'stdout': result.stdout,
+                    'stderr': result.stderr,
+                    'retryCount': retry_count,
+                    'scriptIndex': script_index,
+                    'session_id': session_id
+                })
         
-        if process.returncode == 0:
-            return jsonify({
-                'status': 'success',
-                'currentScript': script_desc,
-                'message': f'{script_desc}执行成功',
-                'nextIndex': script_index + 1,
-                'totalScripts': len(SCRIPT_SEQUENCE),
-                'retryCount': 0,
-                'session_id': session_id
-            })
+        # 对于非OCR脚本，使用原有逻辑
         else:
-            return jsonify({
-                'status': 'error',
-                'currentScript': script_desc,
-                'message': f'{script_desc}执行失败，返回码: {process.returncode}',
-                'retryCount': retry_count,
-                'scriptIndex': script_index,
-                'session_id': session_id
-            })
+            try:
+                result = subprocess.run(
+                    [python_executable, script_path],
+                    env=env,
+                    cwd=script_dir,  # 设置工作目录为脚本所在目录
+                    capture_output=True,
+                    text=True,
+                    timeout=SCRIPT_TIMEOUT
+                )
+                
+                # 记录输出
+                logger.info(f"脚本输出:\n{result.stdout}")
+                if result.stderr:
+                    logger.error(f"脚本错误:\n{result.stderr}")
+                
+                if result.returncode == 0:
+                    return jsonify({
+                        'status': 'success',
+                        'currentScript': script_desc,
+                        'message': f'{script_desc}执行成功',
+                        'nextIndex': script_index + 1,
+                        'totalScripts': len(SCRIPT_SEQUENCE),
+                        'retryCount': 0,
+                        'session_id': session_id,
+                        'stdout': result.stdout,
+                        'stderr': result.stderr
+                    })
+                else:
+                    return jsonify({
+                        'status': 'error',
+                        'currentScript': script_desc,
+                        'message': f'{script_desc}执行失败，返回码: {result.returncode}',
+                        'stdout': result.stdout,
+                        'stderr': result.stderr,
+                        'retryCount': retry_count,
+                        'scriptIndex': script_index,
+                        'session_id': session_id
+                    })
+                    
+            except subprocess.TimeoutExpired as e:
+                return jsonify({
+                    'status': 'error',
+                    'currentScript': script_desc,
+                    'message': f'脚本执行超时（{SCRIPT_TIMEOUT}秒）',
+                    'stdout': e.stdout.decode() if e.stdout else '',
+                    'stderr': e.stderr.decode() if e.stderr else '',
+                    'retryCount': retry_count,
+                    'scriptIndex': script_index,
+                    'session_id': session_id
+                })
             
     except Exception as e:
         logger.error(f"执行脚本时发生错误: {str(e)}")
@@ -304,7 +452,7 @@ def run_script(session_id, script_index, retry_count):
 def find_available_port(start_port=5000, max_port=6000):
     """查找可用的端口号"""
     current_port = start_port
-    while current_port <= max_port:
+    while (current_port <= max_port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.bind(('', current_port))

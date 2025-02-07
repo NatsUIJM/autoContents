@@ -18,6 +18,7 @@ from typing import Dict, NamedTuple
 from dotenv import load_dotenv
 load_dotenv()
 
+ENABLE_DEEPSEEK = False  # 设置为False以禁用DeepSeek服务
 
 class ServiceConfig(NamedTuple):
     name: str
@@ -135,9 +136,12 @@ def get_system_prompt() -> str:
    2. 在编号和标题正文之间添加空格
    3. 删除多余的空格和异常符号
    4. 如果标题是中英双语的，忽略英语部分
+   5. 某些文本是异常识别，比如文本最后跟随着完全无法理解的文字，请删除这部分内容
+   6. 有的教材名称会被识别进去，比如“高等数学（第一册）”，请删除这部分内容
 2. 页码处理：
    1. 某些标题原文有换行，导致被识别为两条，请将它们合并起来
    2. 某些标题没有匹配到页码，请返回`number=null`
+   3. 某些页码被少识别了一位，请在后面补零
 3. 标题层级：在输入的文件中，最高级别的标题（一般为篇或者章）为`level=1`，标题层级越低则`level`值越大
 4. 其他注意事项：
    1. 除了编号和标题正文之外，不要在中文和英文或数字之间加空格
@@ -187,7 +191,23 @@ You are a helpful assistant for a data processing task. You need to process JSON
 async def process_single_file(file_path: Path, output_dir: Path, service_manager: ServiceManager, token_counter: TokenCounter, retry_count: int = 1):
     """处理单个文件"""
     try:
-        # 读取文件数据
+        # 如果是被禁用的DeepSeek服务，直接返回错误信息
+        if not ENABLE_DEEPSEEK and service_manager.config.name.lower() == 'deepseek':
+            error_data = {
+                "items": [{
+                    "text": "模型错误",
+                    "number": 1,
+                    "confirmed": True,
+                    "level": 1
+                }]
+            }
+            output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(error_data, f, ensure_ascii=False, indent=2)
+            print(f"Skipped {file_path.name} as DeepSeek is disabled")
+            return False
+
+        # 原有的处理逻辑保持不变
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
@@ -269,11 +289,13 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
         return False
     
 async def main():
-    # 创建两个服务管理器实例
+    # 根据DeepSeek的启用状态决定要使用的服务
     service_managers = {
-        'dashscope': ServiceManager('dashscope'),
-        'deepseek': ServiceManager('deepseek')
+        'dashscope': ServiceManager('dashscope')
     }
+    
+    if ENABLE_DEEPSEEK:
+        service_managers['deepseek'] = ServiceManager('deepseek')
     
     input_dir = Path(os.getenv('LLM_HANDLER_INPUT'))
     output_dir = Path(os.getenv('LLM_HANDLER_OUTPUT'))
@@ -291,6 +313,9 @@ async def main():
     
     for file_path_str in file_info.keys():
         file_path = Path(file_path_str)
+        # 排除名为file_info的文件
+        if file_path.name == "file_info.json":
+            continue
         # 为每个服务创建一个计数器
         for service_name in service_managers:
             token_counters[f"{file_path}_{service_name}"] = TokenCounter()

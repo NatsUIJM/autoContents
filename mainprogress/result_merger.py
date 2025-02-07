@@ -502,26 +502,31 @@ def final_post_process(results: List[dict]) -> List[dict]:
     """
     最终的后处理步骤:
     1. 如果level的最小值不为1，将所有level减少到从1开始
-    2. 删除所有level >= 4的标题
+    2. 删除标题格式为x.x.x(三级及以上)的标题
     """
     if not results:
         return results
-    
+
     # 找到最小level
     min_level = min(item['level'] for item in results)
-    
+
     # 如果最小level不为1，调整所有level
     if min_level != 1:
         print(f"\n检测到最小level为{min_level}，将所有level减{min_level-1}")
         results = [{**item, 'level': item['level'] - (min_level-1)} for item in results]
-    
-    # 过滤掉level >= 4的标题
+
+    # 使用正则表达式匹配三级及以上的编号格式（如1.1.1, 1.1.1.1等）
+    pattern = r'^\d+\.\d+\.\d+'
+
+    # 过滤掉三级及以上编号的标题，同时确保text字段不为None
     original_count = len(results)
-    results = [item for item in results if item['level'] < 4]
+    results = [item for item in results 
+              if item.get('text') is not None and not re.match(pattern, item['text'].strip())]
     filtered_count = original_count - len(results)
+
     if filtered_count > 0:
-        print(f"\n删除了{filtered_count}个level >= 4的标题")
-    
+        print(f"\n删除了{filtered_count}个三级及以上编号的标题")
+
     return results
 
 def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: Path):
@@ -788,7 +793,7 @@ def main():
 
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levellevel)s - %(message)s',
+        format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
             logging.FileHandler(logs_dir / 'result_merge.log', encoding='utf-8')

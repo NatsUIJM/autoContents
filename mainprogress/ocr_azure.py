@@ -75,8 +75,8 @@ def resize_image_if_needed(img_path):
     """检查并在需要时调整图片尺寸"""
     with Image.open(img_path) as img:
         width, height = img.size
-        max_size = 9990
-        target_size = 9900
+        max_size = 8150
+        target_size = 8000
         
         if width > max_size or height > max_size:
             # 计算缩放比例

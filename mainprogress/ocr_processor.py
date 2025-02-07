@@ -13,13 +13,41 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 import concurrent.futures
+import io
 
 import dotenv
 dotenv.load_dotenv()
 
+def is_dot_between_numbers(text, index):
+    """检查某个位置的点是否在两个数字之间"""
+    if index <= 0 or index >= len(text) - 1:
+        return False
+    return text[index - 1].isdigit() and text[index + 1].isdigit()
+
+def clean_text(text):
+    """清理文本中的点，但保留数字之间的点"""
+    result = ""
+    i = 0
+    while i < len(text):
+        char = text[i]
+        if char in ['.', '·', '…', '●','•', '。']:
+            if is_dot_between_numbers(text, i):
+                result += char
+        else:
+            result += char
+        i += 1
+    return result
+
 def is_pure_number(text):
     """检查文本是否为纯数字"""
-    return text.replace('.', '').isdigit()
+    return text.replace('.', '').replace('·', '').replace('…', '').replace('●', '').replace('•', '').replace('。', '').isdigit()
+
+def is_short_english(text):
+    """检查是否为5个以下的纯英文字符"""
+    text = text.strip()
+    return (len(text) < 5 and 
+            text.replace(' ', '').isascii() and 
+            text.replace(' ', '').isalpha())
 
 def has_text_box_on_right(current_bbox, all_bboxes, margin=50):
     """检查当前文本框右侧是否有其他文本框"""
@@ -27,15 +55,12 @@ def has_text_box_on_right(current_bbox, all_bboxes, margin=50):
     current_y_center = (current_bbox[0][1] + current_bbox[2][1]) / 2  # 当前文本框的y轴中心
 
     for other_bbox in all_bboxes:
-        # 跳过当前文本框自身
         if np.array_equal(current_bbox, other_bbox):
             continue
 
         other_left = other_bbox[0][0]  # 其他文本框左边界的x坐标
         other_y_center = (other_bbox[0][1] + other_bbox[2][1]) / 2  # 其他文本框的y轴中心
 
-        # 检查其他文本框是否在当前文本框右侧
-        # 且y轴中心点的差距在指定范围内
         if (other_left > current_right and 
             abs(other_y_center - current_y_center) <= margin):
             return True
@@ -43,45 +68,48 @@ def has_text_box_on_right(current_bbox, all_bboxes, margin=50):
 
 def should_skip_merge(bbox, all_bboxes, text):
     """检查是否应该跳过合并"""
-    # 如果是纯数字且右侧没有其他文本框，则跳过合并
     return is_pure_number(text) and not has_text_box_on_right(bbox, all_bboxes)
 
 def merge_line_texts(results, image_height, image_width):
     """使用水平投影的方法合并同一行的文本"""
+    # 过滤掉短英文文本框
+    filtered_results = []
+    for result in results:
+        bbox, text, prob = result
+        if is_short_english(text):
+            continue
+        
+        # 清理文本中的点
+        cleaned_text = clean_text(text)
+        filtered_results.append((bbox, cleaned_text, prob))
+    
     # 创建投影数组
     projection = np.zeros(image_height, dtype=np.int32)
     
     # 获取所有文本框
-    all_bboxes = [result[0] for result in results]
+    all_bboxes = [result[0] for result in filtered_results]
     
     # 分离需要合并的文本框和独立的数字文本框
     merge_candidates = []
     independent_numbers = []
     
-    for result in results:
+    for result in filtered_results:
         bbox, text, prob = result
         if should_skip_merge(bbox, all_bboxes, text):
             independent_numbers.append(result)
         else:
             merge_candidates.append(result)
-            # 计算缩减高度后的文本框范围
             y_min, y_max = calculate_reduced_height_box(bbox)
-            
-            # 确保边界在图片范围内
             y_min = max(0, int(y_min))
             y_max = min(image_height - 1, int(y_max))
-            
-            # 只对需要合并的文本框进行投影
             projection[y_min:y_max + 1] += 1
     
     # 找出投影值为0或1的位置，作为分割线
     split_positions = np.where((projection == 0))[0]
     
-    # 如果开头不在分割位置中，添加0位置
     if len(split_positions) == 0 | split_positions[0] != 0:
         split_positions = np.concatenate(([0], split_positions))
     
-    # 如果结尾不在分割位置中，添加最后一个位置
     if split_positions[-1] != image_height - 1:
         split_positions = np.concatenate((split_positions, [image_height - 1]))
     
@@ -89,11 +117,9 @@ def merge_line_texts(results, image_height, image_width):
     line_boundaries = []
     start_idx = 0
     for i in range(1, len(split_positions)):
-        # 如果当前位置与前一个位置不连续，说明找到了一个边界
         if split_positions[i] != split_positions[i-1] + 1:
             line_boundaries.append((split_positions[start_idx], split_positions[i-1]))
             start_idx = i
-    # 添加最后一个边界
     if start_idx < len(split_positions):
         line_boundaries.append((split_positions[start_idx], split_positions[-1]))
     
@@ -102,27 +128,23 @@ def merge_line_texts(results, image_height, image_width):
     for i in range(len(line_boundaries)-1):
         current_end = line_boundaries[i][1]
         next_start = line_boundaries[i+1][0]
-        if next_start - current_end > 1:  # 如果两个分割区域之间有间隔
+        if next_start - current_end > 1:
             text_regions.append((current_end + 1, next_start - 1))
     
     # 根据文本区域分组
     merged_results = []
     for region_start, region_end in text_regions:
-        # 找出属于这一行的文本框
         line_texts = []
         for result in merge_candidates:
             bbox = np.array(result[0], dtype=np.int32)
             text_center_y = (bbox[:, 1].min() + bbox[:, 1].max()) / 2
             
-            # 使用文本框的中心点判断是否属于当前行
             if region_start <= text_center_y <= region_end:
                 line_texts.append(result)
         
         if line_texts:
-            # 按x坐标排序
             line_texts.sort(key=lambda x: x[0][0][0])
             
-            # 合并文本和边界框
             merged_text = ""
             merged_bbox = []
             merged_prob = 0
@@ -138,10 +160,144 @@ def merge_line_texts(results, image_height, image_width):
             merged_prob /= len(line_texts)
             merged_results.append((np.array(merged_bbox), merged_text, merged_prob))
     
-    # 将合并结果和独立的数字文本框合并到最终结果中
     final_results = merged_results + independent_numbers
+    final_results.sort(key=lambda x: x[0][0][1])
     
-    # 按y坐标排序最终结果
+    return final_results, projection
+
+def calculate_reduced_height_box(bbox, reduction_percent=0.2):
+    """计算缩减高度后的文本框范围"""
+    bbox = np.array(bbox)
+    y_min = bbox[:, 1].min()
+    y_max = bbox[:, 1].max()
+    height = y_max - y_min
+    center_y = (y_max + y_min) / 2
+    reduced_height = height * (1 - reduction_percent)
+    new_y_min = center_y - (reduced_height / 2)
+    new_y_max = center_y + (reduced_height / 2)
+    return new_y_min, new_y_max
+
+def resize_image_if_needed(image):
+    """检查并在需要时调整图片尺寸"""
+    height, width = image.shape[:2]
+    max_size = 8150
+    target_size = 8000
+    
+    if width > max_size or height > max_size:
+        if width > height:
+            if width > max_size:
+                ratio = target_size / width
+                new_width = target_size
+                new_height = int(height * ratio)
+        else:
+            if height > max_size:
+                ratio = target_size / height
+                new_height = target_size
+                new_width = int(width * ratio)
+        
+        resized_image = cv2.resize(image, (new_width, new_height), 
+                                 interpolation=cv2.INTER_LANCZOS4)
+        return resized_image
+    
+    return image
+
+def should_skip_merge(bbox, all_bboxes, text):
+    """检查是否应该跳过合并"""
+    # 如果是纯数字且右侧没有其他文本框，则跳过合并
+    return is_pure_number(text) and not has_text_box_on_right(bbox, all_bboxes)
+
+def merge_line_texts(results, image_height, image_width):
+    """使用水平投影的方法合并同一行的文本"""
+    # 过滤掉短英文文本框并清理文本中的点
+    filtered_results = []
+    for result in results:
+        bbox, text, prob = result
+        # 过滤短英文
+        if is_short_english(text):
+            continue
+        
+        # 清理文本中的点
+        cleaned_text = clean_text(text)
+        filtered_results.append((bbox, cleaned_text, prob))
+    
+    # 创建投影数组
+    projection = np.zeros(image_height, dtype=np.int32)
+    
+    # 获取所有文本框
+    all_bboxes = [result[0] for result in filtered_results]
+    
+    # 分离需要合并的文本框和独立的数字文本框
+    merge_candidates = []
+    independent_numbers = []
+    
+    for result in filtered_results:
+        bbox, text, prob = result
+        if should_skip_merge(bbox, all_bboxes, text):
+            independent_numbers.append(result)
+        else:
+            merge_candidates.append(result)
+            y_min, y_max = calculate_reduced_height_box(bbox)
+            y_min = max(0, int(y_min))
+            y_max = min(image_height - 1, int(y_max))
+            projection[y_min:y_max + 1] += 1
+    
+    # 找出投影值为0或1的位置，作为分割线
+    split_positions = np.where((projection == 0))[0]
+    
+    if len(split_positions) == 0 | split_positions[0] != 0:
+        split_positions = np.concatenate(([0], split_positions))
+    
+    if split_positions[-1] != image_height - 1:
+        split_positions = np.concatenate((split_positions, [image_height - 1]))
+    
+    # 寻找连续的分割位置的起始和结束点
+    line_boundaries = []
+    start_idx = 0
+    for i in range(1, len(split_positions)):
+        if split_positions[i] != split_positions[i-1] + 1:
+            line_boundaries.append((split_positions[start_idx], split_positions[i-1]))
+            start_idx = i
+    if start_idx < len(split_positions):
+        line_boundaries.append((split_positions[start_idx], split_positions[-1]))
+    
+    # 找出分割线之间的非分割区域（即文本行所在区域）
+    text_regions = []
+    for i in range(len(line_boundaries)-1):
+        current_end = line_boundaries[i][1]
+        next_start = line_boundaries[i+1][0]
+        if next_start - current_end > 1:
+            text_regions.append((current_end + 1, next_start - 1))
+    
+    # 根据文本区域分组
+    merged_results = []
+    for region_start, region_end in text_regions:
+        line_texts = []
+        for result in merge_candidates:
+            bbox = np.array(result[0], dtype=np.int32)
+            text_center_y = (bbox[:, 1].min() + bbox[:, 1].max()) / 2
+            
+            if region_start <= text_center_y <= region_end:
+                line_texts.append(result)
+        
+        if line_texts:
+            line_texts.sort(key=lambda x: x[0][0][0])
+            
+            merged_text = ""
+            merged_bbox = []
+            merged_prob = 0
+            
+            for i, (box, txt, p) in enumerate(line_texts):
+                merged_text += txt
+                if i == 0:
+                    merged_bbox.extend([box[0], box[1]])
+                if i == len(line_texts) - 1:
+                    merged_bbox.extend([box[2], box[3]])
+                merged_prob += p
+            
+            merged_prob /= len(line_texts)
+            merged_results.append((np.array(merged_bbox), merged_text, merged_prob))
+    
+    final_results = merged_results + independent_numbers
     final_results.sort(key=lambda x: x[0][0][1])
     
     return final_results, projection
@@ -180,7 +336,7 @@ def draw_ocr_results(image, results, projection):
                  fill=(0, 255, 0), width=6)
         
         x = bbox[0][0]
-        y = bbox[0][1] - 50
+        y = bbox[0][1] - 10
         
         text_bbox = draw.textbbox((0, 0), text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
@@ -259,7 +415,6 @@ def process_image(img_path, json_dir, output_dir):
     """处理单张图片的OCR并保存结果"""
     # 读取图片
     image = cv2.imread(str(img_path))
-    height, width = image.shape[:2]
     
     # 读取对应的JSON文件
     json_path = Path(json_dir) / f"{img_path.stem}.json"
@@ -280,7 +435,7 @@ def process_image(img_path, json_dir, output_dir):
         ))
     
     # 获取合并结果和投影数组
-    merged_results, projection = merge_line_texts(results, height, width)
+    merged_results, projection = merge_line_texts(results, image.shape[0], image.shape[1])
     
     # 转换结果为JSON格式
     json_results = []
@@ -300,8 +455,11 @@ def process_image(img_path, json_dir, output_dir):
     with open(merged_json_path, 'w', encoding='utf-8') as f:
         json.dump(json_results, f, ensure_ascii=False, indent=2)
     
+    # 在绘制之前检查并调整图片尺寸
+    display_image = resize_image_if_needed(image)
+    
     # 绘制带标注的图片和投影曲线图
-    output_img = draw_ocr_results(image, merged_results, projection)
+    output_img = draw_ocr_results(display_image, merged_results, projection)
     img_output_path = Path(output_dir) / f"{img_path.stem}_annotated.jpg"
     cv2.imwrite(str(img_output_path), output_img)
     
