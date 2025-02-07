@@ -37,7 +37,7 @@ DATA_FOLDERS = [
 
 SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像'),
-    ('ocr_and_projection_azure', 'Azure OCR识别与投影'),
+    ('ocr_and_projection_aliyun', 'Azure OCR识别与投影'),
     ('mark_colour', '颜色标记处理'),
     ('abcd_marker', 'ABCD标记处理'),
     ('image_preprocessor', '图像预处理'),

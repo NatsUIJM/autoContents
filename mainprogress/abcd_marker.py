@@ -144,7 +144,7 @@ def find_mx_points(boxes, e_point, min_x, max_x):
         
         # 检查是否跨越E点且不在排除区域
         if (norm_min_x < normalize_x(e_x) and norm_max_x > normalize_x(e_x) and
-            not (47.5 < norm_min_x < 50) and not (50 < norm_max_x < 52.5)):
+            not (49.5 < norm_min_x < 50) and not (50 < norm_max_x < 50.5)):
             valid_boxes.append({
                 'min_y': box_min_y,
                 'max_y': box_max_y,

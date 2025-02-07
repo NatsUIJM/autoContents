@@ -297,7 +297,7 @@ def process_original_files(files: List[Path]):
             logging.info(f"Processed original file: {file_path}")
 
 def main():
-    setup_logging()
+    # setup_logging()
     
     # 从环境变量获取输入目录路径，如果未设置则使用默认值
     input_dir = Path(os.environ.get('CONTENT_PREPROCESSOR_INPUT', 'input'))
@@ -329,8 +329,8 @@ def main():
             continue
     
     # 输出处理结果统计
-    logging.info(f"Total original files: {len(json_files)}")
-    logging.info(f"Total files after preprocessing: {len(all_files)}")
+    # logging.info(f"Total original files: {len(json_files)}")
+    # logging.info(f"Total files after preprocessing: {len(all_files)}")
     
     # 将文件信息保存到JSON文件中，供后续步骤使用
     file_info_json = {
