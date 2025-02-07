@@ -9,7 +9,6 @@ sys.path.append(project_root)
 import os
 import json
 from pdf2image import convert_from_path
-from config.paths import PathConfig
 from PIL import Image
 import numpy as np
 

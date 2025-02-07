@@ -25,7 +25,6 @@ load_dotenv()
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 
-from config.paths import PathConfig
 
 def retry_with_delay(max_retries=10, delay=10):
     """重试装饰器"""

@@ -13,7 +13,6 @@ import json
 import cv2
 import re
 import jieba
-from config.paths import PathConfig
 
 import dotenv
 dotenv.load_dotenv()

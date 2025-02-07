@@ -15,7 +15,6 @@ from PIL import Image
 import io
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.formrecognizer import DocumentAnalysisClient
-from config.paths import PathConfig
 
 from dotenv import load_dotenv
 load_dotenv()

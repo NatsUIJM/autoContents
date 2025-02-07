@@ -14,7 +14,6 @@ from openai import AsyncOpenAI
 import platform
 from pathlib import Path
 from typing import Dict, NamedTuple
-from config.paths import PathConfig
 
 from dotenv import load_dotenv
 load_dotenv()

@@ -18,7 +18,6 @@ from alibabacloud_tea_openapi import models as open_api_models
 from alibabacloud_darabonba_stream.client import Client as StreamClient
 from alibabacloud_ocr_api20210707 import models as ocr_api_20210707_models
 from alibabacloud_tea_util import models as util_models
-from config.paths import PathConfig
 
 from dotenv import load_dotenv
 load_dotenv()

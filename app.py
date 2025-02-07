@@ -37,11 +37,11 @@ DATA_FOLDERS = [
 
 SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像'),
-    ('ocr_and_projection_aliyun', 'Aliyun OCR识别与投影'),
+    ('ocr_and_projection_azure', 'Azure OCR识别与投影'),
     ('mark_colour', '颜色标记处理'),
     ('abcd_marker', 'ABCD标记处理'),
     ('image_preprocessor', '图像预处理'),
-    ('ocr_aliyun', 'Aliyun OCR识别'),
+    ('ocr_aliyun', 'Azure OCR识别'),
     ('ocr_processor', 'OCR后处理'),
     ('text_matcher', '文本匹配'),
     ('content_preprocessor', '内容预处理'),
@@ -71,7 +71,7 @@ def create_data_folders(session_id):
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template('index.txt')
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
