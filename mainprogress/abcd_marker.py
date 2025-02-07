@@ -7,12 +7,18 @@ import sys
 import json
 from PIL import Image, ImageDraw
 import numpy as np
+
 # 添加项目根目录到系统路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
-from config.paths import PathConfig
 
+import dotenv
+dotenv.load_dotenv()
 
+# 从环境变量获取路径配置
+ABCD_OUTPUT = os.getenv('ABCD_OUTPUT', 'output/abcd')
+ABCD_INPUT_JSON = os.getenv('ABCD_INPUT_JSON', 'input/abcd/json')
+ABCD_INPUT_JPG = os.getenv('ABCD_INPUT_JPG', 'input/abcd/jpg')
 
 def get_projection(boxes, min_x, max_x):
     def normalize_x(x):
@@ -177,20 +183,20 @@ def find_mx_points(boxes, e_point, min_x, max_x):
 
 def main():
     # 确保输出目录存在
-    os.makedirs(PathConfig.ABCD_OUTPUT, exist_ok=True)
+    os.makedirs(ABCD_OUTPUT, exist_ok=True)
     
     # 遍历JSON文件
-    for json_file in os.listdir(PathConfig.ABCD_INPUT_JSON):
+    for json_file in os.listdir(ABCD_INPUT_JSON):
         if not json_file.endswith(".json"):
             continue
             
         # 读取JSON文件
-        with open(os.path.join(PathConfig.ABCD_INPUT_JSON, json_file), 'r', encoding='utf-8') as f:
+        with open(os.path.join(ABCD_INPUT_JSON, json_file), 'r', encoding='utf-8') as f:
             boxes = json.load(f)
         
         # 获取对应的JPG文件名
         jpg_file = json_file.replace("_boxes.json", ".jpg")
-        jpg_path = os.path.join(PathConfig.ABCD_INPUT_JPG, jpg_file)
+        jpg_path = os.path.join(ABCD_INPUT_JPG, jpg_file)
         
         if not os.path.exists(jpg_path):
             print(f"找不到对应的JPG文件: {jpg_file}")
@@ -261,7 +267,7 @@ def main():
             draw.text((x+radius+2, y-radius), label, fill=color)
         
         # 保存标记后的图片
-        img.save(os.path.join(PathConfig.ABCD_OUTPUT, jpg_file))
+        img.save(os.path.join(ABCD_OUTPUT, jpg_file))
         print(f"已处理: {jpg_file}")
         
         # 保存所有点的坐标信息到JSON文件（新格式）
@@ -276,7 +282,7 @@ def main():
                     for label, coord in points.items()
                 }
             }
-            json_output_path = os.path.join(PathConfig.ABCD_OUTPUT, jpg_file.replace('.jpg', '.json'))
+            json_output_path = os.path.join(ABCD_OUTPUT, jpg_file.replace('.jpg', '.json'))
             with open(json_output_path, 'w', encoding='utf-8') as f:
                 json.dump(output_json, f, indent=2)
 

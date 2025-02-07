@@ -7,22 +7,23 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 import json
-import os
 import pikepdf
-from config.paths import PathConfig
+
+import dotenv
+dotenv.load_dotenv()
 
 def process_pdf_with_bookmarks():
     # 确保输出目录存在
-    os.makedirs(PathConfig.PDF_GENERATOR_OUTPUT_1, exist_ok=True)
+    os.makedirs(os.getenv('PDF_GENERATOR_OUTPUT_1'), exist_ok=True)
     
-    for filename in os.listdir(PathConfig.PDF_GENERATOR_INPUT_1):
+    for filename in os.listdir(os.getenv('PDF_GENERATOR_INPUT_1')):
         if not filename.endswith('_final.json'):
             continue
             
         base_name = filename.replace('_final.json', '')
-        pdf_path = os.path.join(PathConfig.PDF_GENERATOR_INPUT_2, f'{base_name}.pdf')
-        info_json_path = os.path.join(PathConfig.PDF_GENERATOR_INPUT_2, f'{base_name}.json')
-        content_json_path = os.path.join(PathConfig.PDF_GENERATOR_INPUT_1, filename)
+        pdf_path = os.path.join(os.getenv('PDF_GENERATOR_INPUT_2'), f'{base_name}.pdf')
+        info_json_path = os.path.join(os.getenv('PDF_GENERATOR_INPUT_2'), f'{base_name}.json')
+        content_json_path = os.path.join(os.getenv('PDF_GENERATOR_INPUT_1'), filename)
         
         print(f"正在处理 {base_name}...")
 
@@ -113,7 +114,7 @@ def process_pdf_with_bookmarks():
                 outline.root.extend(bookmarks)
             
             # 保存处理后的PDF到新目录
-            output_path = os.path.join(PathConfig.PDF_GENERATOR_OUTPUT_1, f'{base_name}_with_toc.pdf')
+            output_path = os.path.join(os.getenv('PDF_GENERATOR_OUTPUT_1'), f'{base_name}_with_toc.pdf')
             pdf.save(output_path)
             print(f"\n已成功处理 {base_name}")
             

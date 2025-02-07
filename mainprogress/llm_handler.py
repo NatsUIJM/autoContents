@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Dict, NamedTuple
 from config.paths import PathConfig
 
+from dotenv import load_dotenv
+load_dotenv()
+
+
 class ServiceConfig(NamedTuple):
     name: str
     api_key_env: str
@@ -272,8 +276,8 @@ async def main():
         'deepseek': ServiceManager('deepseek')
     }
     
-    input_dir = Path(PathConfig.LLM_HANDLER_INPUT)
-    output_dir = Path(PathConfig.LLM_HANDLER_OUTPUT)
+    input_dir = Path(os.getenv('LLM_HANDLER_INPUT'))
+    output_dir = Path(os.getenv('LLM_HANDLER_OUTPUT'))
     
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
@@ -282,7 +286,7 @@ async def main():
     with open(input_dir / "file_info.json", 'r', encoding='utf-8') as f:
         file_info = json.load(f)
     
-# 创建任务列表
+    # 创建任务列表
     tasks = []
     token_counters = {}
     
@@ -305,10 +309,14 @@ async def main():
     success_count = sum(1 for r in results if r)
     fail_count = len(results) - success_count
     print(f"\nProcessing complete. Success: {success_count}, Failed: {fail_count}")
+    
+    # 根据成功失败数量返回退出码
+    return 0 if success_count >= fail_count else 1
 
 if __name__ == '__main__':
     # 为Windows设置事件循环策略
     if platform.system() == 'Windows':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    # 运行主协程
-    asyncio.run(main())
+    # 运行主协程并获取退出码
+    exit_code = asyncio.run(main())
+    sys.exit(exit_code)

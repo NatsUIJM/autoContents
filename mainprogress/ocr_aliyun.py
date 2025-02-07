@@ -20,6 +20,9 @@ from alibabacloud_ocr_api20210707 import models as ocr_api_20210707_models
 from alibabacloud_tea_util import models as util_models
 from config.paths import PathConfig
 
+from dotenv import load_dotenv
+load_dotenv()
+
 def retry_with_delay(max_retries=10, delay=10):
     """重试装饰器"""
     def decorator(func):
@@ -156,11 +159,11 @@ def main():
         raise ValueError("Aliyun credentials not found in environment variables")
         
     # 创建输出目录
-    output_dir = Path(PathConfig.ALIYUN_OCR_OUTPUT)
+    output_dir = Path(os.environ['ALIYUN_OCR_OUTPUT'])
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # 读取输入目录中的图片
-    input_dir = Path(PathConfig.ALIYUN_OCR_INPUT)
+    input_dir = Path(os.environ['ALIYUN_OCR_INPUT'])
     if not input_dir.exists():
         raise ValueError(f"Input directory {input_dir} does not exist")
     

@@ -18,6 +18,9 @@ from alibabacloud_darabonba_stream.client import Client as StreamClient
 from alibabacloud_ocr_api20210707 import models as ocr_api_20210707_models
 from alibabacloud_tea_util import models as util_models
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # 添加项目根目录到系统路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
@@ -52,6 +55,7 @@ class AliyunOCRProcessor:
             raise ValueError("未找到阿里云访问凭证环境变量")
         
         self.client = self.create_client()
+        self.output_dir = Path(os.environ['OCR_PROJ_ALIYUN_OUTPUT'])
 
     def create_client(self):
         """创建阿里云OCR客户端"""
@@ -93,7 +97,7 @@ class AliyunOCRProcessor:
         2. raw_response.json - Azure格式
         3. result.json - 处理后的标准格式
         """
-        output_dir = Path(PathConfig.OCR_PROJ_ALIYUN_OUTPUT)
+        output_dir = self.output_dir
         img_name = Path(img_path).stem
 
         # 保存最原始的响应
@@ -287,7 +291,7 @@ class AliyunOCRProcessor:
         """处理单张图片"""
         print(f"\n=== 开始处理图片: {img_path} ===")
         
-        output_dir = Path(PathConfig.OCR_PROJ_ALIYUN_OUTPUT)
+        output_dir = self.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
         
         resized_image = self.resize_image_if_needed(img_path)
@@ -367,14 +371,14 @@ class AliyunOCRProcessor:
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='阿里云OCR文字识别和投影分析工具')
-    parser.add_argument('--input', default=PathConfig.OCR_PROJ_ALIYUN_INPUT, 
+    parser.add_argument('--input', default=os.environ['OCR_PROJ_ALIYUN_INPUT'], 
                        help='输入图片目录路径')
     parser.add_argument('--workers', type=int, default=5, 
                        help='并发处理的最大线程数')
     args = parser.parse_args()
 
     # 确保输出目录存在
-    os.makedirs(PathConfig.OCR_PROJ_ALIYUN_OUTPUT, exist_ok=True)
+    os.makedirs(os.environ['OCR_PROJ_ALIYUN_OUTPUT'], exist_ok=True)
 
     processor = AliyunOCRProcessor()
     processor.process_directory(args.input, args.workers)

@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
 from dataclasses import dataclass
-import os
-from config.paths import PathConfig
 import re
+
+import dotenv
+dotenv.load_dotenv()
 
 @dataclass
 class ProcessedFile:
@@ -34,8 +35,7 @@ class ProcessedFile:
                 print(f"检测到模型错误，切换到备用结果: {self.processed_path}")
 
 def setup_logging():
-
-    logs_dir = Path('logs')
+    logs_dir = Path(os.getenv('RESULT_MERGER_LOGS', 'logs'))
     logs_dir.mkdir(exist_ok=True)
 
     logging.basicConfig(
@@ -43,7 +43,7 @@ def setup_logging():
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler( logs_dir / 'result_merge.log', encoding='utf-8')
+            logging.FileHandler(logs_dir / 'result_merge.log', encoding='utf-8')
         ]
     )
 
@@ -783,12 +783,12 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
 
 def main():
     # 设置日志
-    logs_dir = Path(PathConfig.RESULT_MERGER_LOGS)
+    logs_dir = Path(os.getenv('RESULT_MERGER_LOGS', 'logs'))
     logs_dir.mkdir(exist_ok=True)
 
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
+        format='%(asctime)s - %(levellevel)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
             logging.FileHandler(logs_dir / 'result_merge.log', encoding='utf-8')
@@ -796,9 +796,9 @@ def main():
     )
     
     # 设置输入输出目录路径
-    input_dir = Path(PathConfig.RESULT_MERGER_INPUT_RAW)
-    processed_dir = Path(PathConfig.RESULT_MERGER_INPUT_LLM)
-    output_dir = Path(PathConfig.RESULT_MERGER_OUTPUT)
+    input_dir = Path(os.getenv('RESULT_MERGER_INPUT_RAW'))
+    processed_dir = Path(os.getenv('RESULT_MERGER_INPUT_LLM'))
+    output_dir = Path(os.getenv('RESULT_MERGER_OUTPUT'))
     
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)

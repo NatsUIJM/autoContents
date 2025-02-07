@@ -9,12 +9,11 @@ from pathlib import Path
 from typing import Dict, List
 from dataclasses import dataclass
 import logging
-import os
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
-from config.paths import PathConfig
-
+import dotenv
+dotenv.load_dotenv()
 
 @dataclass
 class FileInfo:
@@ -300,8 +299,8 @@ def process_original_files(files: List[Path]):
 def main():
     setup_logging()
     
-    # 确保输入目录存在
-    input_dir = Path(PathConfig.CONTENT_PREPROCESSOR_INPUT)
+    # 从环境变量获取输入目录路径，如果未设置则使用默认值
+    input_dir = Path(os.environ.get('CONTENT_PREPROCESSOR_INPUT', 'input'))
     os.makedirs(input_dir, exist_ok=True)
     
     # 获取所有JSON文件并使用自然排序

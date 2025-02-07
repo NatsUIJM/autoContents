@@ -83,15 +83,12 @@ pydeck==0.9.1
 pydub==0.25.1
 Pygments==2.19.1
 PyPDF2==3.0.1
-PyQt5==5.15.11
-PyQt5-Qt5==5.15.16
-PyQt5_sip==12.16.1
 python-bidi==0.6.3
 python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
 python-multipart==0.0.20
 pytz==2024.2
 PyYAML==6.0.2
-qt-material==2.14
 referencing==0.36.2
 requests==2.32.3
 requests-oauthlib==2.0.0

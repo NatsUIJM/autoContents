@@ -19,7 +19,8 @@ from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
 from datetime import datetime
-from config.paths import PathConfig
+from dotenv import load_dotenv
+load_dotenv()
 
 def retry_with_delay(max_retries=10, delay=10):
     """重试装饰器"""
@@ -54,8 +55,8 @@ class OCRProcessor:
             )
         
         # 确保目录存在
-        self.input_dir = Path(PathConfig.OCR_PROJ_AZURE_INPUT)
-        self.output_dir = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT)
+        self.input_dir = Path(os.getenv('OCR_PROJ_AZURE_INPUT'))
+        self.output_dir = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT'))
         self.output_dir.mkdir(exist_ok=True)
         self.input_dir.mkdir(exist_ok=True)
 
@@ -159,7 +160,7 @@ class OCRProcessor:
     @retry_with_delay(max_retries=10, delay=10)
     def process_single_image(self, img_path):
         """处理单张图片"""
-        raw_response_path = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_raw_response.json"
+        raw_response_path = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_raw_response.json"
         
         if raw_response_path.exists():
             print(f"找到缓存的响应数据，正在处理 {img_path.name}")
@@ -224,12 +225,12 @@ class OCRProcessor:
         
         h_projection, v_projection = self.calculate_projections(ocr_results, height, width)
         
-        output_json = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_result.json"
+        output_json = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_result.json"
         with open(output_json, 'w', encoding='utf-8') as f:
             json.dump(ocr_results, f, ensure_ascii=False, indent=2)
         
         output_img = self.draw_ocr_results(image, ocr_results, h_projection, v_projection)
-        output_img_path = Path(PathConfig.OCR_PROJ_AZURE_OUTPUT) / f"{img_path.stem}_annotated.jpg"
+        output_img_path = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_annotated.jpg"
         cv2.imwrite(str(output_img_path), output_img)
         
         print(f"已完成处理 {img_path.name}")
@@ -303,7 +304,7 @@ class OCRProcessor:
         """处理所有图片"""
         img_paths = []
         for ext in ['.jpg', '.jpeg', '.png']:
-            img_paths.extend(list(Path(PathConfig.OCR_PROJ_AZURE_INPUT).glob(f'*{ext}')))
+            img_paths.extend(list(Path(os.getenv('OCR_PROJ_AZURE_INPUT')).glob(f'*{ext}')))
         
         if not img_paths:
             print("输入目录中未找到图片")

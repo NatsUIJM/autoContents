@@ -13,7 +13,9 @@ import platform
 from pathlib import Path
 from openai import AsyncOpenAI
 from datetime import datetime
-from config.paths import PathConfig
+
+from dotenv import load_dotenv
+load_dotenv()
 
 def clean_text_for_matching(text):
     """仅保留中文字符"""
@@ -189,9 +191,9 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 
 async def main():
     # Setup directories
-    input_dir = Path(PathConfig.LEVEL_ADJUSTER_INPUT)
-    output_dir = Path(PathConfig.LEVEL_ADJUSTER_OUTPUT)
-    cache_dir = Path(PathConfig.LEVEL_ADJUSTER_CACHE)
+    input_dir = Path(os.getenv("LEVEL_ADJUSTER_INPUT"))
+    output_dir = Path(os.getenv("LEVEL_ADJUSTER_OUTPUT"))
+    cache_dir = Path(os.getenv("LEVEL_ADJUSTER_CACHE"))
     
     for dir_path in [output_dir, cache_dir]:
         os.makedirs(dir_path, exist_ok=True)

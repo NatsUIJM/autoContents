@@ -17,6 +17,9 @@ from azure.core.credentials import AzureKeyCredential
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from config.paths import PathConfig
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Azure设置
 endpoint = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT')
 key = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_KEY')
@@ -139,11 +142,11 @@ def main():
         raise ValueError("Azure credentials not found in environment variables")
         
     # 创建输出目录
-    output_dir = Path(PathConfig.OCR_AZURE_OUTPUT_1)
+    output_dir = Path(os.getenv('OCR_AZURE_OUTPUT_1'))
     os.makedirs(output_dir, exist_ok=True)
     
     # 读取输入目录中的图片
-    input_dir = Path(PathConfig.OCR_AZURE_INPUT_1)
+    input_dir = Path(os.getenv('OCR_AZURE_INPUT_1'))
     if not input_dir.exists():
         raise ValueError(f"Input directory {input_dir} does not exist")
     

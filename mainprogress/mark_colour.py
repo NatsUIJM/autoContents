@@ -15,6 +15,8 @@ import re
 import jieba
 from config.paths import PathConfig
 
+import dotenv
+dotenv.load_dotenv()
 
 def get_average_height(lines):
     """
@@ -496,6 +498,7 @@ def process_directory(input_dir, input_image_dir, output_dir):
                 print(f"找不到对应的图像文件: {image_filename}")
 
 if __name__ == "__main__":
-    process_directory(PathConfig.MARK_COLOR_INPUT, 
-                     PathConfig.MARK_COLOR_INPUT_IMAGE, 
-                     PathConfig.MARK_COLOR_OUTPUT)
+    input_dir = os.getenv('MARK_COLOR_INPUT')
+    input_image_dir = os.getenv('MARK_COLOR_INPUT_IMAGE')
+    output_dir = os.getenv('MARK_COLOR_OUTPUT')
+    process_directory(input_dir, input_image_dir, output_dir)

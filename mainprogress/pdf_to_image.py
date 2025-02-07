@@ -13,6 +13,9 @@ from config.paths import PathConfig
 from PIL import Image
 import numpy as np
 
+import dotenv
+dotenv.load_dotenv()
+
 def binarize_image(image_path, threshold=200):
     """对图片进行二值化处理"""
     # 打开图片
@@ -30,16 +33,16 @@ def binarize_image(image_path, threshold=200):
 
 def convert_pdf_to_jpg():
     # 确保输出目录存在
-    os.makedirs(PathConfig.PDF2JPG_OUTPUT, exist_ok=True)
+    os.makedirs(os.getenv('PDF2JPG_OUTPUT'), exist_ok=True)
     
     # 获取所有PDF文件
-    pdf_files = [f for f in os.listdir(PathConfig.PDF2JPG_INPUT) 
+    pdf_files = [f for f in os.listdir(os.getenv('PDF2JPG_INPUT')) 
                  if f.lower().endswith('.pdf')]
     
     for pdf_file in pdf_files:
-        pdf_path = os.path.join(PathConfig.PDF2JPG_INPUT, pdf_file)
+        pdf_path = os.path.join(os.getenv('PDF2JPG_INPUT'), pdf_file)
         pdf_name = os.path.splitext(pdf_file)[0]
-        json_path = os.path.join(PathConfig.PDF2JPG_INPUT, f"{pdf_name}.json")
+        json_path = os.path.join(os.getenv('PDF2JPG_INPUT'), f"{pdf_name}.json")
         
         print(f"\n处理文件: {pdf_file}")
         try:
@@ -67,7 +70,7 @@ def convert_pdf_to_jpg():
             saved_images = []  # 记录保存的图片路径
             for i, page in enumerate(pages, start=toc_start):
                 output_path = os.path.join(
-                    PathConfig.PDF2JPG_OUTPUT,
+                    os.getenv('PDF2JPG_OUTPUT'),
                     f"{pdf_name}_page_{i}.jpg"
                 )
                 page.save(output_path, 'JPEG')

@@ -13,7 +13,9 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 import concurrent.futures
-from config.paths import PathConfig
+
+import dotenv
+dotenv.load_dotenv()
 
 def is_pure_number(text):
     """检查文本是否为纯数字"""
@@ -307,10 +309,12 @@ def process_image(img_path, json_dir, output_dir):
 
 def main():
     # 确保输出目录存在
-    os.makedirs(PathConfig.OCRPROCESS_OUTPUT_1, exist_ok=True)
+    output_dir = os.getenv('OCRPROCESS_OUTPUT_1')
+    os.makedirs(output_dir, exist_ok=True)
     
     # 遍历图片目录
-    img_paths = list(Path(PathConfig.OCRPROCESS_INPUT_1).glob('*.jpg'))
+    input_dir = os.getenv('OCRPROCESS_INPUT_1')
+    img_paths = list(Path(input_dir).glob('*.jpg'))
     
     # 使用多线程处理图片
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -318,8 +322,8 @@ def main():
             executor.submit(
                 process_image,
                 img_path,
-                PathConfig.OCRPROCESS_INPUT_2,
-                PathConfig.OCRPROCESS_OUTPUT_1
+                os.getenv('OCRPROCESS_INPUT_2'),
+                output_dir
             ) for img_path in img_paths
         ]
         for future in concurrent.futures.as_completed(futures):

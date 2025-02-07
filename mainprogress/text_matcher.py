@@ -10,7 +10,10 @@ import json
 import os
 from pathlib import Path
 import numpy as np
-from config.paths import PathConfig
+# from config.paths import PathConfig  # 移除这行
+
+import dotenv
+dotenv.load_dotenv()
 
 def is_pure_number(text):
     """检查文本是否为纯数字"""
@@ -84,11 +87,11 @@ def find_text_pairs(results):
 
 def main():
     # 创建输出目录
-    output_dir = Path(PathConfig.TEXT_MATCHER_OUTPUT)
+    output_dir = Path(os.getenv('TEXT_MATCHER_OUTPUT'))
     output_dir.mkdir(exist_ok=True)
     
     # 遍历OCR结果文件
-    input_dir = Path(PathConfig.TEXT_MATCHER_INPUT)
+    input_dir = Path(os.getenv('TEXT_MATCHER_INPUT'))
     for json_path in input_dir.glob('*.json'):
         # 跳过标注图片的文件名
         if json_path.stem.endswith('_annotated'):

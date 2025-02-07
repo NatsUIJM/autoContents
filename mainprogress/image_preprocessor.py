@@ -12,14 +12,16 @@ from PIL import Image
 import numpy as np
 from typing import Dict, List, Tuple
 import logging
-from config.paths import PathConfig
+
+import dotenv
+dotenv.load_dotenv()
 
 class ImageProcessor:
     def __init__(self):
-        self.input_dir = PathConfig.IMAGE_PREPROCESSOR_INPUT
-        self.json_dir = PathConfig.IMAGE_PREPROCESSOR_JSON
-        self.output_dir = PathConfig.IMAGE_PREPROCESSOR_OUTPUT
-        self.cut_dir = PathConfig.IMAGE_PREPROCESSOR_CUT
+        self.input_dir = os.getenv('IMAGE_PREPROCESSOR_INPUT')
+        self.json_dir = os.getenv('IMAGE_PREPROCESSOR_JSON')
+        self.output_dir = os.getenv('IMAGE_PREPROCESSOR_OUTPUT')
+        self.cut_dir = os.getenv('IMAGE_PREPROCESSOR_CUT')
         self.setup_dirs()
         self.setup_logging()
 

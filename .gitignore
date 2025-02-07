@@ -1,7 +1,5 @@
 __pycache__/
 .venv/
 data/
-UI/pyuic5/
 .DS_Store
-*.UI
 logs/

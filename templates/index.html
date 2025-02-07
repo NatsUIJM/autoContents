@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>执行脚本</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .file-input-container {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .file-input-container button {
+            background-color: #3b82f6;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .file-input-container button:hover {
+            background-color: #2563eb;
+        }
+        .file-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .remove-file {
+            color: #6b7280;
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 4px;
+        }
+        .remove-file:hover {
+            color: #374151;
+        }
+        .page-inputs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .input-group label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+        }
+        .input-group input {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .progress-container {
+            margin: 20px 0;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress {
+            width: 0%;
+            height: 100%;
+            background-color: #10b981;
+            transition: width 0.3s ease;
+        }
+        .status {
+            margin: 10px 0;
+            text-align: center;
+            color: #4b5563;
+            font-size: 14px;
+        }
+        .log {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 14px;
+        }
+        .error {
+            color: #dc2626;
+        }
+        .warning {
+            color: #d97706;
+        }
+        .success {
+            color: #059669;
+        }
+        button#startButton {
+            width: 100%;
+            background-color: #10b981;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button#startButton:hover {
+            background-color: #059669;
+        }
+        button#startButton:disabled {
+            background-color: #d1d5db;
+            cursor: not-allowed;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="file-input-container">
+            <input type="file" id="pdfFile" accept=".pdf" class="hidden">
+            <button onclick="document.getElementById('pdfFile').click()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                选择PDF文件
+            </button>
+            <div id="fileName" class="file-name"></div>
+        </div>
+
+        <div class="page-inputs">
+            <div class="input-group">
+                <label for="tocStart">目录起始页</label>
+                <input type="number" id="tocStart" min="1">
+            </div>
+            <div class="input-group">
+                <label for="tocEnd">目录结束页</label>
+                <input type="number" id="tocEnd" min="1">
+            </div>
+            <div class="input-group">
+                <label for="contentStart">正文起始页</label>
+                <input type="number" id="contentStart" min="1">
+            </div>
+        </div>
+
+        <button id="startButton" onclick="startProcess()" disabled>开始执行</button>
+        
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div id="progress" class="progress"></div>
+            </div>
+            <div id="status" class="status">准备就绪</div>
+        </div>
+        
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let isProcessing = false;
+        let selectedFile = null;
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY = 1000; // 1秒
+        const FETCH_TIMEOUT = 360000; // 6分钟
+        const SCRIPT_CHECK_INTERVAL = 1000; // 1秒检查一次进度
+        // 添加全局变量存储session_id
+        let currentSessionId = null;
+
+        // 文件选择处理
+        document.getElementById('pdfFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                selectedFile = file;
+                const fileNameDiv = document.getElementById('fileName');
+                fileNameDiv.innerHTML = `
+                    <span>${file.name}</span>
+                    <button class="remove-file" onclick="removeFile()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                `;
+                updateStartButton();
+            } else {
+                addLog('请选择PDF文件', 'error');
+            }
+        });
+
+        function removeFile() {
+            selectedFile = null;
+            document.getElementById('pdfFile').value = '';
+            document.getElementById('fileName').innerHTML = '';
+            updateStartButton();
+        }
+
+        function updateStartButton() {
+            const tocStart = document.getElementById('tocStart').value;
+            const tocEnd = document.getElementById('tocEnd').value;
+            const contentStart = document.getElementById('contentStart').value;
+            const startButton = document.getElementById('startButton');
+            
+            startButton.disabled = !selectedFile || !tocStart || !tocEnd || !contentStart || isProcessing;
+        }
+
+        // 监听输入变化
+        ['tocStart', 'tocEnd', 'contentStart'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateStartButton);
+        });
+
+        function updateProgress(current, total) {
+            const percentage = (current / total) * 100;
+            document.getElementById('progress').style.width = percentage + '%';
+        }
+
+        function addLog(message, type = 'normal') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            if (type === 'error') entry.className = 'error';
+            if (type === 'warning') entry.className = 'warning';
+            if (type === 'success') entry.className = 'success';
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function uploadFiles() {
+            const formData = new FormData();
+            formData.append('pdf', selectedFile);
+            formData.append('tocStart', document.getElementById('tocStart').value);
+            formData.append('tocEnd', document.getElementById('tocEnd').value);
+            formData.append('contentStart', document.getElementById('contentStart').value);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    // 保存session_id
+                    currentSessionId = data.session_id;
+                    addLog('文件上传成功', 'success');
+                    return true;
+                } else {
+                    addLog(data.message, 'error');
+                    return false;
+                }
+            } catch (error) {
+                addLog(`上传失败: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // 修改下载结果的函数，使用session_id
+        async function downloadResult() {
+            try {
+                const response = await fetch(`/download_result/${currentSessionId}`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '处理结果.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    addLog('文件下载成功', 'success');
+                } else {
+                    const data = await response.json();
+                    addLog(data.message, 'error');
+                }
+            } catch (error) {
+                addLog(`下载失败: ${error.message}`, 'error');
+            }
+        }
+
+        async function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function fetchWithTimeout(url, timeout) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            
+            try {
+                const response = await fetch(url, {
+                    signal: controller.signal
+                });
+                clearTimeout(id);
+                return response;
+            } catch (error) {
+                clearTimeout(id);
+                if (error.name === 'AbortError') {
+                    throw new Error('请求超时');
+                }
+                throw error;
+            }
+        }
+
+        async function runScript(scriptIndex, retryCount = 0) {
+            if (!isProcessing) return;
+
+            document.getElementById('status').textContent = '正在执行...';
+            
+            try {
+                const response = await fetchWithTimeout(
+                    `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}`,
+                    FETCH_TIMEOUT
+                );
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.status === 'completed') {
+                    isProcessing = false;
+                    document.getElementById('status').textContent = '所有脚本执行完成';
+                    document.getElementById('startButton').disabled = false;
+                    addLog('所有脚本执行完成', 'success');
+                    await downloadResult();
+                    return;
+                }
+                
+                if (data.status === 'success') {
+                    updateProgress(data.nextIndex, data.totalScripts);
+                    document.getElementById('status').textContent = 
+                        `正在执行: ${data.currentScript} (${data.nextIndex}/${data.totalScripts})`;
+                    addLog(data.message, 'success');
+                    await sleep(SCRIPT_CHECK_INTERVAL);
+                    runScript(data.nextIndex, 0);
+                } else {
+                    handleError(data, scriptIndex, retryCount);
+                }
+            } catch (error) {
+                handleError({ message: error.message }, scriptIndex, retryCount);
+            }
+        }
+
+        function handleError(data, scriptIndex, retryCount) {
+            if (retryCount < MAX_RETRIES - 1) {
+                const nextRetryCount = retryCount + 1;
+                addLog(`执行失败，${RETRY_DELAY/1000}秒后进行第${nextRetryCount}次重试`, 'warning');
+                document.getElementById('status').textContent = `等待重试 (${nextRetryCount}/${MAX_RETRIES})...`;
+                setTimeout(() => runScript(scriptIndex, nextRetryCount), RETRY_DELAY);
+            } else {
+                isProcessing = false;
+                document.getElementById('status').textContent = `执行失败，已重试${MAX_RETRIES}次`;
+                document.getElementById('startButton').disabled = false;
+                addLog(`执行失败，已达到最大重试次数: ${data.message}`, 'error');
+            }
+        }
+
+        async function startProcess() {
+            if (isProcessing) return;
+            
+            const uploadSuccess = await uploadFiles();
+            if (!uploadSuccess) return;
+
+            isProcessing = true;
+            document.getElementById('startButton').disabled = true;
+            document.getElementById('progress').style.width = '0%';
+            document.getElementById('log').innerHTML = '';
+            addLog('开始执行脚本序列');
+            runScript(0, 0);
+        }
+    </script>
+</body>
+</html>
