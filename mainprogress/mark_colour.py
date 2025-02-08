@@ -144,7 +144,33 @@ def check_page_number(text: str, coordinates: list, all_lines: list, red_boxes: 
     
     return result
 
+def get_original_filename():
+    """
+    从MARK_COLOR_INPUT_DATA目录中读取JSON文件获取原始文件名
+    """
+    if not os.path.exists(input_data_dir):
+        return None
+    
+    # 获取目录中的第一个JSON文件
+    json_files = [f for f in os.listdir(input_data_dir) if f.endswith('.json')]
+    if not json_files:
+        return None
+    
+    json_path = os.path.join(input_data_dir, json_files[0])
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            original_filename = data.get('original_filename', '')
+            if original_filename.endswith('.pdf'):
+                return original_filename[:-4]  # Remove .pdf extension
+            return original_filename
+    except Exception as e:
+        print(f"读取JSON文件出错: {e}")
+        return None
+    
 def check_rules(text, coordinates, page_info, image_name, all_lines):
+    # 获取原始文件名
+    pdf_name = get_original_filename() or image_name.split('.pdf_page_')[0]
     """
     检查文本框符合哪些规则
     返回一个字典，包含每个规则的检查结果
@@ -158,7 +184,8 @@ def check_rules(text, coordinates, page_info, image_name, all_lines):
             'Ⅰ': 'I', 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV', 'Ⅴ': 'V',
             'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X',
             '=': 'II',  # 将等号视为罗马数字II
-            '貝': 'II'  # 将貝字视为罗马数字II
+            '貝': 'II',  # 将貝字视为罗马数字II
+            'N': 'IV'  
         }
         
         for k, v in roman_number_map.items():
@@ -500,4 +527,5 @@ if __name__ == "__main__":
     input_dir = os.getenv('MARK_COLOR_INPUT')
     input_image_dir = os.getenv('MARK_COLOR_INPUT_IMAGE')
     output_dir = os.getenv('MARK_COLOR_OUTPUT')
+    input_data_dir = os.getenv('MARK_COLOR_INPUT_DATA')
     process_directory(input_dir, input_image_dir, output_dir)

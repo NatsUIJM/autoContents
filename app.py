@@ -102,9 +102,11 @@ def upload_files():
         if not all([toc_start, toc_end, content_start]):
             return jsonify({'status': 'error', 'message': '页码信息不完整'})
             
-        # 转换文件名为拼音
+        # 保存原始文件名（中文）
         original_filename = pdf_file.filename
         filename_without_ext, file_extension = os.path.splitext(original_filename)
+        
+        # 转换文件名为拼音
         pinyin_filename = convert_to_pinyin(filename_without_ext) + file_extension
         
         upload_folder = os.path.join(base_dir, 'input_pdf')
@@ -114,10 +116,11 @@ def upload_files():
         json_data = {
             "toc_start": int(toc_start),
             "toc_end": int(toc_end),
-            "content_start": int(content_start)
+            "content_start": int(content_start),
+            "original_filename": original_filename  # 添加原始文件名字段
         }
         
-        # JSON文件名也使用拼音
+        # JSON文件名使用拼音
         json_filename = convert_to_pinyin(filename_without_ext) + '.json'
         json_path = os.path.join(upload_folder, json_filename)
         
@@ -315,6 +318,7 @@ async def run_script(session_id, script_index, retry_count):
             
             # mark_color.py路径配置
             'MARK_COLOR_INPUT': f"{base_dir}/automark_raw_data",
+            'MARK_COLOR_INPUT_DATA': f"{base_dir}/input_pdf",
             'MARK_COLOR_INPUT_IMAGE': f"{base_dir}/mark/input_image",
             'MARK_COLOR_OUTPUT': f"{base_dir}/automarker_colour",
             

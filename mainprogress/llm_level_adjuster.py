@@ -30,7 +30,7 @@ class PatternMatcher:
             for pattern in pattern_list:
                 if pattern.match(text):
                     return level
-        return 0  # 返回0表示未匹配任何模式
+        return 0
 
 def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
     """验证并解析模型返回的模式"""
@@ -39,7 +39,6 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
         if not isinstance(patterns, dict):
             raise ValueError("Patterns must be a dictionary")
         
-        # 验证每个级别的模式是否是有效的正则表达式
         validated_patterns = {}
         for level, pattern_list in patterns.items():
             level_num = int(level)
@@ -66,7 +65,6 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
         if not validated_patterns:
             raise ValueError("No valid patterns found")
             
-        # 确保至少有第一级和第二级的模式
         if 1 not in validated_patterns or 2 not in validated_patterns:
             raise ValueError("Must have patterns for both level 1 and 2")
             
@@ -74,13 +72,17 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
     except json.JSONDecodeError:
         raise ValueError("Invalid JSON format for patterns")
 
-def apply_patterns_to_items(items: List[dict], pattern_matcher: PatternMatcher) -> List[dict]:
-    """使用模式匹配器为每个项目设置层级"""
+#MODIFIED: 修改返回值类型，增加未匹配标题列表
+def apply_patterns_to_items(items: List[dict], pattern_matcher: PatternMatcher) -> Tuple[List[dict], List[str]]:
+    """使用模式匹配器为每个项目设置层级，返回处理后的项目和未匹配标题列表"""
+    unmatched_titles = []
     for item in items:
         level = pattern_matcher.match_level(item['text'])
         if level > 0:
             item['level'] = level
-    return items
+        else:
+            unmatched_titles.append(item['text'])
+    return items, unmatched_titles
 
 def prepare_data_for_model(data):
     """移除number、confirmed和level字段"""
@@ -94,15 +96,24 @@ def prepare_data_for_model(data):
         return [prepare_data_for_model(item) for item in data]
     return data
 
-def save_response(content: str, input_filename: str, attempt: int, cache_dir: Path) -> Path:
+#MODIFIED: 修改保存响应的函数，增加迭代轮次参数
+def save_response(content: str, input_filename: str, iteration: int, cache_dir: Path) -> Path:
     """保存响应到缓存目录"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"response_{input_filename}_attempt_{attempt}_{timestamp}.json"
+    filename = f"response_{input_filename}_iteration_{iteration}_{timestamp}.json"
     filepath = cache_dir / filename
     
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(content)
     return filepath
+
+#MODIFIED: 新增函数，构建第二次及后续迭代的输入
+def prepare_iteration_input(original_json: str, current_patterns: dict, unmatched_titles: List[str]) -> str:
+    return json.dumps({
+        "original_structure": json.loads(original_json),  # 原始JSON结构
+        "current_patterns": current_patterns,            # 当前使用的正则表达式
+        "unmatched_titles": unmatched_titles            # 未匹配的标题列表
+    }, ensure_ascii=False, indent=2)
 
 async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Path):
     try:
@@ -114,6 +125,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
         model_input_data = prepare_data_for_model(original_data)
         model_input_json = json.dumps(model_input_data, ensure_ascii=False, indent=2)
         
+        #MODIFIED: 保持原有的第一次系统提示词
         system_prompt = """请分析这份目录文件中各级标题的结构特征，并给出该目录特定的正则表达式模式。注意：只需识别当前目录的结构特征，不要试图覆盖其他可能的目录形式。
 
 示例目录1：
@@ -186,56 +198,184 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 4. 篇/部分标题、章/节标题、条/款标题等属于不同层级，切记不要将不同级别的标题视为同一级别
 
 只输出JSON格式的结果，不要包含其他说明。"""
-        print("Sending request to API...")
+
+        #MODIFIED: 第二次迭代的系统提示词预留位置
+        iteration_system_prompt = """
+请分析这份目录文件中各级标题的结构特征，然后分析当前的正则表达式为何会导致匹配遗漏，给出修正后的正则表达式。
+只输出JSON格式的结果，不要包含其他说明。
+
+示例目录1：
+- 第一篇 基础理论
+  - 第一章 概述
+    - 一、基本概念
+    - 二、发展历程
+  - 第二章 核心理论
+    - 三、基本原理
+    - 四、应用方法
+- 第二篇 实践应用
+  - 第三章 应用实例
+    - 五、案例分析
+    - 六、效果评估
+- 参考文献
+- 附录A 补充材料
+  - A.1 详细推导
+  - A.2 数据表格
+
+对应的模式输出：
+```json
+{
+    "1": ["^第[一二三四五六七八九十百千万]+篇.*", "^参考文献$", "^附录[A-Z].*"],
+    "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\\.[0-9]+.*"],
+    "3": ["^[一二三四五六七八九十百千万]+、.*"]
+}
+```
+  示例目录2：
+- 第一章 引言
+  - 1.1 研究背景
+  - *1.2 研究意义
+- 第二章 文献综述
+  - 2.1 国内研究现状
+  - *2.2 国外研究进展
+  - 本章总结
+  - 思考题
+- 附录
+  - 附录A 数据集
+  - 附录B 算法详解
+
+对应的模式输出：
+```json
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"]
+}
+```
+
+错误示例：
+```json
+{ // 多了一层花括号
+  "revised_patterns": { // 不要有"revised_patterns"
+    "1": [
+      "^第[0-9]+篇.*",
+      "^参考文献$"
+    ],
+    "2": [
+      "^第[0-9]+章.*"
+    ],
+    "3": [
+      "^[0-9]+\\.[0-9]+.*",
+      "^(习题)$",
+      "^\\*[0-9]+\\.[0-9]+.*"
+    ]
+  }
+}
+```
+错误原因：未按照“对应的模式输出：”中的结构进行输出
+"""
+
+        print("Starting first iteration...")
         
-        stream = await client.chat.completions.create(
-            model="qwen-max",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": model_input_json}
-            ],
-            response_format={"type": "json_object"},
-            stream=True
-        )
-
-        print("\nReceiving and processing response:")
-        accumulated_response = ""
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
-                accumulated_response += content
-                print(content, end='', flush=True)
-
-        # 保存响应
-        cache_file = save_response(
-            accumulated_response,
-            file_path.stem,
-            1,
-            cache_dir
-        )
-        print(f"\nResponse saved to: {cache_file}")
-
-        try:
-            patterns = validate_patterns(accumulated_response)
-            if not patterns:
-                raise ValueError("No valid patterns found in model response")
+        # First iteration
+        current_patterns = None
+        best_patterns = None
+        unmatched_titles = []
+        
+        for iteration in range(1, 5):  # 最多4次尝试
+            print(f"\nIteration {iteration}:")
             
-            pattern_matcher = PatternMatcher(patterns)
-            
-            # 应用模式进行匹配
-            original_data['items'] = apply_patterns_to_items(
-                original_data['items'],
-                pattern_matcher
+            if iteration == 1:
+                # First iteration uses original input and prompt
+                stream = await client.chat.completions.create(
+                    model="qwen-max",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": model_input_json}
+                    ],
+                    response_format={"type": "json_object"},
+                    stream=True
+                )
+            else:
+                # Subsequent iterations use iteration input and prompt
+                iteration_input = prepare_iteration_input(
+                    model_input_json,           # 原始JSON
+                    current_patterns,           # 当前正则表达式
+                    unmatched_titles           # 未匹配标题
+                )
+                stream = await client.chat.completions.create(
+                    model="qwen-max",
+                    messages=[
+                        {"role": "system", "content": iteration_system_prompt},
+                        {"role": "user", "content": iteration_input}
+                    ],
+                    response_format={"type": "json_object"},
+                    stream=True
+                )
+
+            print("Receiving response...")
+            accumulated_response = ""
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    accumulated_response += content
+                    print(content, end='', flush=True)
+
+            # 保存响应
+            cache_file = save_response(
+                accumulated_response,
+                file_path.stem,
+                iteration,
+                cache_dir
             )
-            
-            # 保存结果
-            output_file = output_dir / file_path.name
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(original_data, f, ensure_ascii=False, indent=2)
-            print(f"\nProcessing complete. Final output saved to: {output_file}")
-            
-        except Exception as e:
-            print(f"\nError processing patterns: {str(e)}")
+            print(f"\nResponse saved to: {cache_file}")
+
+            try:
+                current_patterns = validate_patterns(accumulated_response)
+                if not current_patterns:
+                    raise ValueError("No valid patterns found in model response")
+                
+                pattern_matcher = PatternMatcher(current_patterns)
+                
+                # 应用模式进行匹配
+                processed_items, new_unmatched = apply_patterns_to_items(
+                    original_data['items'].copy(),  # 使用副本避免修改原数据
+                    pattern_matcher
+                )
+                
+                # 保存第二次迭代的结果作为最佳结果
+                if iteration == 2:
+                    best_patterns = current_patterns
+                
+                # 检查是否还有未匹配的标题
+                if not new_unmatched:
+                    print("All titles matched successfully!")
+                    best_patterns = current_patterns  # 更新最佳结果
+                    break
+                
+                unmatched_titles = new_unmatched
+                print(f"\nUnmatched titles count: {len(unmatched_titles)}")
+                
+                if iteration >= 4:  # 第四次迭代后使用第二次的结果
+                    print("\nMaximum iterations reached. Using results from second iteration.")
+                    current_patterns = best_patterns
+                    break
+                
+            except Exception as e:
+                print(f"\nError processing patterns: {str(e)}")
+                if iteration == 1:
+                    raise  # 第一次迭代失败时直接退出
+                break  # 后续迭代失败时使用之前的结果
+        
+        # 使用最终的模式处理数据
+        final_pattern_matcher = PatternMatcher(best_patterns or current_patterns)
+        original_data['items'], _ = apply_patterns_to_items(
+            original_data['items'],
+            final_pattern_matcher
+        )
+        
+        # 保存结果
+        output_file = output_dir / file_path.name
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(original_data, f, ensure_ascii=False, indent=2)
+        print(f"\nProcessing complete. Final output saved to: {output_file}")
             
     except Exception as e:
         print(f"\nError processing {file_path.name}:")
