@@ -19,11 +19,25 @@ import dotenv
 dotenv.load_dotenv()
 
 def is_dot_between_numbers(text, index):
-    """检查某个位置的点是否在两个数字之间"""
+    """检查某个位置的点是否在两个数字之间（忽略空格）"""
     if index <= 0 or index >= len(text) - 1:
         return False
-    return text[index - 1].isdigit() and text[index + 1].isdigit()
-
+    
+    # 向左查找第一个非空格字符
+    left_idx = index - 1
+    while left_idx >= 0 and text[left_idx].isspace():
+        left_idx -= 1
+    if left_idx < 0:
+        return False
+    
+    # 向右查找第一个非空格字符
+    right_idx = index + 1
+    while right_idx < len(text) and text[right_idx].isspace():
+        right_idx += 1
+    if right_idx >= len(text):
+        return False
+    
+    return text[left_idx].isdigit() and text[right_idx].isdigit()
 def clean_text(text):
     """清理文本中的点，但保留数字之间的点"""
     result = ""
