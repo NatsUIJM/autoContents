@@ -95,7 +95,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签自动生成工具，�
 
 2. 在 VSCode 中，按`Ctrl/Command + Shift + P`并搜索`Python: Select Interpreter`，点击`创建虚拟环境`，选择`Venv`，勾选`requirements-core.txt`，点击确定，然后等待创建完成。
 
-3. 如果提示创建虚拟环境时出错，请注意勾选的是`requirements-core.txt`，不是`requirements.txt`。
+3. 如果提示创建虚拟环境时出错，请注意需要勾选的是`requirements-core.txt`，不要勾选`requirements.txt`。
 
 4. 如果创建虚拟环境用时长于 5 分钟，请检查网络连接是否正常，以及是否忘记修改 pip 镜像源。
 
@@ -103,8 +103,8 @@ autoContents 是一款专为扫描版 PDF 设计的书签自动生成工具，�
 
 ### 3.1 运行程序
 
-1. 若左侧无项目文件列表，请点击左上角的“资源管理器”按钮来把它打开。
-2. 点击项目文件列表中的`app.py`，然后点击右上角的`运行 Python 文件`。
+1. 若左侧无项目文件列表，请点击左上角的“资源管理器”（左侧竖列第一个，类似文件的标志）按钮来把它打开。
+2. 点击项目文件列表中的`app.py`，然后点击右上角的`运行 Python 文件`（三角播放符号）。
 3. 查看命令行，并在按下`Ctrl/Cmd`后，鼠标左键点击`http://127.0.0.1:5xxx`以在浏览器中打开主界面。
 
 ### 3.2 上传 PDF 并处理
