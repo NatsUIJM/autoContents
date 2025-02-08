@@ -48,92 +48,83 @@ jobs:
         shell: bash
 
       - name: Build with PyInstaller
+        shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # 主程序打包
             pyinstaller --noconfirm --onedir --name "YourApp" app.py
-            # 改进的启动器处理端口占用
-            echo '
-import os
-import sys
-import socket
-import subprocess
-import webbrowser
-import time
-from pathlib import Path
-
-def find_free_port(start=5000, max_port=5050):
-    for port in range(start, max_port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("127.0.0.1", port))
-                return port
-            except socket.error:
-                continue
-    raise RuntimeError("No free port found")
-
-def find_app_path():
-    base_path = Path(__file__).parent
-    return str(base_path / "YourApp" / "YourApp.exe")
-
-if __name__ == "__main__":
-    port = find_free_port()
-    app_path = find_app_path()
-    
-    os.environ["FLASK_PORT"] = str(port)
-    
-    startupinfo = subprocess.STARTUPINFO()
-    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startupinfo.wShowWindow = subprocess.SW_HIDE
-    
-    process = subprocess.Popen([app_path], 
-                             startupinfo=startupinfo,
-                             creationflags=subprocess.CREATE_NO_WINDOW,
-                             env=os.environ)
-    
-    time.sleep(2)
-    webbrowser.open(f"http://127.0.0.1:{port}")
-    
-    try:
-        process.wait()
-    except KeyboardInterrupt:
-        process.terminate()
-            ' > launcher.py
+            
+            # 创建启动器脚本
+            printf '%s\n' \
+              "import os" \
+              "import sys" \
+              "import socket" \
+              "import subprocess" \
+              "import webbrowser" \
+              "import time" \
+              "from pathlib import Path" \
+              "" \
+              "def find_free_port(start=5000, max_port=5050):" \
+              "    for port in range(start, max_port):" \
+              "        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:" \
+              "            try:" \
+              "                s.bind((\"127.0.0.1\", port))" \
+              "                return port" \
+              "            except socket.error:" \
+              "                continue" \
+              "    raise RuntimeError(\"No free port found\")" \
+              "" \
+              "def find_app_path():" \
+              "    base_path = Path(__file__).parent" \
+              "    return str(base_path / \"YourApp\" / \"YourApp.exe\")" \
+              "" \
+              "if __name__ == \"__main__\":" \
+              "    port = find_free_port()" \
+              "    app_path = find_app_path()" \
+              "    os.environ[\"FLASK_PORT\"] = str(port)" \
+              "    startupinfo = subprocess.STARTUPINFO()" \
+              "    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW" \
+              "    startupinfo.wShowWindow = subprocess.SW_HIDE" \
+              "    process = subprocess.Popen([app_path]," \
+              "                             startupinfo=startupinfo," \
+              "                             creationflags=subprocess.CREATE_NO_WINDOW," \
+              "                             env=os.environ)" \
+              "    time.sleep(2)" \
+              "    webbrowser.open(f\"http://127.0.0.1:{port}\")" \
+              "    try:" \
+              "        process.wait()" \
+              "    except KeyboardInterrupt:" \
+              "        process.terminate()" > launcher.py
+            
+            # 打包启动器
             pyinstaller --noconfirm --onefile --noconsole --name "Start" launcher.py
             mv dist/Start.exe dist/YourApp/
           else
+            # macOS版本
             pyinstaller --noconfirm --onedir --name "YourApp" app.py
-            echo '#!/bin/bash
-            DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
             
-            # 查找可用端口
-            port=5000
-            while netstat -an | grep "LISTEN" | grep -q ":$port "; do
-                ((port++))
-                if [ $port -gt 5050 ]; then
-                    echo "No free port found"
-                    exit 1
-                fi
-            done
+            # 创建启动脚本
+            printf '%s\n' \
+              '#!/bin/bash' \
+              'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"' \
+              '' \
+              '# 查找可用端口' \
+              'port=5000' \
+              'while netstat -an | grep "LISTEN" | grep -q ":$port "; do' \
+              '    ((port++))' \
+              '    if [ $port -gt 5050 ]; then' \
+              '        echo "No free port found"' \
+              '        exit 1' \
+              '    fi' \
+              'done' \
+              '' \
+              'export FLASK_PORT=$port' \
+              '"$DIR/YourApp/YourApp" &' \
+              'sleep 2' \
+              'open "http://127.0.0.1:$port"' > dist/YourApp/start.command
             
-            export FLASK_PORT=$port
-            "$DIR/YourApp/YourApp" &
-            sleep 2
-            open "http://127.0.0.1:$port"' > dist/YourApp/start.command
             chmod +x dist/YourApp/start.command
           fi
-        shell: bash
-
-      - name: Package application
-        run: |
-          cd dist
-          # 统一使用zip，不再使用7z
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            zip -r "../YourApp-${{ matrix.os }}-${{ matrix.arch }}.zip" "YourApp"
-          else
-            powershell Compress-Archive -Path YourApp -DestinationPath "../YourApp-${{ matrix.os }}-${{ matrix.arch }}.zip"
-          fi
-        shell: bash
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
