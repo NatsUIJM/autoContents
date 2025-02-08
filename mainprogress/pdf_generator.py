@@ -4,6 +4,7 @@
 """
 import os
 import sys
+from datetime import datetime
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 import json
@@ -112,6 +113,15 @@ def process_pdf_with_bookmarks():
             # 将书签添加到PDF
             with pdf.open_outline() as outline:
                 outline.root.extend(bookmarks)
+            
+            # 添加元数据
+            pdf.docinfo = pikepdf.Dictionary({
+                '/Creator': 'autoContents',
+                '/Producer': 'autoContents v1.0',
+                '/CreationDate': datetime.now().strftime("D:%Y%m%d%H%M%S"),
+                '/URL': 'https://github.com/NatsUijm/autoContents',
+                '/Comments': '本PDF书签由autoContents程序生成。感谢您使用本程序！该程序在GitHub开源，明确禁止未经授权的商业使用。如果您是通过付费渠道获得此PDF，建议您访问GitHub官方网站查询程序的授权情况。如果确认未经授权，建议您申请退款。若您愿意将销售相关信息告知作者，将不胜感激。作者邮箱：uijm2004@outlook.com'
+            })
             
             # 保存处理后的PDF到新目录
             output_path = os.path.join(os.getenv('PDF_GENERATOR_OUTPUT_1'), f'{base_name}_with_toc.pdf')
