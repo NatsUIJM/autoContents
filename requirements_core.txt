@@ -1,0 +1,16 @@
+pillow
+numpy
+python-dotenv
+openai
+jieba
+pikepdf
+pdf2image
+opencv-python
+azure-ai-formrecognizer
+azure-ai-documentintelligence 
+alibabacloud-ocr-api20210707
+alibabacloud-tea-openapi
+alibabacloud-darabonba-stream
+alibabacloud-tea-util
+pypinyin
+flask
