@@ -148,8 +148,8 @@ def clean_text_content(data: List[dict]) -> List[dict]:
                           .replace('§', '')
                           .replace('¥', '*')
                           .replace('$', '')
-                          .replace('+', ''))
-        
+                          .replace('+', '')
+                          .replace('S', ''))
         # 清理number字段
         if 'number' in item:
             item['number'] = clean_number_field(item['number'])
