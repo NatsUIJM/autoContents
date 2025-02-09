@@ -31,10 +31,7 @@ jobs:
     - name: Build executable
       run: |
         mkdir dist/application/data
-        pyinstaller --noconfirm --console --name "application" \
-        --add-data ".env;." \
-        --add-data "mainprogram;mainprogram" \
-        --add-data "templates/index.txt;templates" app.py
+        pyinstaller --noconfirm --console --name "application" --add-data ".env;." --add-data "mainprogress;mainprogress" --add-data "templates/index.txt;templates" app.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
