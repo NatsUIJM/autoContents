@@ -335,29 +335,44 @@ async def run_script(session_id, script_index, retry_count):
         # 获取Python解释器的完整路径
         python_executable = sys.executable
         
-        # 对于OCR相关的脚本，使用带有超时和故障转移的逻辑
+        # 修改OCR相关脚本处理逻辑
         if script_name in ['ocr_hybrid', 'ocr_and_projection_hybrid']:
-            # 首先尝试Azure
-            azure_script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
-            azure_result = await run_azure_with_timeout(python_executable, azure_script_path, env, script_dir)
+            ocr_model = request.args.get('ocr_model', 'azure')  # 默认使用azure
             
-            if azure_result.get('success', False):
-                return jsonify({
-                    'status': 'success',
-                    'currentScript': script_desc,
-                    'message': f'{script_desc} (Azure) 执行成功',
-                    'nextIndex': script_index + 1,
-                    'totalScripts': len(SCRIPT_SEQUENCE),
-                    'retryCount': 0,
-                    'session_id': session_id,
-                    'stdout': azure_result.get('stdout', ''),
-                    'stderr': azure_result.get('stderr', '')
-                })
-            
-            # Azure失败，尝试Aliyun
-            aliyun_script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "aliyun")}.py')
+            if ocr_model == 'azure':
+                script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
+                azure_result = await run_azure_with_timeout(python_executable, script_path, env, script_dir)
+                
+                if azure_result.get('success', False):
+                    return jsonify({
+                        'status': 'success',
+                        'currentScript': script_desc,
+                        'message': f'{script_desc} (Azure) 执行成功',
+                        'nextIndex': script_index + 1,
+                        'totalScripts': len(SCRIPT_SEQUENCE),
+                        'retryCount': 0,
+                        'session_id': session_id,
+                        'stdout': azure_result.get('stdout', ''),
+                        'stderr': azure_result.get('stderr', '')
+                    })
+                else:
+                    return jsonify({
+                        'status': 'error',
+                        'currentScript': script_desc,
+                        'message': f'{script_desc} (Azure) 执行失败',
+                        'stdout': azure_result.get('stdout', ''),
+                        'stderr': azure_result.get('stderr', ''),
+                        'retryCount': retry_count,
+                        'scriptIndex': script_index,
+                        'session_id': session_id
+                    })
+            else:  # aliyun
+                script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "aliyun")}.py')
+        
+        # 执行脚本（包括非OCR脚本和Aliyun OCR脚本）
+        try:
             result = subprocess.run(
-                [python_executable, aliyun_script_path],
+                [python_executable, script_path],
                 env=env,
                 cwd=script_dir,
                 capture_output=True,
@@ -369,7 +384,7 @@ async def run_script(session_id, script_index, retry_count):
                 return jsonify({
                     'status': 'success',
                     'currentScript': script_desc,
-                    'message': f'{script_desc} (Aliyun) 执行成功',
+                    'message': f'{script_desc}执行成功',
                     'nextIndex': script_index + 1,
                     'totalScripts': len(SCRIPT_SEQUENCE),
                     'retryCount': 0,
@@ -381,66 +396,24 @@ async def run_script(session_id, script_index, retry_count):
                 return jsonify({
                     'status': 'error',
                     'currentScript': script_desc,
-                    'message': f'{script_desc}执行失败 (Azure和Aliyun均失败)',
+                    'message': f'{script_desc}执行失败',
                     'stdout': result.stdout,
                     'stderr': result.stderr,
                     'retryCount': retry_count,
                     'scriptIndex': script_index,
                     'session_id': session_id
                 })
-        
-        # 对于非OCR脚本，使用原有逻辑
-        else:
-            try:
-                result = subprocess.run(
-                    [python_executable, script_path],
-                    env=env,
-                    cwd=script_dir,  # 设置工作目录为脚本所在目录
-                    capture_output=True,
-                    text=True,
-                    timeout=SCRIPT_TIMEOUT
-                )
-                
-                # 记录输出
-                logger.info(f"脚本输出:\n{result.stdout}")
-                if result.stderr:
-                    logger.error(f"脚本错误:\n{result.stderr}")
-                
-                if result.returncode == 0:
-                    return jsonify({
-                        'status': 'success',
-                        'currentScript': script_desc,
-                        'message': f'{script_desc}执行成功',
-                        'nextIndex': script_index + 1,
-                        'totalScripts': len(SCRIPT_SEQUENCE),
-                        'retryCount': 0,
-                        'session_id': session_id,
-                        'stdout': result.stdout,
-                        'stderr': result.stderr
-                    })
-                else:
-                    return jsonify({
-                        'status': 'error',
-                        'currentScript': script_desc,
-                        'message': f'{script_desc}执行失败，返回码: {result.returncode}',
-                        'stdout': result.stdout,
-                        'stderr': result.stderr,
-                        'retryCount': retry_count,
-                        'scriptIndex': script_index,
-                        'session_id': session_id
-                    })
-                    
-            except subprocess.TimeoutExpired as e:
-                return jsonify({
-                    'status': 'error',
-                    'currentScript': script_desc,
-                    'message': f'脚本执行超时（{SCRIPT_TIMEOUT}秒）',
-                    'stdout': e.stdout.decode() if e.stdout else '',
-                    'stderr': e.stderr.decode() if e.stderr else '',
-                    'retryCount': retry_count,
-                    'scriptIndex': script_index,
-                    'session_id': session_id
-                })
+        except subprocess.TimeoutExpired as e:
+            return jsonify({
+                'status': 'error',
+                'currentScript': script_desc,
+                'message': f'脚本执行超时（{SCRIPT_TIMEOUT}秒）',
+                'stdout': e.stdout.decode() if e.stdout else '',
+                'stderr': e.stderr.decode() if e.stderr else '',
+                'retryCount': retry_count,
+                'scriptIndex': script_index,
+                'session_id': session_id
+            })
             
     except Exception as e:
         logger.error(f"执行脚本时发生错误: {str(e)}")

@@ -9,6 +9,15 @@
             margin: 0 auto;
             padding: 20px;
         }
+        .form-select {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+            background-color: white;
+            font-size: 14px;
+        }
         .container {
             background-color: #fff;
             padding: 20px;
@@ -163,6 +172,13 @@
             <div class="input-group">
                 <label for="contentStart">正文起始页</label>
                 <input type="number" id="contentStart" min="1">
+            </div>
+            <div class="input-group" style="margin-bottom: 20px;">
+                <label for="ocrModel">OCR模型选择</label>
+                <select id="ocrModel" class="form-select">
+                    <option value="azure">Azure OCR</option>
+                    <option value="aliyun">Aliyun OCR</option>
+                </select>
             </div>
         </div>
 
@@ -328,8 +344,9 @@
             document.getElementById('status').textContent = '正在执行...';
             
             try {
+                const ocrModel = document.getElementById('ocrModel').value;
                 const response = await fetchWithTimeout(
-                    `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}`,
+                    `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
                     FETCH_TIMEOUT
                 );
 
@@ -358,10 +375,10 @@
                 } else {
                     handleError(data, scriptIndex, retryCount);
                 }
-            } catch (error) {
-                handleError({ message: error.message }, scriptIndex, retryCount);
+                } catch (error) {
+                    handleError({ message: error.message }, scriptIndex, retryCount);
+                }
             }
-        }
 
         function handleError(data, scriptIndex, retryCount) {
             if (retryCount < MAX_RETRIES - 1) {
