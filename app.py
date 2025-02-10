@@ -11,6 +11,9 @@ import string
 import socket
 from pypinyin import lazy_pinyin
 import sys
+import concurrent.futures
+import asyncio
+
 
 logger = logging.getLogger('gunicorn.error')
 
@@ -157,28 +160,34 @@ def download_result(session_id):
 
 AZURE_TIMEOUT = 15  # Azure服务超时时间（秒）
 
-def run_azure_with_timeout(python_executable, script_path, env, script_dir):
+async def run_azure_with_timeout(python_executable, script_path, env, script_dir):
     """运行Azure OCR脚本，带有超时控制"""
     try:
-        process = subprocess.run(
-            [python_executable, script_path],
+        process = await asyncio.create_subprocess_exec(
+            python_executable,
+            script_path,
             env=env,
             cwd=script_dir,
-            capture_output=True,
-            text=True,
-            timeout=AZURE_TIMEOUT
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
         
-        return {
-            'success': process.returncode == 0,
-            'stdout': process.stdout,
-            'stderr': process.stderr
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            'success': False,
-            'error': 'Azure OCR timeout'
-        }
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=AZURE_TIMEOUT)
+            return {
+                'success': process.returncode == 0,
+                'stdout': stdout.decode(),
+                'stderr': stderr.decode()
+            }
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+            except:
+                pass
+            return {
+                'success': False,
+                'error': 'Azure OCR timeout'
+            }
     except Exception as e:
         return {
             'success': False,
@@ -186,7 +195,7 @@ def run_azure_with_timeout(python_executable, script_path, env, script_dir):
         }
 
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
-def run_script(session_id, script_index, retry_count):
+async def run_script(session_id, script_index, retry_count):
     if script_index >= len(SCRIPT_SEQUENCE):
         return jsonify({
             'status': 'completed',
@@ -332,7 +341,7 @@ def run_script(session_id, script_index, retry_count):
             
             if ocr_model == 'azure':
                 script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
-                azure_result = run_azure_with_timeout(python_executable, script_path, env, script_dir)
+                azure_result = await run_azure_with_timeout(python_executable, script_path, env, script_dir)
                 
                 if azure_result.get('success', False):
                     return jsonify({
