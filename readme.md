@@ -21,10 +21,13 @@ autoContents 是一款专为扫描版 PDF 设计的书签**全自动**生成工�
 
 ### 2.2 配置基本开发环境
 
-进行本步骤前，请至少确保阿里云的通义千问和通用文字识别服务已经申请成功。
+- 如果是 Windows 用户，请右键点击`setup_documents`文件夹中的`[Windows]install.bat`，选择“以管理员身份运行”，然后等待脚本运行完成。
+- 如果是 macOS 用户，请双击打开`setup_documents`文件夹中的`[macOS]install.sh`，然后等待脚本运行完成。运行过程中可能需要输入密码，注意输入的密码不会显示在屏幕上，输入完成后按return即可。
 
-1. 如果是 Windows 用户，请右键点击`setup_documents`文件夹中的`[WINDOWS-MAIN]install_main.bat`，选择“以管理员身份运行”，然后等待脚本运行完成。运行过程中可能会请求管理员权限，并要求输入你的 API-KEY。
-2. 如果是 macOS 用户，请等待后续补充。
+### 2.3 配置 API-KEY
+
+- 如果是 Windows 用户，请双击打开`setup_documents`文件夹中的`[Windows]setup_api_keys.bat`，并按要求配置。
+- 如果是 macOS 用户，请双击打开`setup_documents`文件夹中的`[macOS]setup_api_keys.sh`，并按要求配置。
 
 ## Step 3 使用方法
 
