@@ -166,7 +166,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
     "3": ["^[一二三四五六七八九十百千万]+、.*"]
 }
 
-  示例目录2：
+示例目录2：
 - 第一章 引言
   - 1.1 研究背景
   - *1.2 研究意义
@@ -185,11 +185,24 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
     "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"]
 }
 
-错误输出示例：
+错误输出示例1：
 {
     "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
     "2": ["^[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"] // 错误：未考虑章节标题前的星号
 }
+
+错误输出示例2：
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "2": ["^\\**[0-9]\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"] // 错误：前面的`[0-9]`应为`[0-9]+`，否则无法匹配10以上的章节。请避免输出`[0-9]`这个格式，一旦要匹配数字就直接按照能匹配多位数字的语法来
+}
+
+错误输出示例3：
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "2": ["^\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"]  // 错误：反斜杠没有进行转义
+}
+
 
 请分析输入的目录结构，识别该目录特有的层级特征，给出准确的正则表达式模式。注意：
 1. 只关注输入目录的具体结构特征
@@ -250,7 +263,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 }
 ```
 
-错误示例：
+错误示例1：
 ```json
 { // 多了一层花括号
   "revised_patterns": { // 不要有"revised_patterns"
@@ -269,6 +282,13 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
   }
 }
 ```
+
+错误示例2：
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "2": ["^\\**[0-9]\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"] // 错误：前面的`[0-9]`应为`[0-9]+`，否则无法匹配10以上的章节。请避免输出`[0-9]`这个格式，一旦要匹配数字就直接按照能匹配多位数字的语法来
+}
+
 错误原因：未按照“对应的模式输出：”中的结构进行输出
 """
 
@@ -285,7 +305,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
             if iteration == 1:
                 # First iteration uses original input and prompt
                 stream = await client.chat.completions.create(
-                    model="qwen-max",
+                    model="deepseek-v3",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": model_input_json}

@@ -51,7 +51,7 @@ SERVICES = {
         name='DashScope',
         api_key_env='DASHSCOPE_API_KEY',
         base_url='https://dashscope.aliyuncs.com/compatible-mode/v1',
-        model_name='qwen-max'
+        model_name='deepseek-v3'
     ),
     'deepseek': ServiceConfig(
         name='DeepSeek',
