@@ -26,6 +26,8 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择“以管理员身份运行”，然后等待脚本运行完成。
 2. 双击打开`setup_documents`文件夹中的`windows_setup_api_keys.bat`，并按要求配置。
 
+注：若出现闪退现象，请检查当前用户是否具有管理员权限。
+
 #### 2.2.2 macOS 用户
 
 1. 打开“终端”APP，输入`chmod +x `（注意最后面有空格；注意是`+x`不是`-x`），然后将`setup_documents`文件夹中的`macos_install.sh`和`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`。
@@ -37,7 +39,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 ### 3.1 运行程序
 
-1. 双击根目录下的`windows_start.bat`或`macos_start.bat`来启动程序。
+1. 双击根目录下的`windows_start.bat`或`macos_start.command`来启动程序。
 2. 在弹出的命令行窗口中找到`http://127.0.0.1:5xxx`，并复制到浏览器以打开。
 
 ### 3.2 上传 PDF 并处理
