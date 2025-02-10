@@ -6,7 +6,6 @@ color 0A
 setlocal enabledelayedexpansion
 
 echo Script starting...
-pause
 
 :: Get script directory and parent directory
 set "SCRIPT_DIR=%~dp0"
@@ -40,7 +39,6 @@ if %errorlevel% equ 0 (
 )
 
 echo Current directory: %CD%
-pause
 
 :: Check Python 3.11
 python --version 2>nul | findstr "3.11" >nul
@@ -73,7 +71,6 @@ if %errorlevel% equ 0 (
     set "BIN_PATH=!FINAL_PATH!\Library\bin"
 
     echo Creating temp directory: !TEMP_EXTRACT_PATH!
-    pause
 
     if exist "!TEMP_EXTRACT_PATH!" rd /s /q "!TEMP_EXTRACT_PATH!"
     mkdir "!TEMP_EXTRACT_PATH!"
@@ -83,12 +80,20 @@ if %errorlevel% equ 0 (
         exit /b !errorlevel!
     )
 
-    echo Downloading !FILENAME! to !DOWNLOAD_PATH!...
+    set "retries=0"
+    :download_retry
+    echo Downloading !FILENAME! to !DOWNLOAD_PATH! ^(Attempt !retries!/3^)...
     powershell -Command "$wc = New-Object Net.WebClient; $wc.DownloadFile('!URL!', '!DOWNLOAD_PATH!')"
     if !errorlevel! neq 0 (
-        echo Download failed: !errorlevel!
-        pause
-        exit /b !errorlevel!
+        set /a "retries+=1"
+        if !retries! lss 3 (
+            echo Download failed, retrying...
+            goto download_retry
+        ) else (
+            echo Download failed after 3 attempts: !errorlevel!
+            pause
+            exit /b !errorlevel!
+        )
     )
 
     echo Extracting files...
@@ -141,7 +146,6 @@ if %errorlevel% equ 0 (
 )
 
 echo Current directory: %CD%
-pause
 
 :: Change to project directory
 echo Changing to project directory: !PROJECT_DIR!
