@@ -21,15 +21,17 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 ### 2.2 配置运行环境与 API-KEY
 
-- 如果是 Windows 用户，请按以下流程操作：
-    1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择“以管理员身份运行”，然后等待脚本运行完成。
-    2. 双击打开`setup_documents`文件夹中的`windows_setup_api_keys.bat`，并按要求配置。
+#### 2.2.1 Windows 用户
 
-- 如果是 macOS 用户，请按照以下流程操作：
-    1. 打开“终端”APP，输入`chmod +x `（注意最后面有空格），然后将`setup_documents`文件夹中的`macos_install.sh`和`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`。
-    2. 将`macos_install.sh`文件拖入终端窗口，按`return`，然后根据提示进行安装。建议选择通过清华大学下载 brew，并选择阿里巴巴国内源作为镜像源，等待脚本执行完成。
-    3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。
-    4. 将`macos_setup_api_keys.bat`文件拖入终端窗口，按`return`，并按要求配置。
+1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择“以管理员身份运行”，然后等待脚本运行完成。
+2. 双击打开`setup_documents`文件夹中的`windows_setup_api_keys.bat`，并按要求配置。
+
+#### 2.2.2 macOS 用户
+
+1. 打开“终端”APP，输入`chmod +x `（注意最后面有空格；注意是`+x`不是`-x`），然后将`setup_documents`文件夹中的`macos_install.sh`和`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`。
+2. 将`macos_install.sh`文件拖入终端窗口，按`return`，然后根据提示进行安装。建议选择通过清华大学下载 brew，并选择阿里巴巴国内源作为镜像源，等待脚本执行完成。注意输入密码时，输入的内容并不会显示在屏幕上，输入完成后按`return`即可。
+3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。
+4. 将`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`，并按要求配置。
 
 ## Step 3 使用方法
 
