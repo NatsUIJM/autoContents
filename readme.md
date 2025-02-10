@@ -10,33 +10,33 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 ## Step 1 下载程序
 
-- 如果你知道`git clone`命令，请将仓库克隆到本地。
-- 如果你不知道`git clone`命令，请点击页面顶部的绿色按钮`Code`，然后点击`Download ZIP`以下载程序源码。
+- 如果你会用`git clone`命令，请将仓库克隆到本地。
+- 如果你不会`git clone`命令，请点击页面顶部的绿色按钮`Code`，然后点击`Download ZIP`以下载程序源码。
 
 ## Step 2 配置环境
 
 ### 2.1 申请云服务 API-KEY
 
-在 95% 以上的测试样本中，阿里云能够提供稳定且优质的服务，足以满足大多数需求。因此建议优先完成阿里云相关服务的申请。仅在生成结果严重低于预期时，再考虑使用 Azure 及 DeepSeek 作为补充方案。申请教程请[点击这里](./docs/如何申请云服务账户.md)。
+在 95% 以上的测试样本中，阿里云能够提供稳定且优质的服务，足以满足大多数需求。因此建议优先完成阿里云相关服务的申请。仅在生成结果严重低于预期时，再考虑使用 Azure 及 DeepSeek 作为补充方案。[点此查看全部教程](./docs/如何申请云服务账户.md)。
 
-### 2.2 配置基本开发环境
+### 2.2 配置运行环境与 API-KEY
 
-- 如果是 Windows 用户，请右键点击`setup_documents`文件夹中的`windows_install.bat`，选择“以管理员身份运行”，然后等待脚本运行完成。
-- 如果是 macOS 用户，请按照以下流程安装：
-    1. 将`macos_install.sh`文件拖入终端窗口，按`return`，然后根据提示进行安装。建议选择通过清华大学下载 brew，并选择阿里巴巴国内源作为镜像源，等待脚本执行完成。
-    2. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。
+- 如果是 Windows 用户，请按以下流程操作：
+    1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择“以管理员身份运行”，然后等待脚本运行完成。
+    2. 双击打开`setup_documents`文件夹中的`windows_setup_api_keys.bat`，并按要求配置。
 
-### 2.3 配置 API-KEY
-
-- 如果是 Windows 用户，请双击打开`setup_documents`文件夹中的`windows_setup_api_keys.bat`，并按要求配置。
-- 如果是 macOS 用户，请双击打开`setup_documents`文件夹中的`macos_setup_api_keys.sh`，并按要求配置。
+- 如果是 macOS 用户，请按照以下流程操作：
+    1. 打开“终端”APP，输入`chmod +x `（注意最后面有空格），然后将`setup_documents`文件夹中的`macos_install.sh`和`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`。
+    2. 将`macos_install.sh`文件拖入终端窗口，按`return`，然后根据提示进行安装。建议选择通过清华大学下载 brew，并选择阿里巴巴国内源作为镜像源，等待脚本执行完成。
+    3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。
+    4. 将`macos_setup_api_keys.bat`文件拖入终端窗口，按`return`，并按要求配置。
 
 ## Step 3 使用方法
 
 ### 3.1 运行程序
 
-1. 双击根目录下的`[Windows]Start.bat`或`[macOS]Start.bat`来启动程序。
-2. 查看命令行，并在按下`Ctrl/Cmd`后，鼠标左键点击`http://127.0.0.1:5xxx`以在浏览器中打开主界面。
+1. 双击根目录下的`windows_start.bat`或`macos_start.bat`来启动程序。
+2. 在弹出的命令行窗口中找到`http://127.0.0.1:5xxx`，并复制到浏览器以打开。
 
 ### 3.2 上传 PDF 并处理
 
