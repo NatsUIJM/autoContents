@@ -1,6 +1,5 @@
 @echo off
 chcp 65001
-title autoContents环境变量设置
 setlocal EnableDelayedExpansion
 
 echo 请依次输入环境变量值（输入0可跳过）：
@@ -25,4 +24,3 @@ for /L %%i in (0,1,5) do (
 )
 
 echo 所有环境变量设置完成。请重启命令行或应用程序以使更改生效。
-pause
