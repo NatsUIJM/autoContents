@@ -4,6 +4,9 @@
 """
 import os
 import sys
+import platform
+import traceback
+from datetime import datetime
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 import base64
@@ -14,14 +17,51 @@ import cv2
 from PIL import Image, ImageDraw, ImageFont
 import io
 import logger
+import logging
 import time
 import concurrent.futures
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
 from datetime import datetime
+
+# 配置logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# 创建控制台处理器
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# 创建格式化器
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+# 将处理器添加到logger
+logger.addHandler(console_handler)
+
 from dotenv import load_dotenv
 load_dotenv()
+
+import logging
+
+
+
+def log_error_to_desktop(error_msg, stack_trace):
+    """将错误信息记录到桌面"""
+    if platform.system() == 'Windows':
+        desktop_path = os.path.join(os.path.expanduser('~'), 'Desktop')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_file = os.path.join(desktop_path, f'ocr_error_log_{timestamp}.txt')
+        
+        try:
+            with open(log_file, 'w', encoding='utf-8') as f:
+                f.write(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"错误信息: {error_msg}\n")
+                f.write("详细堆栈:\n")
+                f.write(stack_trace)
+        except Exception as e:
+            print(f"无法写入错误日志到桌面: {str(e)}")
 
 def retry_with_delay(max_retries=10, delay=10):
     """重试装饰器"""
@@ -33,6 +73,11 @@ def retry_with_delay(max_retries=10, delay=10):
                     return func(*args, **kwargs)
                 except Exception as e:
                     retries += 1
+                    if platform.system() == 'Windows':
+                        log_error_to_desktop(
+                            f"第 {retries} 次重试失败",
+                            traceback.format_exc()
+                        )
                     if retries == max_retries:
                         print(f"达到最大重试次数 {max_retries}，操作失败")
                         raise
@@ -50,10 +95,13 @@ class OCRProcessor:
         self.key = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_KEY')
         
         if not self.endpoint or not self.key:
-            raise ValueError(
+            error_msg = (
                 "Please set AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT and "
                 "AZURE_DOCUMENT_INTELLIGENCE_KEY environment variables"
             )
+            if platform.system() == 'Windows':
+                log_error_to_desktop(error_msg, traceback.format_exc())
+            raise ValueError(error_msg)
         
         # 确保目录存在
         self.input_dir = Path(os.getenv('OCR_PROJ_AZURE_INPUT'))
@@ -288,7 +336,10 @@ class OCRProcessor:
             }
 
         except Exception as e:
-            logger.error(f"处理图片 {img_path.name} 时发生错误", exc_info=True)
+            error_msg = f"处理图片 {img_path.name} 时发生错误"
+            if platform.system() == 'Windows':
+                log_error_to_desktop(error_msg, traceback.format_exc())
+            logger.error(error_msg, exc_info=True)
             raise RuntimeError(f"处理图片失败: {str(e)}")
 
     def draw_ocr_results(self, image, results, h_projection, v_projection):
@@ -378,8 +429,13 @@ class OCRProcessor:
                     print(f"处理图片时出错: {str(e)}")
 
 def main():
-    processor = OCRProcessor()
-    processor.process_all_images()
+    try:
+        processor = OCRProcessor()
+        processor.process_all_images()
+    except Exception as e:
+        if platform.system() == 'Windows':
+            log_error_to_desktop("主程序执行错误", traceback.format_exc())
+        raise
 
 if __name__ == '__main__':
     main()

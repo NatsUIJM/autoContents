@@ -212,6 +212,7 @@ def run_script(session_id, script_index, retry_count):
         
         # 添加系统必要的环境变量
         if os.name == 'nt':  # Windows系统
+            env = os.environ.copy()
             # 添加系统路径
             env['PATH'] = os.environ.get('PATH', '')
             env['SYSTEMROOT'] = os.environ.get('SYSTEMROOT', '')
