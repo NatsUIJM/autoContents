@@ -18,61 +18,10 @@ from typing import Dict, List, Tuple
 from dotenv import load_dotenv
 load_dotenv()
 
-def fix_backslashes(patterns_json: str) -> str:
-    """修复模型输出中未正确转义的反斜杠，处理更多的特殊情况"""
-    # 分步骤处理不同情况的反斜杠修复
-    
-    # 1. 修复未转义的反斜杠（标准正则特殊字符）
-    special_chars = 'sSwWdDbB'
-    for char in special_chars:
-        patterns_json = re.sub(
-            f'(?<!\\\\)\\(?!\\\\)(?={char})', 
-            r'\\\\', 
-            patterns_json
-        )
-    
-    # 2. 修复空白字符的反斜杠
-    patterns_json = re.sub(
-        r'(?<!\\)\\(?!\\)(?=s\s)', 
-        r'\\\\', 
-        patterns_json
-    )
-    
-    # 3. 修复点号前的反斜杠
-    patterns_json = re.sub(
-        r'(?<!\\)\\(?!\\)(?=\.)', 
-        r'\\\\', 
-        patterns_json
-    )
-    
-    # 4. 确保所有剩余的单反斜杠被正确转义
-    patterns_json = re.sub(
-        r'(?<!\\)\\(?![\\/"bfnrt])', 
-        r'\\\\', 
-        patterns_json
-    )
-    
-    return patterns_json
-
-def clean_model_response(response: str) -> str:
-    """清理模型响应中的代码块标记并进行初步格式修复"""
-    # 移除代码块标记
-    response = re.sub(r'^```\s*json\s*\n', '', response)
-    response = re.sub(r'\n```\s*$', '', response)
-    response = response.strip()
-    
-    # 尝试修复常见的JSON格式错误
-    # 1. 修复缺失的引号
-    response = re.sub(r'(\w+):', r'"\1":', response)
-    
-    # 2. 修复错误的空格
-    response = re.sub(r'\s+,', ',', response)
-    response = re.sub(r',\s+', ', ', response)
-    
-    # 3. 移除注释行
-    response = re.sub(r'\s*//.*$', '', response, flags=re.MULTILINE)
-    
-    return response
+def postprocess_pattern(pattern: str) -> str:
+    """替换模式中未加'+'的[0-9]为[0-9]+"""
+    # 使用正则表达式查找[0-9]后面不是+的情况
+    return re.sub(r'\[0-9\](?!\+)', '[0-9]+', pattern)
 
 class PatternMatcher:
     def __init__(self, patterns: Dict[int, List[str]]):
@@ -89,19 +38,9 @@ class PatternMatcher:
         return 0
 
 def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
-    """验证并解析模型返回的模式，包含更多的错误处理"""
+    """验证并解析模型返回的模式"""
     try:
-        # 首先尝试修复反斜杠
-        fixed_json = fix_backslashes(patterns_json)
-        
-        try:
-            patterns = json.loads(fixed_json)
-        except json.JSONDecodeError as e:
-            # 如果仍然失败，尝试进一步清理和修复
-            cleaned_json = clean_model_response(fixed_json)
-            fixed_cleaned_json = fix_backslashes(cleaned_json)
-            patterns = json.loads(fixed_cleaned_json)
-        
+        patterns = json.loads(patterns_json)
         if not isinstance(patterns, dict):
             raise ValueError("Patterns must be a dictionary")
         
@@ -109,48 +48,36 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
         for level, pattern_list in patterns.items():
             level_num = int(level)
             if level_num not in [1, 2, 3]:
-                print(f"Skipping invalid level: {level}")
                 continue
                 
             if not isinstance(pattern_list, list):
-                print(f"Skipping invalid pattern list for level {level}")
-                continue
+                raise ValueError(f"Patterns for level {level} must be a list")
                 
             valid_patterns = []
             for pattern in pattern_list:
                 try:
-                    # 尝试编译正则表达式
-                    re.compile(pattern)
-                    valid_patterns.append(pattern)
-                except re.error as e:
+                    # 对pattern进行后处理
+                    processed_pattern = postprocess_pattern(pattern)
+                    re.compile(processed_pattern)
+                    valid_patterns.append(processed_pattern)
+                except re.error:
                     print(f"Invalid regex pattern for level {level}: {pattern}")
-                    print(f"Error: {str(e)}")
-                    # 尝试修复pattern并重试
-                    try:
-                        fixed_pattern = fix_backslashes(pattern)
-                        re.compile(fixed_pattern)
-                        valid_patterns.append(fixed_pattern)
-                        print(f"Successfully fixed pattern: {fixed_pattern}")
-                    except re.error:
-                        continue
+                    continue
                     
-            if valid_patterns:
-                validated_patterns[level_num] = valid_patterns
+            if not valid_patterns:
+                raise ValueError(f"No valid patterns for level {level}")
+                
+            validated_patterns[level_num] = valid_patterns
         
         if not validated_patterns:
-            raise ValueError("No valid patterns found after processing")
+            raise ValueError("No valid patterns found")
             
         if 1 not in validated_patterns or 2 not in validated_patterns:
             raise ValueError("Must have patterns for both level 1 and 2")
             
         return validated_patterns
-        
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {str(e)}")
-        raise ValueError(f"Invalid JSON format for patterns: {str(e)}")
-    except Exception as e:
-        print(f"Unexpected error during pattern validation: {str(e)}")
-        raise
+    except json.JSONDecodeError:
+        raise ValueError("Invalid JSON format for patterns")
 
 #MODIFIED: 修改返回值类型，增加未匹配标题列表
 def apply_patterns_to_items(items: List[dict], pattern_matcher: PatternMatcher) -> Tuple[List[dict], List[str]]:
@@ -208,124 +135,164 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
         #MODIFIED: 保持原有的第一次系统提示词
         system_prompt = """请分析这份目录文件中各级标题的结构特征，并给出该目录特定的正则表达式模式。注意：只需识别当前目录的结构特征，不要试图覆盖其他可能的目录形式。
 
-请分析输入的目录结构，识别该目录特有的层级特征，给出准确的正则表达式模式。注意：
-1. 只关注输入目录的具体结构特征
-2. 正则表达式要准确匹配当前目录的各级标题格式
-3. 不要试图兼容其他可能的目录形式
-4. 本章总结、思考题等不应单独形成一个层级，它们应该和节同一级别，这点还请万分注意
-
-============示例目录============
+示例目录1：
 - 第一篇 基础理论
   - 第一章 概述
-    - 1.1 基本概念
-    - 1.2 发展历程
-    - 本章总结
-    - 思考题
+    - 一、基本概念
+    - 二、发展历程
   - 第二章 核心理论
-    - 2.1 基本原理
-    - 2.2 应用方法
-    - 本章总结
-    - 思考题
+    - 三、基本原理
+    - 四、应用方法
 - 第二篇 实践应用
   - 第三章 应用实例
-    - 3.1 案例分析
-    - *3.2 效果评估
-    - 本章总结
-    - 思考题
+    - 五、案例分析
+    - 六、效果评估
 - 参考文献
 - 附录A 补充材料
   - A.1 详细推导
   - A.2 数据表格
 
-============分析逻辑============
-
-1. 这篇目录有正文部分和非正文部分。
-2. 正文部分用的是`篇-章-节`结构，非正文部分包括参考文献和附录，附录用的是两级结构。
-3. 对于正文部分，篇是第一级，章是第二级，节是第三级。由于每章包含一个`本章总结`和`思考题`，所以它们应该是`章`的下一级。
-4. 对于非正文部分，参考文献一定是第一级，附录的最高级一定是第一级。
-
-============正确输出示例============
-```json
+对应的模式输出：
 {
-    "1": ["^第[一二三四五六七八九十百千万]+篇\\s.*", "^参考文献$", "^附录[A-Z]\\s.*"],
-    "2": ["^第[一二三四五六七八九十百千万]+章\\s.*", "^[A-Z]\\.[0-9]+\\s.*"],
-    "3": ["^[0-9]+\\.[0-9]+\\s.*", "^本章总结$", "^思考题$"]
+    "1": ["^第[一二三四五六七八九十百千万]+篇.*", "^参考文献$", "^附录[A-Z].*"],
+    "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\\.[0-9]+.*"],
+    "3": ["^[一二三四五六七八九十百千万]+、.*"]
 }
-```
-============错误原因警示============
-```json
+
+错误输出示例1：
 {
-    "1": ["^第[一二三四五六七八九十]+篇\\s.*", "^参考文献$", "^附录[A-Z]\\s.*"],  // 错误：如果遇到中文数字，即便原文不长，也要匹配全部。这里少了`百千万`。
-    "2": ["^第[一二三四五六七八九十百千万]+章\\s.*", "^[A-Z]\\.[0-9]\\s.*"],  // 错误：如果遇到阿拉伯数字，即使原文不长，也要匹配全部。这里的`[0-9]`应改为`[0-9]+`。
-    "3": ["^[0-9]+\\.[0-9]+\s.*"],  // 错误：转义字符缺失。此处的`\s`应改为`\\s`。
-    "4": ["^本章总结$", "^思考题$"]  // 错误：本章总结、思考题等不应单独形成一个层级，它们应该和节同一级别
+    "1": ["^第[一二三四五六七八九十]{1,3}篇.*", "^参考文献$", "^附录[A-Z].*"],  // 错误：匹配过于局限
+    "2": ["^第[一二三四五六七八九十]{1,3}章.*", "^[A-Z]\\.[0-9]+.*"],  // 错误：匹配过于局限
+    "3": ["^[一二三四五六七八九十]{1,3}、.*"]  // 错误：匹配过于局限
 }
-```
+
+错误输出示例2：
+{
+    "1": ["^第[一二三四五六七八九十百千万]+(?:篇|章).*", "^参考文献$", "^附录[A-Z].*"],  // 错误：篇和章应该分属不同层级
+    "2": ["^[A-Z]\\.[0-9]+.*"],
+    "3": ["^[一二三四五六七八九十百千万]+、.*"]
+}
+
+  示例目录2：
+- 第一章 引言
+  - 1.1 研究背景
+  - *1.2 研究意义
+- 第二章 文献综述
+  - 2.1 国内研究现状
+  - *2.2 国外研究进展
+  - 本章总结
+  - 思考题
+- 附录
+  - 附录A 数据集
+  - 附录B 算法详解
+
+对应的模式输出：
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"]
+}
+
+错误输出示例：
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "2": ["^[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"] // 错误：未考虑章节标题前的星号
+}
+
+请分析输入的目录结构，识别该目录特有的层级特征，给出准确的正则表达式模式。注意：
+1. 只关注输入目录的具体结构特征
+2. 正则表达式要准确匹配当前目录的各级标题格式
+3. 不要试图兼容其他可能的目录形式
+4. 篇/部分标题、章/节标题、条/款标题等属于不同层级，切记不要将不同级别的标题视为同一级别
+
 只输出JSON格式的结果，不要包含其他说明。"""
 
         #MODIFIED: 第二次迭代的系统提示词预留位置
         iteration_system_prompt = """
 请分析这份目录文件中各级标题的结构特征，然后分析当前的正则表达式为何会导致匹配遗漏，给出修正后的正则表达式。
 只输出JSON格式的结果，不要包含其他说明。
-本章总结、思考题等不应单独形成一个层级，它们应该和节同一级别，这点还请万分注意。
 
-============示例目录============
+示例目录1：
 - 第一篇 基础理论
   - 第一章 概述
-    - 1.1 基本概念
-    - 1.2 发展历程
-    - 本章总结
-    - 思考题
+    - 一、基本概念
+    - 二、发展历程
   - 第二章 核心理论
-    - 2.1 基本原理
-    - 2.2 应用方法
-    - 本章总结
-    - 思考题
+    - 三、基本原理
+    - 四、应用方法
 - 第二篇 实践应用
   - 第三章 应用实例
-    - 3.1 案例分析
-    - *3.2 效果评估
-    - 本章总结
-    - 思考题
+    - 五、案例分析
+    - 六、效果评估
 - 参考文献
 - 附录A 补充材料
   - A.1 详细推导
   - A.2 数据表格
 
-============正确输出示例============
-
+对应的模式输出：
 ```json
 {
-    "1": ["^第[一二三四五六七八九十百千万]+篇\\s.*", "^参考文献$", "^附录[A-Z]\\s.*"],
-    "2": ["^第[一二三四五六七八九十百千万]+章\\s.*", "^[A-Z]\\.[0-9]+\\s.*"],
-    "3": ["^[0-9]+\\.[0-9]+\\s.*", "^本章总结$", "^思考题$"]
+    "1": ["^第[一二三四五六七八九十百千万]+篇.*", "^参考文献$", "^附录[A-Z].*"],
+    "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\\.[0-9]+.*"],
+    "3": ["^[一二三四五六七八九十百千万]+、.*"]
+}
+```
+  示例目录2：
+- 第一章 引言
+  - 1.1 研究背景
+  - *1.2 研究意义
+- 第二章 文献综述
+  - 2.1 国内研究现状
+  - *2.2 国外研究进展
+  - 本章总结
+  - 思考题
+- 附录
+  - 附录A 数据集
+  - 附录B 算法详解
+
+对应的模式输出：
+```json
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"]
 }
 ```
 
-============错误原因警示============
+错误示例：
 ```json
-{
-    "1": ["^第[一二三四五六七八九十]+篇\\s.*", "^参考文献$", "^附录[A-Z]\\s.*"],  // 错误：如果遇到中文数字，即便原文不长，也要匹配全部。这里少了`百千万`。
-    "2": ["^第[一二三四五六七八九十百千万]+章\\s.*", "^[A-Z]\\.[0-9]\\s.*"],  // 错误：如果遇到阿拉伯数字，即使原文不长，也要匹配全部。这里的`[0-9]`应改为`[0-9]+`。
-    "3": ["^[0-9]+\\.[0-9]+\\s.*"],  // 错误：本章总结、思考题等不应单独形成一个层级，它们应该和节同一级别
-    "4": ["^本章总结$", "^思考题$"]  // 错误：本章总结、思考题等不应单独形成一个层级，它们应该和节同一级别
+{ // 多了一层花括号
+  "revised_patterns": { // 不要有"revised_patterns"
+    "1": [
+      "^第[0-9]+篇.*",
+      "^参考文献$"
+    ],
+    "2": [
+      "^第[0-9]+章.*"
+    ],
+    "3": [
+      "^[0-9]+\\.[0-9]+.*",
+      "^(习题)$",
+      "^\\*[0-9]+\\.[0-9]+.*"
+    ]
+  }
 }
 ```
-
+错误原因：未按照“对应的模式输出：”中的结构进行输出
 """
 
         print("Starting first iteration...")
         
+        # First iteration
         current_patterns = None
         best_patterns = None
         unmatched_titles = []
         
-        for iteration in range(1, 5):
+        for iteration in range(1, 5):  # 最多4次尝试
             print(f"\nIteration {iteration}:")
             
             if iteration == 1:
+                # First iteration uses original input and prompt
                 stream = await client.chat.completions.create(
-                    model="deepseek-v3",
+                    model="qwen-max",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": model_input_json}
@@ -334,10 +301,11 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                     stream=True
                 )
             else:
+                # Subsequent iterations use iteration input and prompt
                 iteration_input = prepare_iteration_input(
-                    model_input_json,
-                    current_patterns,
-                    unmatched_titles
+                    model_input_json,           # 原始JSON
+                    current_patterns,           # 当前正则表达式
+                    unmatched_titles           # 未匹配标题
                 )
                 stream = await client.chat.completions.create(
                     model="qwen-max",
@@ -357,10 +325,9 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                     accumulated_response += content
                     print(content, end='', flush=True)
 
-            # 清理并保存响应
-            cleaned_response = clean_model_response(accumulated_response)
+            # 保存响应
             cache_file = save_response(
-                cleaned_response,
+                accumulated_response,
                 file_path.stem,
                 iteration,
                 cache_dir
@@ -368,7 +335,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
             print(f"\nResponse saved to: {cache_file}")
 
             try:
-                current_patterns = validate_patterns(cleaned_response)
+                current_patterns = validate_patterns(accumulated_response)
                 if not current_patterns:
                     raise ValueError("No valid patterns found in model response")
                 
@@ -381,7 +348,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                 )
                 
                 # 保存第二次迭代的结果作为最佳结果
-                if iteration == 3:
+                if iteration == 2:
                     best_patterns = current_patterns
                 
                 # 检查是否还有未匹配的标题
