@@ -160,63 +160,57 @@ class OCRProcessor:
     @retry_with_delay(max_retries=10, delay=10)
     def process_single_image(self, img_path):
         """处理单张图片"""
-        raw_response_path = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_raw_response.json"
-        
-        if raw_response_path.exists():
-            print(f"找到缓存的响应数据，正在处理 {img_path.name}")
-            with open(raw_response_path, 'r', encoding='utf-8') as f:
-                result = json.load(f)
-        else:
-            print(f"未找到缓存数据，正在请求Azure处理 {img_path.name}")
-            document_intelligence_client = DocumentIntelligenceClient(
-                endpoint=self.endpoint,
-                credential=AzureKeyCredential(self.key)
-            )
+        print(f"正在请求Azure处理 {img_path.name}")
+        document_intelligence_client = DocumentIntelligenceClient(
+            endpoint=self.endpoint,
+            credential=AzureKeyCredential(self.key)
+        )
 
-            resized_image = self.resize_image_if_needed(img_path)
-            image_data = resized_image if resized_image else open(img_path, "rb").read()
+        resized_image = self.resize_image_if_needed(img_path)
+        image_data = resized_image if resized_image else open(img_path, "rb").read()
+        
+        poller = document_intelligence_client.begin_analyze_document(
+            "prebuilt-read",
+            image_data
+        )
+        result = poller.result()
+        
+        # 保存原始响应
+        raw_response_path = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_raw_response.json"
+        with open(raw_response_path, 'w', encoding='utf-8') as f:
+            result_dict = {
+                "content": result.content,
+                "pages": []
+            }
             
-            poller = document_intelligence_client.begin_analyze_document(
-                "prebuilt-read",
-                image_data
-            )
-            result = poller.result()
-            
-            # 保存原始响应
-            with open(raw_response_path, 'w', encoding='utf-8') as f:
-                result_dict = {
-                    "content": result.content,
-                    "pages": []
+            for page in result.pages:
+                page_dict = {
+                    "page_number": page.page_number,
+                    "width": page.width,
+                    "height": page.height,
+                    "unit": page.unit,
+                    "lines": [],
+                    "words": []
                 }
                 
-                for page in result.pages:
-                    page_dict = {
-                        "page_number": page.page_number,
-                        "width": page.width,
-                        "height": page.height,
-                        "unit": page.unit,
-                        "lines": [],
-                        "words": []
+                for line in page.lines:
+                    line_dict = {
+                        "content": line.content,
+                        "polygon": line.polygon if line.polygon else None
                     }
-                    
-                    for line in page.lines:
-                        line_dict = {
-                            "content": line.content,
-                            "polygon": line.polygon if line.polygon else None
-                        }
-                        page_dict["lines"].append(line_dict)
-                    
-                    for word in page.words:
-                        word_dict = {
-                            "content": word.content,
-                            "confidence": word.confidence,
-                            "polygon": word.polygon if word.polygon else None
-                        }
-                        page_dict["words"].append(word_dict)
-                    
-                    result_dict["pages"].append(page_dict)
+                    page_dict["lines"].append(line_dict)
                 
-                json.dump(result_dict, f, ensure_ascii=False, indent=2)
+                for word in page.words:
+                    word_dict = {
+                        "content": word.content,
+                        "confidence": word.confidence,
+                        "polygon": word.polygon if word.polygon else None
+                    }
+                    page_dict["words"].append(word_dict)
+                
+                result_dict["pages"].append(page_dict)
+            
+            json.dump(result_dict, f, ensure_ascii=False, indent=2)
 
         ocr_results = self.process_azure_result(result)
         
