@@ -160,34 +160,30 @@ def download_result(session_id):
 
 AZURE_TIMEOUT = 15  # Azure服务超时时间（秒）
 
-async def run_azure_with_timeout(python_executable, script_path, env, script_dir):
+def run_azure_with_timeout(python_executable, script_path, env, script_dir):
     """运行Azure OCR脚本，带有超时控制"""
     try:
-        process = await asyncio.create_subprocess_exec(
-            python_executable,
-            script_path,
+        result = subprocess.run(
+            [python_executable, script_path],
             env=env,
             cwd=script_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            capture_output=True,
+            text=True,
+            timeout=AZURE_TIMEOUT
         )
         
-        try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=AZURE_TIMEOUT)
-            return {
-                'success': process.returncode == 0,
-                'stdout': stdout.decode(),
-                'stderr': stderr.decode()
-            }
-        except asyncio.TimeoutError:
-            try:
-                process.kill()
-            except:
-                pass
-            return {
-                'success': False,
-                'error': 'Azure OCR timeout'
-            }
+        return {
+            'success': result.returncode == 0,
+            'stdout': result.stdout,
+            'stderr': result.stderr
+        }
+    except subprocess.TimeoutExpired as e:
+        return {
+            'success': False,
+            'error': 'Azure OCR timeout',
+            'stdout': e.stdout.decode() if e.stdout else '',
+            'stderr': e.stderr.decode() if e.stderr else ''
+        }
     except Exception as e:
         return {
             'success': False,
@@ -195,7 +191,7 @@ async def run_azure_with_timeout(python_executable, script_path, env, script_dir
         }
 
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
-async def run_script(session_id, script_index, retry_count):
+def run_script(session_id, script_index, retry_count):
     if script_index >= len(SCRIPT_SEQUENCE):
         return jsonify({
             'status': 'completed',
@@ -341,7 +337,7 @@ async def run_script(session_id, script_index, retry_count):
             
             if ocr_model == 'azure':
                 script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
-                azure_result = await run_azure_with_timeout(python_executable, script_path, env, script_dir)
+                azure_result = run_azure_with_timeout(python_executable, script_path, env, script_dir)
                 
                 if azure_result.get('success', False):
                     return jsonify({
@@ -425,6 +421,7 @@ async def run_script(session_id, script_index, retry_count):
             'scriptIndex': script_index,
             'session_id': session_id
         })
+
     
 def find_available_port(start_port=5000, max_port=6000):
     """查找可用的端口号"""
