@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>执行脚本</title>
+    <title>autoContents目录生成工具</title>
     <style>
         body {
             font-family: Arial, sans-serif;

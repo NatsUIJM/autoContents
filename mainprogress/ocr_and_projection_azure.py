@@ -13,6 +13,7 @@ import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 import io
+import logger
 import time
 import concurrent.futures
 from azure.core.credentials import AzureKeyCredential
@@ -160,74 +161,135 @@ class OCRProcessor:
     @retry_with_delay(max_retries=10, delay=10)
     def process_single_image(self, img_path):
         """处理单张图片"""
-        print(f"正在请求Azure处理 {img_path.name}")
-        document_intelligence_client = DocumentIntelligenceClient(
-            endpoint=self.endpoint,
-            credential=AzureKeyCredential(self.key)
-        )
+        try:
+            logger.info(f"开始处理图片: {img_path.name}")
+            logger.debug(f"完整路径: {img_path}")
+            logger.debug(f"当前工作目录: {os.getcwd()}")
 
-        resized_image = self.resize_image_if_needed(img_path)
-        image_data = resized_image if resized_image else open(img_path, "rb").read()
-        
-        poller = document_intelligence_client.begin_analyze_document(
-            "prebuilt-read",
-            image_data
-        )
-        result = poller.result()
-        
-        # 保存原始响应
-        raw_response_path = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_raw_response.json"
-        with open(raw_response_path, 'w', encoding='utf-8') as f:
-            result_dict = {
-                "content": result.content,
-                "pages": []
+            # 1. 创建Azure客户端
+            try:
+                document_intelligence_client = DocumentIntelligenceClient(
+                    endpoint=self.endpoint,
+                    credential=AzureKeyCredential(self.key)
+                )
+            except Exception as e:
+                logger.error("创建Azure客户端失败", exc_info=True)
+                raise RuntimeError(f"创建Azure客户端失败: {str(e)}")
+
+            # 2. 读取和处理图片
+            try:
+                resized_image = self.resize_image_if_needed(img_path)
+                image_data = resized_image if resized_image else open(img_path, "rb").read()
+            except Exception as e:
+                logger.error("读取或调整图片大小失败", exc_info=True)
+                raise RuntimeError(f"读取或调整图片大小失败: {str(e)}")
+
+            # 3. 调用Azure API
+            try:
+                logger.debug("开始调用Azure API")
+                poller = document_intelligence_client.begin_analyze_document(
+                    "prebuilt-read",
+                    image_data
+                )
+                result = poller.result()
+                logger.debug("Azure API调用成功")
+            except Exception as e:
+                logger.error("Azure API调用失败", exc_info=True)
+                raise RuntimeError(f"Azure API调用失败: {str(e)}")
+
+            # 4. 保存原始响应
+            try:
+                raw_response_path = self.output_dir / f"{img_path.stem}_raw_response.json"
+                with open(raw_response_path, 'w', encoding='utf-8') as f:
+                    result_dict = {
+                        "content": result.content,
+                        "pages": []
+                    }
+                    
+                    for page in result.pages:
+                        page_dict = {
+                            "page_number": page.page_number,
+                            "width": page.width,
+                            "height": page.height,
+                            "unit": page.unit,
+                            "lines": [],
+                            "words": []
+                        }
+                        
+                        for line in page.lines:
+                            line_dict = {
+                                "content": line.content,
+                                "polygon": line.polygon if line.polygon else None
+                            }
+                            page_dict["lines"].append(line_dict)
+                        
+                        for word in page.words:
+                            word_dict = {
+                                "content": word.content,
+                                "confidence": word.confidence,
+                                "polygon": word.polygon if word.polygon else None
+                            }
+                            page_dict["words"].append(word_dict)
+                        
+                        result_dict["pages"].append(page_dict)
+                    
+                    json.dump(result_dict, f, ensure_ascii=False, indent=2)
+                logger.debug("原始响应保存成功")
+            except Exception as e:
+                logger.error("保存原始响应失败", exc_info=True)
+                raise RuntimeError(f"保存原始响应失败: {str(e)}")
+
+            # 5. 处理OCR结果
+            try:
+                ocr_results = self.process_azure_result(result)
+                logger.debug("OCR结果处理成功")
+            except Exception as e:
+                logger.error("处理OCR结果失败", exc_info=True)
+                raise RuntimeError(f"处理OCR结果失败: {str(e)}")
+
+            # 6. 读取图片并计算投影
+            try:
+                image = cv2.imread(str(img_path))
+                if image is None:
+                    raise ValueError("无法读取图片")
+                height, width = image.shape[:2]
+                h_projection, v_projection = self.calculate_projections(ocr_results, height, width)
+                logger.debug("投影计算完成")
+            except Exception as e:
+                logger.error("计算投影失败", exc_info=True)
+                raise RuntimeError(f"计算投影失败: {str(e)}")
+
+            # 7. 保存结果JSON
+            try:
+                output_json = self.output_dir / f"{img_path.stem}_result.json"
+                with open(output_json, 'w', encoding='utf-8') as f:
+                    json.dump(ocr_results, f, ensure_ascii=False, indent=2)
+                logger.debug("结果JSON保存成功")
+            except Exception as e:
+                logger.error("保存结果JSON失败", exc_info=True)
+                raise RuntimeError(f"保存结果JSON失败: {str(e)}")
+
+            # 8. 生成和保存可视化结果
+            try:
+                output_img = self.draw_ocr_results(image, ocr_results, h_projection, v_projection)
+                output_img_path = self.output_dir / f"{img_path.stem}_annotated.jpg"
+                cv2.imwrite(str(output_img_path), output_img)
+                logger.debug("可视化结果保存成功")
+            except Exception as e:
+                logger.error("生成或保存可视化结果失败", exc_info=True)
+                raise RuntimeError(f"生成或保存可视化结果失败: {str(e)}")
+
+            logger.info(f"图片 {img_path.name} 处理完成")
+            return {
+                "status": "success",
+                "raw_response": str(raw_response_path),
+                "result_json": str(output_json),
+                "annotated_image": str(output_img_path)
             }
-            
-            for page in result.pages:
-                page_dict = {
-                    "page_number": page.page_number,
-                    "width": page.width,
-                    "height": page.height,
-                    "unit": page.unit,
-                    "lines": [],
-                    "words": []
-                }
-                
-                for line in page.lines:
-                    line_dict = {
-                        "content": line.content,
-                        "polygon": line.polygon if line.polygon else None
-                    }
-                    page_dict["lines"].append(line_dict)
-                
-                for word in page.words:
-                    word_dict = {
-                        "content": word.content,
-                        "confidence": word.confidence,
-                        "polygon": word.polygon if word.polygon else None
-                    }
-                    page_dict["words"].append(word_dict)
-                
-                result_dict["pages"].append(page_dict)
-            
-            json.dump(result_dict, f, ensure_ascii=False, indent=2)
 
-        ocr_results = self.process_azure_result(result)
-        
-        image = cv2.imread(str(img_path))
-        height, width = image.shape[:2]
-        
-        h_projection, v_projection = self.calculate_projections(ocr_results, height, width)
-        
-        output_json = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_result.json"
-        with open(output_json, 'w', encoding='utf-8') as f:
-            json.dump(ocr_results, f, ensure_ascii=False, indent=2)
-        
-        output_img = self.draw_ocr_results(image, ocr_results, h_projection, v_projection)
-        output_img_path = Path(os.getenv('OCR_PROJ_AZURE_OUTPUT')) / f"{img_path.stem}_annotated.jpg"
-        cv2.imwrite(str(output_img_path), output_img)
-        
-        print(f"已完成处理 {img_path.name}")
+        except Exception as e:
+            logger.error(f"处理图片 {img_path.name} 时发生错误", exc_info=True)
+            raise RuntimeError(f"处理图片失败: {str(e)}")
 
     def draw_ocr_results(self, image, results, h_projection, v_projection):
         """在图片上绘制OCR结果和投影图"""
