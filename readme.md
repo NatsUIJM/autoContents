@@ -35,7 +35,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
     - 如果未安装`Xcode CLI Tools`，会先安装该程序，安装完成后请重新运行该脚本，进行后续步骤。
     - 输入密码时，输入的内容并不会显示在屏幕上，输入完成后按`return`即可。
 3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。
-4. 将`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`，并按要求配置。
+4. 输入`sudo zsh `，将`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`，并按要求配置。
 
 ## Step 3 使用方法
 
