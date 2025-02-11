@@ -176,8 +176,8 @@
             <div class="input-group" style="margin-bottom: 20px;">
                 <label for="ocrModel">OCR模型选择</label>
                 <select id="ocrModel" class="form-select">
-                    <option value="azure">Azure OCR</option>
                     <option value="aliyun">Aliyun OCR</option>
+                    <option value="azure">Azure OCR</option>
                 </select>
             </div>
         </div>

@@ -337,7 +337,7 @@ async def run_script(session_id, script_index, retry_count):
         
         # 修改OCR相关脚本处理逻辑
         if script_name in ['ocr_hybrid', 'ocr_and_projection_hybrid']:
-            ocr_model = request.args.get('ocr_model', 'azure')  # 默认使用azure
+            ocr_model = request.args.get('ocr_model', 'aliyun')  # 默认使用aliyun
             
             if ocr_model == 'azure':
                 script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')

@@ -42,7 +42,7 @@ def find_e_point(projection, a_point, b_point):
     n1 = min(projection[45:56])
     n2 = max(projection[55:66])
     
-    if n2 - n1 >= 5:
+    if n2 - n1 >= 10:
         e_x = (a_point[0] + b_point[0]) / 2
         return (e_x, a_point[1])
     return None
