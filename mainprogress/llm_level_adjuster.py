@@ -19,18 +19,59 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def fix_backslashes(patterns_json: str) -> str:
-    """修复模型输出中未正确转义的反斜杠"""
-    # 不会错误地将已经转义的双反斜杠识别为需要再次转义
-    return re.sub(r'(?<!\\)\\(?!\\)(?=[sSwWdDbB]|s\s)', r'\\\\', patterns_json)
+    """修复模型输出中未正确转义的反斜杠，处理更多的特殊情况"""
+    # 分步骤处理不同情况的反斜杠修复
+    
+    # 1. 修复未转义的反斜杠（标准正则特殊字符）
+    special_chars = 'sSwWdDbB'
+    for char in special_chars:
+        patterns_json = re.sub(
+            f'(?<!\\\\)\\(?!\\\\)(?={char})', 
+            r'\\\\', 
+            patterns_json
+        )
+    
+    # 2. 修复空白字符的反斜杠
+    patterns_json = re.sub(
+        r'(?<!\\)\\(?!\\)(?=s\s)', 
+        r'\\\\', 
+        patterns_json
+    )
+    
+    # 3. 修复点号前的反斜杠
+    patterns_json = re.sub(
+        r'(?<!\\)\\(?!\\)(?=\.)', 
+        r'\\\\', 
+        patterns_json
+    )
+    
+    # 4. 确保所有剩余的单反斜杠被正确转义
+    patterns_json = re.sub(
+        r'(?<!\\)\\(?![\\/"bfnrt])', 
+        r'\\\\', 
+        patterns_json
+    )
+    
+    return patterns_json
 
 def clean_model_response(response: str) -> str:
-    """清理模型响应中的代码块标记"""
-    # 移除 ```json 或 ``` 开头
+    """清理模型响应中的代码块标记并进行初步格式修复"""
+    # 移除代码块标记
     response = re.sub(r'^```\s*json\s*\n', '', response)
-    # 移除结尾的 ```
     response = re.sub(r'\n```\s*$', '', response)
-    # 移除任何开头的空白字符
     response = response.strip()
+    
+    # 尝试修复常见的JSON格式错误
+    # 1. 修复缺失的引号
+    response = re.sub(r'(\w+):', r'"\1":', response)
+    
+    # 2. 修复错误的空格
+    response = re.sub(r'\s+,', ',', response)
+    response = re.sub(r',\s+', ', ', response)
+    
+    # 3. 移除注释行
+    response = re.sub(r'\s*//.*$', '', response, flags=re.MULTILINE)
+    
     return response
 
 class PatternMatcher:
@@ -48,11 +89,18 @@ class PatternMatcher:
         return 0
 
 def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
-    """验证并解析模型返回的模式"""
+    """验证并解析模型返回的模式，包含更多的错误处理"""
     try:
-        # 修复反斜杠转义
+        # 首先尝试修复反斜杠
         fixed_json = fix_backslashes(patterns_json)
-        patterns = json.loads(fixed_json)
+        
+        try:
+            patterns = json.loads(fixed_json)
+        except json.JSONDecodeError as e:
+            # 如果仍然失败，尝试进一步清理和修复
+            cleaned_json = clean_model_response(fixed_json)
+            fixed_cleaned_json = fix_backslashes(cleaned_json)
+            patterns = json.loads(fixed_cleaned_json)
         
         if not isinstance(patterns, dict):
             raise ValueError("Patterns must be a dictionary")
@@ -61,34 +109,48 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
         for level, pattern_list in patterns.items():
             level_num = int(level)
             if level_num not in [1, 2, 3]:
+                print(f"Skipping invalid level: {level}")
                 continue
                 
             if not isinstance(pattern_list, list):
-                raise ValueError(f"Patterns for level {level} must be a list")
+                print(f"Skipping invalid pattern list for level {level}")
+                continue
                 
             valid_patterns = []
             for pattern in pattern_list:
                 try:
+                    # 尝试编译正则表达式
                     re.compile(pattern)
                     valid_patterns.append(pattern)
-                except re.error:
+                except re.error as e:
                     print(f"Invalid regex pattern for level {level}: {pattern}")
-                    continue
+                    print(f"Error: {str(e)}")
+                    # 尝试修复pattern并重试
+                    try:
+                        fixed_pattern = fix_backslashes(pattern)
+                        re.compile(fixed_pattern)
+                        valid_patterns.append(fixed_pattern)
+                        print(f"Successfully fixed pattern: {fixed_pattern}")
+                    except re.error:
+                        continue
                     
-            if not valid_patterns:
-                raise ValueError(f"No valid patterns for level {level}")
-                
-            validated_patterns[level_num] = valid_patterns
+            if valid_patterns:
+                validated_patterns[level_num] = valid_patterns
         
         if not validated_patterns:
-            raise ValueError("No valid patterns found")
+            raise ValueError("No valid patterns found after processing")
             
         if 1 not in validated_patterns or 2 not in validated_patterns:
             raise ValueError("Must have patterns for both level 1 and 2")
             
         return validated_patterns
-    except json.JSONDecodeError:
-        raise ValueError("Invalid JSON format for patterns")
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {str(e)}")
+        raise ValueError(f"Invalid JSON format for patterns: {str(e)}")
+    except Exception as e:
+        print(f"Unexpected error during pattern validation: {str(e)}")
+        raise
 
 #MODIFIED: 修改返回值类型，增加未匹配标题列表
 def apply_patterns_to_items(items: List[dict], pattern_matcher: PatternMatcher) -> Tuple[List[dict], List[str]]:
