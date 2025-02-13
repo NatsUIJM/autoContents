@@ -143,6 +143,39 @@
         .hidden {
             display: none;
         }
+        .sponsor-container {
+            max-width: 800px;
+            margin: 20px auto;
+            text-align: center;
+        }
+        .sponsor-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 auto;
+            padding: 8px 16px;
+            background-color: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            color: #4b5563;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .sponsor-button:hover {
+            background-color: #e5e7eb;
+        }
+        .sponsor-content {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .sponsor-qr {
+            max-width: 400px;
+            height: auto;
+        }
     </style>
 </head>
 <body>
@@ -192,6 +225,18 @@
         </div>
         
         <div id="log" class="log"></div>
+    </div>
+
+    <div class="sponsor-container">
+        <button id="sponsorButton" class="sponsor-button" onclick="toggleSponsor()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/>
+            </svg>
+            赞助链接
+        </button>
+        <div id="sponsorContent" class="sponsor-content">
+            <img src="/static/qrcode.jpg" alt="赞助二维码" class="sponsor-qr">
+        </div>
     </div>
 
     <script>
@@ -291,7 +336,6 @@
             }
         }
 
-        // 修改下载结果的函数，使用session_id
         async function downloadResult() {
             try {
                 const response = await fetch(`/download_result/${currentSessionId}`);
@@ -406,6 +450,12 @@
             document.getElementById('log').innerHTML = '';
             addLog('开始执行脚本序列');
             runScript(0, 0);
+        }
+
+        function toggleSponsor() {
+            const content = document.getElementById('sponsorContent');
+            const currentDisplay = window.getComputedStyle(content).display;
+            content.style.display = currentDisplay === 'none' ? 'block' : 'none';
         }
     </script>
 </body>
