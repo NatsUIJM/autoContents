@@ -48,9 +48,27 @@ def process_pdf_with_bookmarks():
             toc_data['items'].insert(0, toc_entry)
             
             # 调整页码
+            valid_items = []
             for item in toc_data['items']:
-                if item['text'] != '目录':  # 不调整"目录"条目的页码
-                    item['number'] = item['number'] + content_start - 1
+                try:
+                    if item['text'] != '目录':  # 不调整"目录"条目的页码
+                        if not isinstance(item['number'], (int, float)):
+                            print(f"警告: 跳过无效页码的条目 '{item['text']}'")
+                            continue
+                        item['number'] = item['number'] + content_start - 1
+                    
+                    # 验证必要字段
+                    if not isinstance(item['text'], str):
+                        print(f"警告: 跳过标题无效的条目")
+                        continue
+                    if not isinstance(item['level'], int) or item['level'] < 1 or item['level'] > 3:
+                        print(f"警告: 跳过层级无效的条目 '{item['text']}'")
+                        continue
+                    
+                    valid_items.append(item)
+                except (KeyError, TypeError) as e:
+                    print(f"警告: 跳过格式错误的条目: {str(e)}")
+                    continue
             
             # 使用pikepdf处理PDF
             pdf = pikepdf.Pdf.open(pdf_path)
@@ -64,7 +82,7 @@ def process_pdf_with_bookmarks():
                     try:
                         # 检查页码是否有效
                         if item['number'] < 1 or item['number'] > len(pdf.pages):
-                            print(f"警告: 页码 {item['number']} 超出范围!")
+                            print(f"警告: 页码 {item['number']} 超出范围，跳过条目 '{item['text']}'")
                             continue
                         
                         print(f"\n创建书签:")
@@ -99,7 +117,7 @@ def process_pdf_with_bookmarks():
                                 bookmarks.append(bookmark)
                                 
                     except Exception as e:
-                        print(f"创建书签时出错: {str(e)}")
+                        print(f"警告: 创建书签时出错，跳过条目 '{item.get('text', '未知')}': {str(e)}")
                         continue
                 
                 return bookmarks
@@ -108,7 +126,7 @@ def process_pdf_with_bookmarks():
             pdf.Root.Outlines = pdf.make_indirect(pikepdf.Dictionary())
             
             # 创建新书签
-            bookmarks = create_bookmark_tree(toc_data['items'])
+            bookmarks = create_bookmark_tree(valid_items)
             
             # 将书签添加到PDF
             with pdf.open_outline() as outline:
