@@ -3,3 +3,4 @@ __pycache__/
 data/
 .DS_Store
 logs/
+todo.md

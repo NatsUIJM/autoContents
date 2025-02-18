@@ -29,13 +29,20 @@ class PatternMatcher:
             level: [re.compile(pattern) for pattern in pattern_list]
             for level, pattern_list in patterns.items()
         }
+        # Find the max level for starting point
+        self.max_level = max(patterns.keys())
     
     def match_level(self, text: str) -> int:
-        for level, pattern_list in self.patterns.items():
-            for pattern in pattern_list:
+        # Start matching from highest level to lowest
+        for level in range(self.max_level, 0, -1):
+            if level not in self.patterns:
+                continue
+            
+            for pattern in self.patterns[level]:
                 if pattern.match(text):
                     return level
         return 0
+
 
 def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
     """验证并解析模型返回的模式"""
@@ -83,12 +90,21 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
 def apply_patterns_to_items(items: List[dict], pattern_matcher: PatternMatcher) -> Tuple[List[dict], List[str]]:
     """使用模式匹配器为每个项目设置层级，返回处理后的项目和未匹配标题列表"""
     unmatched_titles = []
+    # 用一个集合来跟踪本次匹配中已经被匹配的标题
+    matched_texts = set()
+    
+    # 第一遍：尝试匹配所有标题
     for item in items:
-        level = pattern_matcher.match_level(item['text'])
-        if level > 0:
-            item['level'] = level
-        else:
-            unmatched_titles.append(item['text'])
+        if item['text'] not in matched_texts:  # 只处理未匹配的标题
+            level = pattern_matcher.match_level(item['text'])
+            if level > 0:
+                item['level'] = level
+                matched_texts.add(item['text'])
+            else:
+                unmatched_titles.append(item['text'])
+    
+    # 对于未匹配的标题，保持原有的level值（通常是1）
+    
     return items, unmatched_titles
 
 def prepare_data_for_model(data):
@@ -203,6 +219,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 2. 正则表达式要准确匹配当前目录的各级标题格式
 3. 不要试图兼容其他可能的目录形式
 4. 篇/部分标题、章/节标题、条/款标题等属于不同层级，切记不要将不同级别的标题视为同一级别
+5. 小结、习题等一般是章的下一级，具体要看它与什么级别的标题出现频率相近，但绝对不可能是第一级
 
 只输出JSON格式的结果，不要包含其他说明。"""
 

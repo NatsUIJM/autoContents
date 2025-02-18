@@ -32,6 +32,28 @@ def strip_items_wrapper(data: dict | list) -> list:
         return data["items"]
     return data
 
+def is_valid_format(data) -> bool:
+    """
+    Validate if the data matches the required format:
+    [["title", page_number], ...]
+    where page_number must be an integer
+    """
+    try:
+        if not isinstance(data, list):
+            return False
+        
+        for item in data:
+            if not isinstance(item, list) or len(item) != 2:
+                return False
+            if not isinstance(item[0], str):
+                return False
+            if not isinstance(item[1], int):
+                return False
+        
+        return True
+    except Exception:
+        return False
+    
 def convert_to_full_format(data: list) -> dict:
     """Convert input format to full format"""
     return {
@@ -150,8 +172,13 @@ def get_system_prompt() -> str:
 4. 请使用JSON格式输出，正确示例如下：
 
 ```json
-[["第二节 零件图的视图选择及尺寸标注", 196],
- ["第三节 零件结构工艺性简介", 206]]
+[
+  ["第1章 半导体器件基础", 3],
+  ["1.1 基本要求", 3],
+  ["1.2 精要指点", 3],
+  ["1.2.1 半导体的基本知识", 3],
+  ["1.2.2 半导体二极管", 5]
+]
 ```
 
 5. 易错案例：
@@ -159,9 +186,14 @@ def get_system_prompt() -> str:
    2. `第2章 超前滞后校正与PID校正`正确；`第2章 超前滞后校正与 PID校正`错误；`第2章 超前滞后校正与PID 校正`错误
    3. JSON错误格式案例：
 ```json
-[["第二节 零件图的视图选择及尺寸标注", "196"], // 错误：应为数字（int），不要加引号（str）
- ["第三节 零件结构工艺性简介", 206]] //
+[
+  ["第1章 半导体器件基础", "3"],  // 错误：应为数字（int），不要加引号（str）
+  ["1.1 基本要求", 3],
+  ["1.2 精要指点", 3]
+]
 ```
+
+
 
 常见错误示例：
 
@@ -187,10 +219,13 @@ system = """
 You are a helpful assistant for a data processing task. You need to process JSON-formatted directory data, correct text errors, and standardize the format.
 """
 
-async def process_single_file(file_path: Path, output_dir: Path, service_manager: ServiceManager, token_counter: TokenCounter, retry_count: int = 1):
+async def process_single_file(file_path: Path, output_dir: Path, service_manager: ServiceManager, token_counter: TokenCounter, retry_count: int = 10):
     """处理单个文件"""
     try:
-        # 如果是被禁用的DeepSeek服务，直接返回错误信息
+        # Create raw_responses subdirectory
+        raw_responses_dir = output_dir / "raw_responses"
+        os.makedirs(raw_responses_dir, exist_ok=True)
+
         if not ENABLE_DEEPSEEK and service_manager.config.name.lower() == 'deepseek':
             error_data = {
                 "items": [{
@@ -203,26 +238,23 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
             output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(error_data, f, ensure_ascii=False, indent=2)
+            
+            raw_response_file = raw_responses_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_raw.json"
+            with open(raw_response_file, 'w', encoding='utf-8') as f:
+                json.dump(error_data, f, ensure_ascii=False, indent=2)
+                
             print(f"Skipped {file_path.name} as DeepSeek is disabled")
             return False
 
-        # 原有的处理逻辑保持不变
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Strip the 'items' wrapper before sending to LLM
         stripped_data = strip_items_wrapper(data)
-        
-        # 创建模型提示词
         prompt = f"{get_system_prompt()}\n\n{json.dumps(stripped_data, ensure_ascii=False, indent=2)}"
-        
-        # 更新输入字符计数
         progress_tracker.add_input_chars(len(prompt))
         
-        # 指定重试次数
-        for attempt in range(retry_count + 1):
+        for attempt in range(retry_count):
             try:
-                # 使用流式调用模型
                 response = await service_manager.client.chat.completions.create(
                     model=service_manager.config.model_name,
                     messages=[
@@ -248,23 +280,33 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                             chunk.usage.completion_tokens,
                             chunk.usage.prompt_tokens
                         )
+
+                # Store raw response
+                raw_response_file = raw_responses_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_raw_{attempt+1}.json"
+                with open(raw_response_file, 'w', encoding='utf-8') as f:
+                    f.write(full_response)
                 
-                # 验证JSON格式并转换为压缩格式
-                compressed_data = json.loads(full_response)
+                try:
+                    compressed_data = json.loads(full_response)
+                    if not is_valid_format(compressed_data):
+                        print(f"Invalid format in attempt {attempt + 1} for {file_path.name}. Retrying...")
+                        continue
+                    
+                    processed_data = convert_to_full_format(compressed_data)
+                    
+                    output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        json.dump(processed_data, f, ensure_ascii=False, indent=2)
+                    
+                    print(f"Processed {file_path.name} using {service_manager.config.name} on attempt {attempt + 1}")
+                    return True
                 
-                # 转换为完整格式
-                processed_data = convert_to_full_format(compressed_data)
-                
-                # 修改输出文件名，添加服务名称
-                output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    json.dump(processed_data, f, ensure_ascii=False, indent=2)
-                
-                print(f"Processed {file_path.name} using {service_manager.config.name}")
-                return True
-                
+                except json.JSONDecodeError:
+                    print(f"Invalid JSON in attempt {attempt + 1} for {file_path.name}. Retrying...")
+                    continue
+                    
             except Exception as e:
-                if attempt < retry_count:
+                if attempt < retry_count - 1:
                     print(f"Retry {attempt + 1} for {file_path.name} using {service_manager.config.name} due to: {str(e)}")
                     continue
                 else:
@@ -276,12 +318,34 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                             "level": 1
                         }]
                     }
-                    # 修改错误输出文件名，添加服务名称
+                    
                     output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
+                    raw_response_file = raw_responses_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_raw_final.json"
+                    
                     with open(output_file, 'w', encoding='utf-8') as f:
                         json.dump(error_data, f, ensure_ascii=False, indent=2)
+                    with open(raw_response_file, 'w', encoding='utf-8') as f:
+                        json.dump(error_data, f, ensure_ascii=False, indent=2)
+                        
                     print(f"Failed to process {file_path.name} using {service_manager.config.name} after {retry_count} retries")
                     return False
+        
+        # If we've exhausted all retries
+        error_data = {
+            "items": [{
+                "text": "模型输出格式验证失败",
+                "number": 1,
+                "confirmed": True,
+                "level": 1
+            }]
+        }
+        
+        output_file = output_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_processed.json"
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(error_data, f, ensure_ascii=False, indent=2)
+            
+        print(f"Failed to get valid format for {file_path.name} after {retry_count} attempts")
+        return False
                 
     except Exception as e:
         print(f"Error processing {file_path.name} using {service_manager.config.name}: {str(e)}")
