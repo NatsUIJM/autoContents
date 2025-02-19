@@ -20,6 +20,58 @@ load_dotenv()
 
 ENABLE_DEEPSEEK = False  # 设置为False以禁用DeepSeek服务
 
+def preprocess_model_output(raw_output: str) -> str:
+    """
+    Preprocess model output to remove commentary structures and clean up the JSON.
+    Returns cleaned JSON string.
+    """
+    lines = raw_output.strip().split('\n')
+    cleaned_lines = []
+    
+    # 找到最后一个实际的数组项（非空且非结束括号的行）
+    last_item_index = -1
+    for i in range(len(lines) - 1, -1, -1):
+        line = lines[i].strip()
+        if line and not line.startswith(']'):
+            last_item_index = i
+            break
+    
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        
+        # 如果行中包含花括号，只保留花括号之前的内容
+        if '{' in line:
+            line = line.split('{')[0]
+        
+        # 处理任意数量空格+制表符的情况
+        if '\t' in line:
+            line = line.split('\t')[0]
+        
+        # 移除行尾空白和逗号
+        line = line.rstrip()
+        line = line.rstrip(',')
+        
+        # 只给非最后项且非开括号行添加逗号
+        if i < last_item_index and line.strip() and not line.strip() == '[' and not line.strip().startswith(']'):
+            line = line + ','
+        
+        if line:  # 确保清理后的行不为空
+            cleaned_lines.append(line)
+    
+    # 重建JSON结构，确保格式正确
+    joined = '\n'.join(cleaned_lines)
+    
+    # 如果没有开括号，添加它
+    if not joined.strip().startswith('['):
+        joined = '[\n' + joined
+    
+    # 如果没有闭括号，添加它
+    if not joined.strip().endswith(']'):
+        joined = joined + '\n]'
+        
+    return joined
+
 class ServiceConfig(NamedTuple):
     name: str
     api_key_env: str
@@ -169,7 +221,7 @@ def get_system_prompt() -> str:
    2. 选择阿拉伯数字还是中文数字，请遵循输入原始信息，不要随意更改
    3. 附录一般是一级或者二级标题，不隶属于正文部分
    4. 请不要包含任何解释性文字，直接输出要求的JSON文件
-4. 请使用JSON格式输出，正确示例如下：
+4. 请使用JSON格式输出，标准正确示例如下：
 
 ```json
 [
@@ -192,9 +244,32 @@ def get_system_prompt() -> str:
   ["1.2 精要指点", 3]
 ]
 ```
-
-
-
+```json
+[
+  ["1.1.3 PN结及其单向导电性", 4],
+  ["1.1.4 PN结的击穿特性", 5], 	{"注释": "合理估算页码"},  // 错误：不要包含解释性文字
+  ["1.1.5 PN结的电容效应", 8]
+]
+```
+```json
+[
+  ["1.1.3 PN结及其单向导电性", 4],
+  ["1.1.4 PN结的击穿特性", 5], 	{"number": 8, "text": "1.1.5 PN结的电容效应"},  // 错误：格式不符合要求
+  ["1.2 半导体二极管", 9]
+]
+```
+```json
+[
+  ["1.1.3 PN结及其单向导电性", 4],
+  ["1.1.4 PN结的击穿特性", 5], 	"number"  							   ]  // 错误：格式错乱
+```
+```json
+[
+  ["模拟电子技术基础", null],  // 错误：不能包含教材名称；缺失的页码要合理估算
+  ["5.4.6 集成运放的封装", 128],
+  ["5.5 特殊集成运算放大器", 129]
+]
+```
 常见错误示例：
 
 1. 输入：`今日物理趣闻A基本粒子`
@@ -287,7 +362,17 @@ async def process_single_file(file_path: Path, output_dir: Path, service_manager
                     f.write(full_response)
                 
                 try:
-                    compressed_data = json.loads(full_response)
+                    # Preprocess the model output before parsing
+                    cleaned_response = preprocess_model_output(full_response)
+                    
+                    # Store cleaned response if it's different from raw response
+                    if cleaned_response != full_response:
+                        cleaned_response_file = raw_responses_dir / f"{file_path.stem}_{service_manager.config.name.lower()}_cleaned_{attempt+1}.json"
+                        with open(cleaned_response_file, 'w', encoding='utf-8') as f:
+                            f.write(cleaned_response)
+                    
+                    compressed_data = json.loads(cleaned_response)
+                    
                     if not is_valid_format(compressed_data):
                         print(f"Invalid format in attempt {attempt + 1} for {file_path.name}. Retrying...")
                         continue
