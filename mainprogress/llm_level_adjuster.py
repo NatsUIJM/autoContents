@@ -19,9 +19,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def postprocess_pattern(pattern: str) -> str:
-    """替换模式中未加'+'的[0-9]为[0-9]+"""
-    # 使用正则表达式查找[0-9]后面不是+的情况
-    return re.sub(r'\[0-9\](?!\+)', '[0-9]+', pattern)
+    """替换模式中未加限定符的[0-9]为[0-9]+，但排除已有数量限定的情况"""
+    # 不替换已经有数量限定符的情况（比如[0-9]*、[1-9][0-9]*等）
+    def should_replace(match):
+        pos = match.end()
+        # 检查后面是否已经有限定符
+        if pos < len(pattern) and pattern[pos] in '+*?{':
+            return match.group(0)
+        # 检查是否是类似[1-9][0-9]这样的模式的一部分
+        if pos < len(pattern) and pattern[pos:].startswith('[0-9]'):
+            return match.group(0)
+        # 检查前面是否已经有其他数字相关模式
+        before = pattern[:match.start()]
+        if before.endswith('[1-9]'):
+            return match.group(0)
+        return '[0-9]+'
+    
+    return re.sub(r'\[0-9\]', should_replace, pattern)
 
 class PatternMatcher:
     def __init__(self, patterns: Dict[int, List[str]]):

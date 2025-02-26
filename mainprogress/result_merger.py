@@ -516,7 +516,7 @@ def final_post_process(results: List[dict]) -> List[dict]:
         results = [{**item, 'level': item['level'] - (min_level-1)} for item in results]
 
     # 使用正则表达式匹配三级及以上的编号格式（如1.1.1, 1.1.1.1等）
-    pattern = r'^\d+\.\d+\.\d+\.\d+'
+    pattern = r'^\d+\.\d+\.\d+'
 
     # 过滤掉三级及以上编号的标题，同时确保text字段不为None
     original_count = len(results)
