@@ -51,3 +51,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 ## 疑难解答与问题反馈
 
 请先阅读[常见问题解答](./docs/问题排查方案.md)进行问题排查，若无法解决，请联系 QQ`929849897`或邮箱`uijm2004@outlook.com`以获取帮助。
+
+## 虽然 Star 不多但也放一个 History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=NatsUIJM/autoContents&type=Date)](https://star-history.com/#NatsUIJM/autoContents&Date)
