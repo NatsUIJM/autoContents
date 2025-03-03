@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 import io
@@ -60,106 +61,118 @@ def resize_image_if_needed(img_path):
     # 如果不需要调整，返回None
     return None
 
+def save_error_to_file(error_msg):
+    """保存错误信息到文件"""
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    error_file = Path(os.path.dirname(os.path.abspath(__file__))) / f"error_{timestamp}.txt"
+    
+    with open(error_file, 'w', encoding='utf-8') as f:
+        f.write(error_msg)
+    
+    print(f"错误信息已保存到: {error_file}")
+
 def test_aliyun_ocr():
     """测试阿里云OCR功能"""
     print("=== 开始测试阿里云OCR ===")
     
-    # 验证环境变量
-    if not os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID') or not os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET'):
-        raise ValueError("Aliyun credentials not found in environment variables")
-    
-    # 获取测试图片路径
-    script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    img_path = script_dir / 'aliyun_ocr_test_figure.jpg'
-    
-    if not img_path.exists():
-        raise FileNotFoundError(f"测试图片不存在: {img_path}")
-    
-    print(f"测试图片: {img_path}")
-    
-    # 创建OCR客户端
-    client = create_client()
-    
-    # 检查是否需要调整图片尺寸
-    resized_image = resize_image_if_needed(img_path)
-    
-    if resized_image:
-        print("图片尺寸超过限制，已自动调整")
-        body_stream = resized_image
-    else:
-        body_stream = StreamClient.read_from_file_path(str(img_path))
-    
-    # 创建请求
-    recognize_request = ocr_api_20210707_models.RecognizeGeneralRequest(
-        body=body_stream
-    )
-    
-    runtime = util_models.RuntimeOptions(
-        read_timeout=10000,
-        connect_timeout=10000
-    )
-    
-    # 调用OCR API
-    print("调用阿里云OCR API...")
-    start_time = time.time()
-    response = client.recognize_general_with_options(recognize_request, runtime)
-    elapsed_time = time.time() - start_time
-    print(f"API调用完成，耗时: {elapsed_time:.2f}秒")
-    
-    result = response.to_map()
-    
-    # 生成输出文件名
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    output_file = script_dir / f"{timestamp}.json"
-    
-    # 保存原始结果
-    if 'body' in result and 'Data' in result['body']:
-        data_str = result['body']['Data']
-        try:
-            data_json = json.loads(data_str)
-            
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(data_json, f, ensure_ascii=False, indent=2)
-            
-            print(f"原始OCR结果已保存到: {output_file}")
-            
-            # 分析结果
-            if 'prism_wordsInfo' in data_json:
-                print(f"识别到 {len(data_json['prism_wordsInfo'])} 个文本块")
+    try:
+        # 验证环境变量
+        if not os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID') or not os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET'):
+            raise ValueError("Aliyun credentials not found in environment variables")
+        
+        # 获取测试图片路径
+        script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+        img_path = script_dir / 'aliyun_ocr_test_figure.jpg'
+        
+        if not img_path.exists():
+            raise FileNotFoundError(f"测试图片不存在: {img_path}")
+        
+        print(f"测试图片: {img_path}")
+        
+        # 创建OCR客户端
+        client = create_client()
+        
+        # 检查是否需要调整图片尺寸
+        resized_image = resize_image_if_needed(img_path)
+        
+        if resized_image:
+            print("图片尺寸超过限制，已自动调整")
+            body_stream = resized_image
+        else:
+            body_stream = StreamClient.read_from_file_path(str(img_path))
+        
+        # 创建请求
+        recognize_request = ocr_api_20210707_models.RecognizeGeneralRequest(
+            body=body_stream
+        )
+        
+        runtime = util_models.RuntimeOptions(
+            read_timeout=10000,
+            connect_timeout=10000
+        )
+        
+        # 调用OCR API
+        print("调用阿里云OCR API...")
+        start_time = time.time()
+        response = client.recognize_general_with_options(recognize_request, runtime)
+        elapsed_time = time.time() - start_time
+        print(f"API调用完成，耗时: {elapsed_time:.2f}秒")
+        
+        result = response.to_map()
+        
+        # 生成输出文件名
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        output_file = script_dir / f"{timestamp}.json"
+        
+        # 保存原始结果
+        if 'body' in result and 'Data' in result['body']:
+            data_str = result['body']['Data']
+            try:
+                data_json = json.loads(data_str)
                 
-                # 打印部分结果示例
-                if len(data_json['prism_wordsInfo']) > 0:
-                    print("\n识别结果示例:")
-                    for i, word_info in enumerate(data_json['prism_wordsInfo'][:3]):
-                        if 'word' in word_info:
-                            print(f"  {i+1}. {word_info['word']}")
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(data_json, f, ensure_ascii=False, indent=2)
+                
+                print(f"原始OCR结果已保存到: {output_file}")
+                
+                # 分析结果
+                if 'prism_wordsInfo' in data_json:
+                    print(f"识别到 {len(data_json['prism_wordsInfo'])} 个文本块")
                     
-                    if len(data_json['prism_wordsInfo']) > 3:
-                        print(f"  ... 共 {len(data_json['prism_wordsInfo'])} 个文本")
-            
-        except json.JSONDecodeError as e:
-            print(f"解析Data字段失败: {str(e)}")
-            print("保存原始Data字符串...")
+                    # 打印部分结果示例
+                    if len(data_json['prism_wordsInfo']) > 0:
+                        print("\n识别结果示例:")
+                        for i, word_info in enumerate(data_json['prism_wordsInfo'][:3]):
+                            if 'word' in word_info:
+                                print(f"  {i+1}. {word_info['word']}")
+                        
+                        if len(data_json['prism_wordsInfo']) > 3:
+                            print(f"  ... 共 {len(data_json['prism_wordsInfo'])} 个文本")
+                
+            except json.JSONDecodeError as e:
+                print(f"解析Data字段失败: {str(e)}")
+                print("保存原始Data字符串...")
+                
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(data_str)
+                
+                print(f"原始数据已保存到: {output_file}")
+        else:
+            print("API响应中没有找到Data字段")
+            print("保存完整响应...")
             
             with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(data_str)
+                json.dump(result, f, ensure_ascii=False, indent=2)
             
-            print(f"原始数据已保存到: {output_file}")
-    else:
-        print("API响应中没有找到Data字段")
-        print("保存完整响应...")
+            print(f"完整响应已保存到: {output_file}")
         
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
+        print("=== 测试完成 ===")
         
-        print(f"完整响应已保存到: {output_file}")
-    
-    print("=== 测试完成 ===")
+    except Exception as e:
+        error_msg = f"测试过程中发生错误: {str(e)}\n\n"
+        error_msg += traceback.format_exc()
+        print(error_msg)
+        save_error_to_file(error_msg)
 
 if __name__ == '__main__':
-    try:
-        test_aliyun_ocr()
-    except Exception as e:
-        print(f"测试过程中发生错误: {str(e)}")
-        import traceback
-        traceback.print_exc()
+    test_aliyun_ocr()

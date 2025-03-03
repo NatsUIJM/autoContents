@@ -5,3 +5,4 @@ data/
 logs/
 todo.md
 tools/*.json
+tools/*.txt
