@@ -458,5 +458,11 @@
             content.style.display = currentDisplay === 'none' ? 'block' : 'none';
         }
     </script>
+    <div class="links" style="text-align: center; color: blue;">
+        <a href="https://github.com/NatsUIJM/autoContents" style="color: blue;">GitHub</a> · 
+        <a href="https://bbs.marginnote.com.cn/t/topic/59344/2" style="color: blue;">MarginNote</a> · 
+        <a href="https://www.bilibili.com/video/BV14wKGeQEvr/" style="color: blue;">Bilibili</a> · 
+        <a href="https://www.zhihu.com/question/392666875/answer/100357892412" style="color: blue;">知乎</a>
+    </div>
 </body>
 </html>

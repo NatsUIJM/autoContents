@@ -106,8 +106,11 @@ def upload_files():
         original_filename = pdf_file.filename
         filename_without_ext, file_extension = os.path.splitext(original_filename)
         
-        # 转换文件名为拼音
-        pinyin_filename = convert_to_pinyin(filename_without_ext) + file_extension
+        # 转换文件名为拼音并限制长度为25个字符
+        pinyin_filename = convert_to_pinyin(filename_without_ext)
+        if len(pinyin_filename) > 25:
+            pinyin_filename = pinyin_filename[:25]
+        pinyin_filename = pinyin_filename + file_extension
         
         upload_folder = os.path.join(base_dir, 'input_pdf')
         pdf_path = os.path.join(upload_folder, pinyin_filename)
@@ -120,8 +123,8 @@ def upload_files():
             "original_filename": original_filename  # 添加原始文件名字段
         }
         
-        # JSON文件名使用拼音
-        json_filename = convert_to_pinyin(filename_without_ext) + '.json'
+        # JSON文件名使用拼音(限制长度)
+        json_filename = pinyin_filename.replace(file_extension, '.json')
         json_path = os.path.join(upload_folder, json_filename)
         
         with open(json_path, 'w', encoding='utf-8') as f:
@@ -140,6 +143,8 @@ def upload_files():
 def download_result(session_id):
     try:
         output_folder = os.path.join('data', session_id, 'output_pdf')
+        input_folder = os.path.join('data', session_id, 'input_pdf')
+        
         if not os.path.exists(output_folder):
             return jsonify({'status': 'error', 'message': '输出文件夹不存在'})
             
@@ -152,13 +157,35 @@ def download_result(session_id):
         if len(pdf_files) > 1:
             return jsonify({'status': 'error', 'message': '输出文件夹中存在多个PDF文件'})
             
+        # 获取原始文件名
+        original_filename = None
+        json_files = [f for f in os.listdir(input_folder) if f.endswith('.json')]
+        
+        if json_files:
+            json_path = os.path.join(input_folder, json_files[0])
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+                    if 'original_filename' in json_data:
+                        original_filename = json_data['original_filename']
+            except:
+                pass
+        
+        # 如果找不到原始文件名，就使用输出的PDF文件名
+        if not original_filename:
+            original_filename = pdf_files[0]
+        
+        # 在文件名中添加-toc后缀
+        name_parts = os.path.splitext(original_filename)
+        download_filename = f"{name_parts[0]}-toc{name_parts[1]}"
+            
         file_path = os.path.join(output_folder, pdf_files[0])
-        return send_file(file_path, as_attachment=True)
+        return send_file(file_path, as_attachment=True, download_name=download_filename)
         
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
-AZURE_TIMEOUT = 15  # Azure服务超时时间（秒）
+AZURE_TIMEOUT = 30  # Azure服务超时时间（秒）
 
 def run_azure_with_timeout(python_executable, script_path, env, script_dir):
     """运行Azure OCR脚本，带有超时控制"""
