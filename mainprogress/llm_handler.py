@@ -69,6 +69,47 @@ def preprocess_model_output(raw_output: str) -> str:
     # 如果没有闭括号，添加它
     if not joined.strip().endswith(']'):
         joined = joined + '\n]'
+    
+    # 处理null页码问题
+    try:
+        data = json.loads(joined)
+        if isinstance(data, list):
+            for i in range(len(data)):
+                if data[i][1] is None:  # 检测到null页码
+                    # 如果是最后一条，使用前一条的页码
+                    if i == len(data) - 1:
+                        # 向前查找非null的页码
+                        prev_index = i - 1
+                        while prev_index >= 0 and data[prev_index][1] is None:
+                            prev_index -= 1
+                        
+                        if prev_index >= 0:  # 找到了非null的页码
+                            data[i][1] = data[prev_index][1]
+                        else:  # 所有前面的页码都是null，使用1作为默认值
+                            data[i][1] = 1
+                    else:
+                        # 向后查找非null的页码
+                        next_index = i + 1
+                        while next_index < len(data) and data[next_index][1] is None:
+                            next_index += 1
+                        
+                        if next_index < len(data):  # 找到了非null的页码
+                            data[i][1] = data[next_index][1]
+                        else:  # 所有后面的页码都是null，向前查找
+                            prev_index = i - 1
+                            while prev_index >= 0 and data[prev_index][1] is None:
+                                prev_index -= 1
+                            
+                            if prev_index >= 0:  # 找到了非null的页码
+                                data[i][1] = data[prev_index][1]
+                            else:  # 都是null，使用1作为默认值
+                                data[i][1] = 1
+            
+            # 将处理后的数据转回JSON字符串
+            joined = json.dumps(data, ensure_ascii=False, indent=2)
+    except json.JSONDecodeError:
+        # 如果JSON解析失败，保留原始清理后的文本
+        pass
         
     return joined
 
