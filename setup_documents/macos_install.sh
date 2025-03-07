@@ -29,12 +29,23 @@ else
     exit 0
 fi
 
+# Function to run command as user, falling back to sudo -u if su -c fails
+run_as_user() {
+    local cmd="$1"
+    if ! su - $SUDO_USER -c "$cmd" 2>/dev/null; then
+        echo "su command failed, trying with sudo -u instead..."
+        sudo -u $SUDO_USER $cmd
+        return $?
+    fi
+    return 0
+}
+
 # Install brew packages as normal user
 echo "[2/8] Installing Python 3.11..."
 if command -v python3.11 >/dev/null 2>&1; then
     echo "Python 3.11 is already installed, skipping..."
 else
-    su - $SUDO_USER -c "brew install python@3.11"
+    run_as_user "brew install python@3.11"
     if [ $? -ne 0 ]; then
         echo "Python installation failed"
         exit 1
@@ -51,7 +62,7 @@ if brew list poppler >/dev/null 2>&1; then
         echo "Poppler binary found, skipping..."
     else
         echo "Poppler binary not found, reinstalling..."
-        su - $SUDO_USER -c "brew reinstall poppler"
+        run_as_user "brew reinstall poppler"
         if [ $? -ne 0 ]; then
             echo "Poppler reinstallation failed"
             exit 1
@@ -59,7 +70,7 @@ if brew list poppler >/dev/null 2>&1; then
     fi
 else
     echo "Installing Poppler..."
-    su - $SUDO_USER -c "brew install poppler"
+    run_as_user "brew install poppler"
     if [ $? -ne 0 ]; then
         echo "Poppler installation failed"
         exit 1
@@ -117,4 +128,4 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "[8/8] All installations completed!" 
+echo "[8/8] All installations completed!"

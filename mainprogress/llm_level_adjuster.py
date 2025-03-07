@@ -93,9 +93,6 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
         if not validated_patterns:
             raise ValueError("No valid patterns found")
             
-        if 1 not in validated_patterns or 2 not in validated_patterns:
-            raise ValueError("Must have patterns for both level 1 and 2")
-            
         return validated_patterns
     except json.JSONDecodeError:
         raise ValueError("Invalid JSON format for patterns")
