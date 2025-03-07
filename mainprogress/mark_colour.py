@@ -226,9 +226,6 @@ def check_rules(text, coordinates, page_info, image_name, all_lines):
     current_height = y2 - y1
     avg_height = get_average_height(all_lines)
     
-    # 从图片名称获取PDF文件名
-    pdf_name = image_name.split('.pdf_page_')[0]
-    
     results = {
         'text': text,
         'coordinates': str(coordinates),
