@@ -59,7 +59,12 @@ async def test_qwen_max():
 def save_response(response_data):
     """保存成功的响应结果"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"./tools/response_{timestamp}.txt"
+    directory = "./"
+    
+    # 确保目录存在
+    os.makedirs(directory, exist_ok=True)
+    
+    filename = f"{directory}response_{timestamp}.txt"
     
     with open(filename, "w", encoding="utf-8") as file:
         json.dump(response_data, file, ensure_ascii=False, indent=2)
@@ -69,7 +74,12 @@ def save_response(response_data):
 def save_error(error_message):
     """保存错误信息"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"./tools/error_{timestamp}.txt"
+    directory = "./"
+    
+    # 确保目录存在
+    os.makedirs(directory, exist_ok=True)
+    
+    filename = f"{directory}error_{timestamp}.txt"
     
     with open(filename, "w", encoding="utf-8") as file:
         file.write(error_message)
