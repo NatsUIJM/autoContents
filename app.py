@@ -14,7 +14,8 @@ import sys
 import concurrent.futures
 import asyncio
 import PyPDF2  # Added for PDF validation
-
+import webbrowser
+import threading
 
 logger = logging.getLogger('gunicorn.error')
 
@@ -521,10 +522,19 @@ def find_available_port(start_port=5000, max_port=6000):
             sock.close()
     return None
 
+# Then modify the if __name__ == '__main__' section:
 if __name__ == '__main__':
     port = find_available_port()
     if port is None:
         print("Error: No available ports found between 5000 and 6000")
     else:
+        # Define function to open browser after a delay
+        def open_browser():
+            time.sleep(1.5)  # Wait a bit for server to start, even after reload
+            webbrowser.open_new(f'http://127.0.0.1:{port}')
+            
+        # Start browser in a separate thread
+        threading.Thread(target=open_browser).start()
+        
         print(f"Starting server on port {port}")
-        app.run(debug=True, port=port)
+        app.run(debug=True, port=port, use_reloader=False)  # Disable reloader to avoid port changes

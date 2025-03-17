@@ -44,8 +44,8 @@ git clone https://github.com/NatsUIJM/autoContents.git
 
 ### 3.1 运行程序
 
-1. 双击根目录下的`windows_start.bat`或`macos_start.command`来启动程序。
-2. 在弹出的命令行窗口中找到`http://127.0.0.1:5xxx`，并复制到浏览器以打开。对于 Windows 系统，按住 Ctrl 键后点击该链接可直接打开。
+1. 双击根目录下的`windows_start.bat`或`macos_start.command`来启动程序，浏览器界面会自动打开。
+2. 如果浏览器未打开，请在弹出的命令行窗口中找到`http://127.0.0.1:5xxx`，并复制到浏览器以打开。
 
 ### 3.2 上传 PDF 并处理
 
