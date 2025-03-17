@@ -67,7 +67,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 ### 获取更新
 
 1. 点击页面顶部的绿色按钮`Code`，然后点击`Download ZIP`以下载程序源码；
-2. 将下载的`autoContents-main`文件夹中的全部内容覆盖到本地`autoContents`文件夹中；
+2. 将下载的`autoContents-main`文件夹中的全部内容覆盖到本地`autoContents-main`文件夹中；
 3. 重新运行`2.2.1`的第`1`步或`2.2.2`的`1-3`步。
 
 ## Star History
