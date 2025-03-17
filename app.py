@@ -115,6 +115,7 @@ def upload_files():
         toc_start = request.form.get('tocStart')
         toc_end = request.form.get('tocEnd')
         content_start = request.form.get('contentStart')
+        toc_structure = request.form.get('tocStructure', 'original')  # 默认为原始目录
         
         if not all([toc_start, toc_end, content_start]):
             return jsonify({'status': 'error', 'message': '页码信息不完整'})
@@ -142,7 +143,8 @@ def upload_files():
             "toc_start": int(toc_start),
             "toc_end": int(toc_end),
             "content_start": int(content_start),
-            "original_filename": original_filename  # 添加原始文件名字段
+            "original_filename": original_filename,  # 添加原始文件名字段
+            "toc_structure": toc_structure  # 添加目录结构选择字段
         }
         
         # JSON文件名使用拼音(限制长度)
@@ -346,6 +348,7 @@ def run_script(session_id, script_index, retry_count):
             'RESULT_MERGER_INPUT_LLM': f"{base_dir}/llm_processed_content",
             'RESULT_MERGER_OUTPUT': f"{base_dir}/merged_content",
             'RESULT_MERGER_LOGS': f"{base_dir}/logs",
+            'RESULT_MERGER_JSON': f"{base_dir}/input_pdf",
             
             # llm_level_adjuster路径配置
             'LEVEL_ADJUSTER_INPUT': f"{base_dir}/merged_content",

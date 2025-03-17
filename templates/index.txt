@@ -206,11 +206,19 @@
                 <label for="contentStart">正文起始页</label>
                 <input type="number" id="contentStart" min="1">
             </div>
-            <div class="input-group" style="margin-bottom: 20px;">
+            <div class="input-group">
                 <label for="ocrModel">OCR模型选择</label>
                 <select id="ocrModel" class="form-select">
                     <option value="aliyun">Aliyun OCR</option>
                     <option value="azure">Azure OCR</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="tocStructure">目录结构选择</label>
+                <select id="tocStructure" class="form-select">
+                    <option value="original">原始目录</option>
+                    <option value="ignore_xxx">忽略 x.x.x 及更低级别</option>
+                    <option value="ignore_xxxx">忽略 x.x.x.x 及更低级别</option>
                 </select>
             </div>
         </div>
@@ -313,6 +321,7 @@
             formData.append('tocStart', document.getElementById('tocStart').value);
             formData.append('tocEnd', document.getElementById('tocEnd').value);
             formData.append('contentStart', document.getElementById('contentStart').value);
+            formData.append('tocStructure', document.getElementById('tocStructure').value);
 
             try {
                 const response = await fetch('/upload', {

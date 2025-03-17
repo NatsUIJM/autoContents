@@ -498,14 +498,31 @@ def interpolate_null_numbers(results: List[dict], duplicate_titles: Dict[str, in
     
     return processed_results
 
-def final_post_process(results: List[dict]) -> List[dict]:
+def final_post_process(results: List[dict], json_dir: Path) -> List[dict]:
     """
     最终的后处理步骤:
     1. 如果level的最小值不为1，将所有level减少到从1开始
-    2. 删除标题格式为x.x.x(三级及以上)的标题
+    2. 根据配置文件决定删除哪些标题格式
     """
     if not results:
         return results
+
+    # 读取配置文件
+    try:
+        json_files = list(json_dir.glob('*.json'))
+        if not json_files:
+            print("\n警告：未在json_dir中找到JSON文件，将使用默认设置")
+            toc_structure = "ignore_xxx"
+        else:
+            config_file = json_files[0]
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                toc_structure = config.get('toc_structure', 'ignore_xxx')
+                print(f"\n读取到配置文件：{config_file.name}")
+                print(f"目录结构设置：{toc_structure}")
+    except Exception as e:
+        print(f"\n读取配置文件时出错：{str(e)}，将使用默认设置")
+        toc_structure = "ignore_xxx"
 
     # 找到最小level
     min_level = min(item['level'] for item in results)
@@ -515,21 +532,39 @@ def final_post_process(results: List[dict]) -> List[dict]:
         print(f"\n检测到最小level为{min_level}，将所有level减{min_level-1}")
         results = [{**item, 'level': item['level'] - (min_level-1)} for item in results]
 
-    # 使用正则表达式匹配三级及以上的编号格式（如1.1.1, 1.1.1.1等）
-    pattern = r'^\d+\.\d+\.\d+\.\d+'
-
-    # 过滤掉三级及以上编号的标题，同时确保text字段不为None
+    # 根据配置决定要删除的标题格式
     original_count = len(results)
-    results = [item for item in results 
-              if item.get('text') is not None and not re.match(pattern, item['text'].strip())]
-    filtered_count = original_count - len(results)
+    
+    if toc_structure == "original":
+        # 不删除任何标题
+        print("\n配置为保留所有原始目录，不删除任何标题")
+        filtered_results = results
+    elif toc_structure == "ignore_xxx":
+        # 删除三级及以上的标题（如1.1.1, 1.1.1.1等）
+        pattern = r'^\d+\.\d+\.\d+'
+        filtered_results = [item for item in results 
+                  if item.get('text') is not None and not re.match(pattern, item['text'].strip())]
+        print("\n配置为忽略三级及以上目录结构")
+    elif toc_structure == "ignore_xxxx":
+        # 只删除四级及以上的标题（如1.1.1.1等）
+        pattern = r'^\d+\.\d+\.\d+\.\d+'
+        filtered_results = [item for item in results 
+                  if item.get('text') is not None and not re.match(pattern, item['text'].strip())]
+        print("\n配置为忽略四级及以上目录结构")
+    else:
+        # 默认行为：删除三级及以上的标题
+        print(f"\n未知的目录结构设置：{toc_structure}，默认忽略三级及以上目录结构")
+        pattern = r'^\d+\.\d+\.\d+'
+        filtered_results = [item for item in results 
+                  if item.get('text') is not None and not re.match(pattern, item['text'].strip())]
 
+    filtered_count = original_count - len(filtered_results)
     if filtered_count > 0:
-        print(f"\n删除了{filtered_count}个三级及以上编号的标题")
+        print(f"\n根据配置删除了{filtered_count}个标题")
 
-    return results
+    return filtered_results
 
-def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: Path):
+def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: Path, json_dir: Path):
     """处理一本书的所有结果"""
     # 读取文件信息
     with open(file_info_path, 'r', encoding='utf-8') as f:
@@ -741,7 +776,7 @@ def process_book_results(processed_dir: Path, file_info_path: Path, output_dir: 
         
         print("\n进行最终后处理...")
         # 进行最终的后处理
-        final_results = final_post_process(results_with_confirmation)
+        final_results = final_post_process(results_with_confirmation, json_dir)
         
         # 最后一次过滤，确保没有无效条目
         final_results = [item for item in final_results 
@@ -804,6 +839,7 @@ def main():
     input_dir = Path(os.getenv('RESULT_MERGER_INPUT_RAW'))
     processed_dir = Path(os.getenv('RESULT_MERGER_INPUT_LLM'))
     output_dir = Path(os.getenv('RESULT_MERGER_OUTPUT'))
+    json_dir = Path(os.getenv('RESULT_MERGER_JSON'))
     
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
@@ -812,7 +848,8 @@ def main():
     process_book_results(
         processed_dir=processed_dir,
         file_info_path=input_dir / "file_info.json",
-        output_dir=output_dir
+        output_dir=output_dir,
+        json_dir=json_dir
     )
     
     logging.info("Result merging completed")
