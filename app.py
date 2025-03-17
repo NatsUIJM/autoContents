@@ -13,6 +13,7 @@ from pypinyin import lazy_pinyin
 import sys
 import concurrent.futures
 import asyncio
+import PyPDF2  # Added for PDF validation
 
 
 logger = logging.getLogger('gunicorn.error')
@@ -78,6 +79,22 @@ def create_data_folders(session_id):
         os.makedirs(folder_path, exist_ok=True)
     return base_dir
 
+# 添加PDF验证函数，从testpdf.py导入的逻辑
+def check_pdf(file_path):
+    """检查PDF文件是否损坏"""
+    try:
+        with open(file_path, 'rb') as file:
+            # 尝试读取PDF文件
+            reader = PyPDF2.PdfReader(file)
+            # 尝试获取页数
+            num_pages = len(reader.pages)
+            # 尝试访问每一页以验证内容
+            for i in range(num_pages):
+                reader.pages[i]
+            return True, f"正常: {num_pages}页"
+    except Exception as e:
+        return False, str(e)
+
 @app.route('/')
 def home():
     return render_template('index.txt')
@@ -115,6 +132,11 @@ def upload_files():
         upload_folder = os.path.join(base_dir, 'input_pdf')
         pdf_path = os.path.join(upload_folder, pinyin_filename)
         pdf_file.save(pdf_path)
+        
+        # 检查上传的PDF是否有效
+        is_valid_pdf, error_message = check_pdf(pdf_path)
+        if not is_valid_pdf:
+            return jsonify({'status': 'error', 'message': f'上传的PDF文件已损坏: {error_message}'})
         
         json_data = {
             "toc_start": int(toc_start),
@@ -175,11 +197,20 @@ def download_result(session_id):
         if not original_filename:
             original_filename = pdf_files[0]
         
+        # 检查生成的PDF是否有效
+        file_path = os.path.join(output_folder, pdf_files[0])
+        is_valid_pdf, pdf_check_message = check_pdf(file_path)
+        
+        if not is_valid_pdf:
+            return jsonify({
+                'status': 'error', 
+                'message': '输出文件校验失败，请查阅[问题排查方案](https://github.com/NatsUIJM/autoContents/blob/main/docs/问题排查方案.md)以获取帮助。'
+            })
+        
         # 在文件名中添加-toc后缀
         name_parts = os.path.splitext(original_filename)
         download_filename = f"{name_parts[0]}-toc{name_parts[1]}"
             
-        file_path = os.path.join(output_folder, pdf_files[0])
         return send_file(file_path, as_attachment=True, download_name=download_filename)
         
     except Exception as e:
@@ -405,6 +436,27 @@ def run_script(session_id, script_index, retry_count):
             )
             
             if result.returncode == 0:
+                # 如果是最后一个脚本(PDF生成)，检查生成的PDF是否有效
+                if script_index == len(SCRIPT_SEQUENCE) - 1:
+                    output_folder = os.path.join(base_dir, 'output_pdf')
+                    pdf_files = [f for f in os.listdir(output_folder) if f.endswith('.pdf')]
+                    
+                    if pdf_files:
+                        file_path = os.path.join(output_folder, pdf_files[0])
+                        is_valid_pdf, pdf_check_message = check_pdf(file_path)
+                        
+                        if not is_valid_pdf:
+                            return jsonify({
+                                'status': 'error',
+                                'currentScript': script_desc,
+                                'message': '输出文件校验失败，请查阅[问题排查方案](https://github.com/NatsUIJM/autoContents/blob/main/docs/问题排查方案.md)以获取帮助。',
+                                'stdout': result.stdout,
+                                'stderr': result.stderr,
+                                'retryCount': retry_count,
+                                'scriptIndex': script_index,
+                                'session_id': session_id
+                            })
+                
                 return jsonify({
                     'status': 'success',
                     'currentScript': script_desc,
