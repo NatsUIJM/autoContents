@@ -42,7 +42,7 @@ def process_pdf_with_bookmarks():
             # 添加"目录"条目
             toc_entry = {
                 'text': '目录',
-                'number': toc_start,
+                'number': toc_start - 1,
                 'level': 1
             }
             toc_data['items'].insert(0, toc_entry)

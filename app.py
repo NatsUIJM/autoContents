@@ -54,7 +54,7 @@ SCRIPT_SEQUENCE = [
     ('ocr_hybrid', 'OCR识别'),  # Changed from aliyun to hybrid
     ('ocr_processor', 'OCR后处理'),
     ('text_matcher', '文本匹配'),
-    ('content_preprocessor', '内容预处理'),
+    ('content_preprocessor', '内容预处理（下一步可能需要一分钟或更长，请耐心等待）'),
     ('llm_handler', 'LLM处理'),
     ('result_merger', '结果合并'),
     ('llm_level_adjuster', 'LLM层级调整'),

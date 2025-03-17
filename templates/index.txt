@@ -188,7 +188,7 @@
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                选择PDF文件
+                选择PDF文件（建议将文件名修改为书籍名称，但不是必须的）
             </button>
             <div id="fileName" class="file-name"></div>
         </div>
@@ -468,10 +468,10 @@
         }
     </script>
     <div class="links" style="text-align: center; color: blue;">
-        <a href="https://github.com/NatsUIJM/autoContents" style="color: blue;">GitHub</a> · 
-        <a href="https://bbs.marginnote.com.cn/t/topic/59344/2" style="color: blue;">MarginNote</a> · 
-        <a href="https://www.bilibili.com/video/BV14wKGeQEvr/" style="color: blue;">Bilibili</a> · 
-        <a href="https://www.zhihu.com/question/392666875/answer/100357892412" style="color: blue;">知乎</a>
+        <a href="https://github.com/NatsUIJM/autoContents" style="color: blue;" target="_blank">GitHub</a> · 
+        <a href="https://bbs.marginnote.com.cn/t/topic/59344/2" style="color: blue;" target="_blank">MarginNote</a> · 
+        <a href="https://www.bilibili.com/video/BV14wKGeQEvr/" style="color: blue;" target="_blank">Bilibili</a> · 
+        <a href="https://www.zhihu.com/question/392666875/answer/100357892412" style="color: blue;" target="_blank">知乎</a>
     </div>
 </body>
 </html>
