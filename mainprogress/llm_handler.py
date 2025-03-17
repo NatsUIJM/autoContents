@@ -25,6 +25,21 @@ def preprocess_model_output(raw_output: str) -> str:
     Preprocess model output to remove commentary structures and clean up the JSON.
     Returns cleaned JSON string.
     """
+    # 处理代码块包裹的JSON
+    if "```json" in raw_output and "```" in raw_output:
+        # 提取代码块中的JSON内容
+        start_marker = "```json"
+        end_marker = "```"
+        start_index = raw_output.find(start_marker)
+        if start_index != -1:
+            content_start = start_index + len(start_marker)
+            end_index = raw_output.find(end_marker, content_start)
+            if end_index != -1:
+                raw_output = raw_output[content_start:end_index].strip()
+            else:
+                # 如果找不到结束标记，尝试从开始标记后截取所有内容
+                raw_output = raw_output[content_start:].strip()
+    
     lines = raw_output.strip().split('\n')
     cleaned_lines = []
     
