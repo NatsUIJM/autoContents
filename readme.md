@@ -10,7 +10,12 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 ## Step 1 下载程序
 
-- 如果你会用`git clone`命令，请将仓库克隆到本地。
+- 如果你会用`git clone`命令，请将仓库克隆到本地：
+
+```git
+git clone https://github.com/NatsUIJM/autoContents.git
+```
+
 - 如果你不会`git clone`命令，请点击页面顶部的绿色按钮`Code`，然后点击`Download ZIP`以下载程序源码。
 
 ## Step 2 配置环境
