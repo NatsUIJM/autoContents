@@ -57,14 +57,6 @@ def process_pdf_with_bookmarks():
                             continue
                         item['number'] = item['number'] + content_start - 1
                     
-                    # 验证必要字段
-                    if not isinstance(item['text'], str):
-                        print(f"警告: 跳过标题无效的条目")
-                        continue
-                    if not isinstance(item['level'], int) or item['level'] < 1 or item['level'] > 3:
-                        print(f"警告: 跳过层级无效的条目 '{item['text']}'")
-                        continue
-                    
                     valid_items.append(item)
                 except (KeyError, TypeError) as e:
                     print(f"警告: 跳过格式错误的条目: {str(e)}")
@@ -76,6 +68,8 @@ def process_pdf_with_bookmarks():
             # 创建书签结构
             def create_bookmark_tree(items):
                 current_l1 = None
+                current_l2 = None
+                current_l3 = None
                 bookmarks = []
                 
                 for item in items:
@@ -91,28 +85,55 @@ def process_pdf_with_bookmarks():
                         print(f"级别: {item['level']}")
                         
                         # 创建书签，页码从0开始计数
-                        bookmark = pikepdf.OutlineItem(item['text'], item['number'] - 1, 'Fit')
+                        bookmark = pikepdf.OutlineItem(item['text'], item['number'], 'Fit')
                         
                         if item['level'] == 1:
                             current_l1 = bookmark
                             bookmarks.append(bookmark)
                             if not hasattr(current_l1, 'children'):
                                 current_l1.children = []
+                            # 重置下级指针
+                            current_l2 = None
+                            current_l3 = None
                         elif item['level'] == 2:
                             if current_l1 is not None:
                                 if not hasattr(current_l1, 'children'):
                                     current_l1.children = []
                                 current_l1.children.append(bookmark)
-                                if not hasattr(bookmark, 'children'):
-                                    bookmark.children = []
+                                current_l2 = bookmark
+                                if not hasattr(current_l2, 'children'):
+                                    current_l2.children = []
+                                # 重置下级指针
+                                current_l3 = None
                             else:
                                 bookmarks.append(bookmark)
                         elif item['level'] == 3:
-                            if current_l1 and current_l1.children:
-                                parent = current_l1.children[-1]
-                                if not hasattr(parent, 'children'):
-                                    parent.children = []
-                                parent.children.append(bookmark)
+                            if current_l2 and current_l1:
+                                if not hasattr(current_l2, 'children'):
+                                    current_l2.children = []
+                                current_l2.children.append(bookmark)
+                                current_l3 = bookmark
+                                if not hasattr(current_l3, 'children'):
+                                    current_l3.children = []
+                            elif current_l1:
+                                if not hasattr(current_l1, 'children'):
+                                    current_l1.children = []
+                                current_l1.children.append(bookmark)
+                            else:
+                                bookmarks.append(bookmark)
+                        elif item['level'] == 4:
+                            if current_l3 and current_l2 and current_l1:
+                                if not hasattr(current_l3, 'children'):
+                                    current_l3.children = []
+                                current_l3.children.append(bookmark)
+                            elif current_l2 and current_l1:
+                                if not hasattr(current_l2, 'children'):
+                                    current_l2.children = []
+                                current_l2.children.append(bookmark)
+                            elif current_l1:
+                                if not hasattr(current_l1, 'children'):
+                                    current_l1.children = []
+                                current_l1.children.append(bookmark)
                             else:
                                 bookmarks.append(bookmark)
                                 
@@ -138,7 +159,7 @@ def process_pdf_with_bookmarks():
                 '/Producer': 'autoContents v1.0',
                 '/CreationDate': datetime.now().strftime("D:%Y%m%d%H%M%S"),
                 '/URL': 'https://github.com/NatsUijm/autoContents',
-                '/Comments': '本PDF书签由autoContents程序生成。感谢您使用本程序！该程序在GitHub开源，明确禁止未经授权的商业使用。如果您是通过付费渠道获得此PDF，建议您访问GitHub官方网站查询程序的授权情况。如果确认未经授权，建议您申请退款。若您愿意将销售相关信息告知作者，将不胜感激。作者邮箱：uijm2004@outlook.com'
+                '/Comments': '本PDF书签由autoContents程序生成，感谢您使用本程序！该程序在GitHub开源，明确禁止未经授权的商业使用。如果您是通过付费渠道获得此PDF，建议您访问GitHub官方网站查询程序的授权情况。如果确认未经授权，建议您申请退款。若您愿意将销售相关信息告知作者，将不胜感激。作者邮箱：uijm2004@outlook.com'
             }))
             
             # 保存处理后的PDF到新目录
