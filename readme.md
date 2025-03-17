@@ -40,22 +40,28 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 ### 3.1 运行程序
 
 1. 双击根目录下的`windows_start.bat`或`macos_start.command`来启动程序。
-2. 在弹出的命令行窗口中找到`http://127.0.0.1:5xxx`，并复制到浏览器以打开。
+2. 在弹出的命令行窗口中找到`http://127.0.0.1:5xxx`，并复制到浏览器以打开。对于 Windows 系统，按住 Ctrl 键后点击该链接可直接打开。
 
 ### 3.2 上传 PDF 并处理
 
 1. 点击“选择PDF文件”，然后选择需要处理的 PDF 文件。
-2. 填写 PDF 数据：目录起始页指的是目录的第一页是 PDF 文件的第几页；目录结束页指的是目录的最后一页是 PDF 文件的第几页；正文起始页指的是正文的第一页是 PDF 文件的第几页。
+2. 填写 PDF 数据：目录起始页指的是目录的第一页是 PDF 文件的第几页；目录结束页指的是目录的最后一页是 PDF 文件的第几页；正文偏移量是指 PDF 页码与实际页码的差值，比如书籍的第 10 页是 PDF 文件的第 20 页，那么该值为 20 - 10 = 10。
 3. 点击“开始执行”，等待进度条走完，浏览器会自动下载带有书签的 PDF 文件。
 
-## Step 4 手动修正
+## 更多内容
 
-如果生成的目录有少量页码错误等问题，可使用`contents_editor`中的工具进行手动更正，
+1. **提供简单的书签编辑功能**，可使用`contents_editor`中的脚本对 PDF 文件的书签进行编辑，使用方法如下：
+    1. 将需要编辑的 PDF 文件放入`contents_editor`文件夹中；
+    2. 运行`windows_extract.bat`或`macos_extract.command`脚本，进行目录提取；
+    3. 使用`Microsoft Excel`，`Numbers`，`VSCode`或其他任何可编辑`csv`文件的软件编辑生成的`csv`文件：如果需要添加条目，那么插入一行；如果需要删除条目，那么删除对应行；如果只需要修改条目，那么修改对应行；
+    4. 保存并关闭`csv`文件，然后再运行`windows_merge.bat`或`macos_merge.command`脚本，将修改后的目录与 PDF 文件合并；
+    5. 该目录下的`*_edited.pdf`文件即为处理后的 PDF 文件。
+2. **运行过程出现任何问题**，请阅读[常见问题解答](./docs/问题排查方案.md)进行问题排查。
+3. **如果需要更新**，请按照如下流程操作：
+    1. 点击页面顶部的绿色按钮`Code`，然后点击`Download ZIP`以下载程序源码；
+    2. 将下载的`autoContents-main`文件夹中的全部内容覆盖到本地`autoContents`文件夹中；
+    3. 重新运行`2.2.1`的第`1`步或`2.2.2`的`1-3`步。
 
-## 疑难解答与问题反馈
-
-请阅读[常见问题解答](./docs/问题排查方案.md)进行问题排查。
-
-## 虽然 Star 不多但也放一个 History
+## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=NatsUIJM/autoContents&type=Date)](https://star-history.com/#NatsUIJM/autoContents&Date)
