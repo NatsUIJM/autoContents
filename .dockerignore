@@ -9,3 +9,4 @@ tools/*.txt
 错误收集/
 contents_editor/*.pdf
 contents_editor/*.csv
+Dockerfile

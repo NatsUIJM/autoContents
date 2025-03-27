@@ -34,6 +34,16 @@ def get_pdf_file():
 def extract_toc_to_csv(pdf_path):
     """提取PDF的目录并保存为CSV文件"""
     try:
+        # 准备CSV文件名
+        pdf_filename = os.path.basename(pdf_path)
+        csv_filename = os.path.splitext(pdf_filename)[0] + ".csv"
+        csv_path = os.path.join(os.path.dirname(pdf_path), csv_filename)
+        
+        # 检查CSV文件是否已存在
+        if os.path.exists(csv_path):
+            print(f"错误: CSV文件 '{csv_filename}' 已存在，不进行覆盖。")
+            return
+            
         doc = fitz.open(pdf_path)
         toc = doc.get_toc()
         
@@ -41,11 +51,6 @@ def extract_toc_to_csv(pdf_path):
             print(f"错误: PDF文件 '{os.path.basename(pdf_path)}' 没有目录结构。")
             doc.close()
             return
-        
-        # 准备CSV文件名
-        pdf_filename = os.path.basename(pdf_path)
-        csv_filename = os.path.splitext(pdf_filename)[0] + ".csv"
-        csv_path = os.path.join(os.path.dirname(pdf_path), csv_filename)
         
         # 使用 UTF-8 with BOM 编码写入CSV文件
         with open(csv_path, 'w', encoding='utf-8-sig', newline='') as csvfile:

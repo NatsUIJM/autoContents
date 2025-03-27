@@ -10,9 +10,8 @@ set VARS[1]=ALIBABA_CLOUD_ACCESS_KEY_ID
 set VARS[2]=ALIBABA_CLOUD_ACCESS_KEY_SECRET
 set VARS[3]=AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT
 set VARS[4]=AZURE_DOCUMENT_INTELLIGENCE_KEY
-set VARS[5]=DEEPSEEK_API_KEY
 
-for /L %%i in (0,1,5) do (
+for /L %%i in (0,1,4) do (
     set /p VALUE=请输入!VARS[%%i]!的值: 
     if not "!VALUE!"=="0" (
         setx !VARS[%%i]! "!VALUE!"

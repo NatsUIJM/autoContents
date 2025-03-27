@@ -1,6 +1,6 @@
 """
 文件名: pdf2jpg.py (原名: 0_pdf2jpg.py)
-功能: 将PDF文件转换为高质量JPG图片，并进行二值化处理
+功能: 将PDF文件转换为高质量JPG图片，并进行自适应二值化处理
 """
 import os
 import sys
@@ -11,24 +11,35 @@ import json
 from pdf2image import convert_from_path
 from PIL import Image
 import numpy as np
+import cv2  # 引入OpenCV库用于自适应二值化
 
 import dotenv
 dotenv.load_dotenv()
 
-def binarize_image(image_path, threshold=200):
-    """对图片进行二值化处理"""
-    # 打开图片
-    img = Image.open(image_path)
-    # 转换为灰度图
-    img = img.convert('L')
-    # 转换为numpy数组
-    img_array = np.array(img)
-    # 二值化处理
-    binary_array = (img_array > threshold) * 255
-    # 转回PIL图片
-    binary_img = Image.fromarray(binary_array.astype(np.uint8))
-    # 覆盖保存
-    binary_img.save(image_path, 'JPEG')
+def adaptive_binarize_image(image_path, block_size=25, C=5):
+    """针对条纹问题优化的自适应二值化处理"""
+    # 读取图片
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    
+    # 步骤1: 使用非局部均值去噪去除微小噪声，该算法能较好地保留细节
+    # h参数越小，保留的细节越多
+    denoised = cv2.fastNlMeansDenoising(img, None, h=10, templateWindowSize=7, searchWindowSize=21)
+    
+    # 步骤2: 使用较大的block_size，这样自适应阈值对局部变化不会太敏感
+    # 增加C值，减少误判为前景的背景像素
+    binary_img = cv2.adaptiveThreshold(
+        denoised,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,  # 高斯加权通常比均值效果更好
+        cv2.THRESH_BINARY,
+        block_size,  # 增大block_size减少条纹
+        C  # 增大C值抑制背景噪声
+    )
+    
+    # 保存处理后的图片
+    cv2.imwrite(image_path, binary_img)
+    
+    return image_path
 
 def convert_pdf_to_jpg():
     # 确保输出目录存在
@@ -65,7 +76,7 @@ def convert_pdf_to_jpg():
                 dpi=300
             )
             
-            # 保存图片并进行二值化处理
+            # 保存图片
             saved_images = []  # 记录保存的图片路径
             for i, page in enumerate(pages, start=toc_start):
                 output_path = os.path.join(
@@ -76,11 +87,11 @@ def convert_pdf_to_jpg():
                 saved_images.append(output_path)
                 print(f"已保存: {output_path}")
             
-            # 对保存的图片进行二值化处理
-            print("\n开始二值化处理...")
+            # 对保存的图片进行自适应二值化处理
+            print("\n开始自适应二值化处理...")
             for image_path in saved_images:
-                binarize_image(image_path, threshold=200)
-                print(f"已完成二值化: {image_path}")
+                adaptive_binarize_image(image_path, block_size=11, C=2)
+                print(f"已完成自适应二值化: {image_path}")
             
         except json.JSONDecodeError as e:
             print(f"JSON文件格式错误 {json_path}: {e}")
