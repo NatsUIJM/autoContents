@@ -64,7 +64,9 @@ class ImageProcessor:
         splits = []
         for key in points.keys():
             if key.startswith('M') and 'y' in points[key]:
-                splits.append(points[key]['y'])
+                # 只添加 Y 坐标大于 A 点的 M 点
+                if points[key]['y'] > points['A']['y']:
+                    splits.append(points[key]['y'])
         splits.sort()
         return splits
 
