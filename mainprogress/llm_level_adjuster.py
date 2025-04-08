@@ -200,6 +200,13 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
     "3": ["^[一二三四五六七八九十百千万]+、.*"]
 }
 
+错误输出示例3：
+{
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^参考文献$", "^附录[A-Z].*", "习题$", "小结$", "思考题$"],  // 错误：习题、小结、思考题等应与节（即章的下一级）处于同一层级，而不能与篇、章处于同一层级，也不能属于第一层级
+    "2": ["^[A-Z]\\.[0-9]+.*"],
+    "3": ["^[一二三四五六七八九十百千万]+、.*"]
+}
+
   示例目录2：
 - 第一章 引言
   - 1.1 研究背景
@@ -221,7 +228,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 
 错误输出示例：
 {
-    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
+    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"], 
     "2": ["^[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"] // 错误：未考虑章节标题前的星号
 }
 
@@ -320,7 +327,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
             if iteration == 1:
                 # First iteration uses original input and prompt
                 stream = await client.chat.completions.create(
-                    model="qwen-max",
+                    model="qwen-max-latest",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": model_input_json}
