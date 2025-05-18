@@ -20,6 +20,19 @@ import threading
 logger = logging.getLogger('gunicorn.error')
 
 app = Flask(__name__)
+from flask import send_from_directory
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(app.static_folder, 'favicon.ico')
+
+@app.route('/apple-touch-icon-precomposed.png')
+def apple_icon_precomposed():
+    return send_from_directory(app.static_folder, 'apple-touch-icon-precomposed.png')
+
+@app.route('/apple-touch-icon.png')
+def apple_icon():
+    return send_from_directory(app.static_folder, 'apple-touch-icon.png')
 
 def convert_to_pinyin(text):
     """将中文字符转换为拼音"""
@@ -57,7 +70,7 @@ SCRIPT_SEQUENCE = [
     ('text_matcher', '文本匹配'),
     ('content_preprocessor', '内容预处理（下一步可能需要一分钟或更长，请耐心等待）'),
     ('llm_handler', 'LLM处理'),
-    ('result_merger', '结果合并'),
+    ('result_merger', '结果合并（下一步可能需要一分钟或更长，请耐心等待）'),
     ('llm_level_adjuster', 'LLM层级调整'),
     ('content_validator_auto', '内容自动验证'),
     ('pdf_generator', 'PDF生成')
@@ -98,7 +111,7 @@ def check_pdf(file_path):
 
 @app.route('/')
 def home():
-    return render_template('index.txt')
+    return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -166,58 +179,50 @@ def upload_files():
 
 @app.route('/download_result/<session_id>')
 def download_result(session_id):
+    output_folder = os.path.join('data', session_id, 'output_pdf')
+    input_folder = os.path.join('data', session_id, 'input_pdf')
+
+    # 获取输出文件（假设只有一个）
+    pdf_files = [f for f in os.listdir(output_folder) if f.endswith('.pdf')]
+    if not pdf_files:
+        return jsonify({'status': 'error', 'message': '未找到输出PDF文件'})
+    file_path = os.path.join(output_folder, pdf_files[0])
+
+    # 使用与上传时一致的 JSON 文件名
     try:
-        output_folder = os.path.join('data', session_id, 'output_pdf')
-        input_folder = os.path.join('data', session_id, 'input_pdf')
-        
-        if not os.path.exists(output_folder):
-            return jsonify({'status': 'error', 'message': '输出文件夹不存在'})
-            
-        files = os.listdir(output_folder)
-        pdf_files = [f for f in files if f.endswith('.pdf')]
-        
-        if not pdf_files:
-            return jsonify({'status': 'error', 'message': '未找到输出的PDF文件'})
-            
-        if len(pdf_files) > 1:
-            return jsonify({'status': 'error', 'message': '输出文件夹中存在多个PDF文件'})
-            
-        # 获取原始文件名
-        original_filename = None
-        json_files = [f for f in os.listdir(input_folder) if f.endswith('.json')]
-        
-        if json_files:
-            json_path = os.path.join(input_folder, json_files[0])
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    json_data = json.load(f)
-                    if 'original_filename' in json_data:
-                        original_filename = json_data['original_filename']
-            except:
-                pass
-        
-        # 如果找不到原始文件名，就使用输出的PDF文件名
-        if not original_filename:
-            original_filename = pdf_files[0]
-        
-        # 检查生成的PDF是否有效
-        file_path = os.path.join(output_folder, pdf_files[0])
-        is_valid_pdf, pdf_check_message = check_pdf(file_path)
-        
-        if not is_valid_pdf:
-            return jsonify({
-                'status': 'error', 
-                'message': '输出文件校验失败，请查阅[问题排查方案](https://github.com/NatsUIJM/autoContents/blob/main/docs/问题排查方案.md)以获取帮助。'
-            })
-        
-        # 在文件名中添加-toc后缀
-        name_parts = os.path.splitext(original_filename)
-        download_filename = f"{name_parts[0]}-toc{name_parts[1]}"
-            
-        return send_file(file_path, as_attachment=True, download_name=download_filename)
-        
+        # 假设上传时 JSON 文件名为 input_pdf_dir/原始文件名.json
+        input_files = [f for f in os.listdir(input_folder) if f.endswith('.pdf') or f.endswith('.json')]
+        original_pdf = next((f for f in input_files if f.endswith('.pdf')), None)
+        if not original_pdf:
+            return jsonify({'status': 'error', 'message': '未找到原始PDF文件'})
+
+        json_file_name = os.path.splitext(original_pdf)[0] + '.json'
+        json_path = os.path.join(input_folder, json_file_name)
+
+        with open(json_path, 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+        original_filename = json_data.get('original_filename', None)
+
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
+        print(f"[ERROR] 读取 JSON 时出错: {e}")
+        original_filename = None
+
+    # 优先使用原始文件名生成 -toc 版本
+    if original_filename:
+        base_name, ext = os.path.splitext(original_filename)
+        download_filename = f"{base_name}-toc{ext}"
+    else:
+        # 万不得已，使用处理结果.pdf
+        download_filename = '处理结果.pdf'
+
+    # 检查生成的PDF是否有效
+    is_valid, message = check_pdf(file_path)
+    if not is_valid:
+        return jsonify({'status': 'error', 'message': message})
+
+    # 返回下载链接
+    return send_file(file_path, as_attachment=True, download_name=download_filename)
+
 
 AZURE_TIMEOUT = 30  # Azure服务超时时间（秒）
 
