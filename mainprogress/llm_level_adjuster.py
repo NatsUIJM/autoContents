@@ -347,7 +347,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
             if iteration == 1:
                 # First iteration uses original input and prompt
                 stream = await client.chat.completions.create(
-                    model="qwen3-235b-a22b",
+                    model="qwen-max",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": model_input_json}
@@ -363,7 +363,8 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                     unmatched_titles           # 未匹配标题
                 )
                 stream = await client.chat.completions.create(
-                    model="qwen3-235b-a22b",  # 修改为 qwen3-235b-a22b
+
+                    model="qwen-max",  # 修改为 qwen3-235b-a22b
                     messages=[
                         {"role": "system", "content": iteration_system_prompt},
                         {"role": "user", "content": iteration_input}
