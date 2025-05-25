@@ -363,6 +363,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                     unmatched_titles           # 未匹配标题
                 )
                 stream = await client.chat.completions.create(
+
                     model="qwen-max",  # 修改为 qwen3-235b-a22b
                     messages=[
                         {"role": "system", "content": iteration_system_prompt},
