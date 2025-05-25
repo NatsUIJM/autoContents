@@ -1,6 +1,7 @@
+
 """
 文件名: llm_level_adjuster.py
-功能: 使用DeepSeek模型调整目录层级结构，通过正则表达式识别层级特征
+功能: 使用Qwen3-235b-A22b模型调整目录层级结构，通过正则表达式识别层级特征
 """
 import os
 import sys
@@ -17,6 +18,20 @@ from typing import Dict, List, Tuple
 
 from dotenv import load_dotenv
 load_dotenv()
+import re
+import json
+
+def extract_json_from_response(response: str) -> dict:
+    """从响应字符串中提取 JSON"""
+    match = re.search(r'```json\n(.*?)\n```', response, re.DOTALL)
+    if not match:
+        raise ValueError("未能在响应中找到 JSON 代码块")
+    
+    json_str = match.group(1)
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"JSON 解析失败：{e}\n原始内容：{json_str}")
 
 def postprocess_pattern(pattern: str) -> str:
     """替换模式中未加限定符的[0-9]为[0-9]+，但排除已有数量限定的情况"""
@@ -34,7 +49,7 @@ def postprocess_pattern(pattern: str) -> str:
         if before.endswith('[1-9]'):
             return match.group(0)
         return '[0-9]+'
-    
+  
     return re.sub(r'\[0-9\]', should_replace, pattern)
 
 class PatternMatcher:
@@ -45,13 +60,13 @@ class PatternMatcher:
         }
         # Find the max level for starting point
         self.max_level = max(patterns.keys())
-    
+  
     def match_level(self, text: str) -> int:
         # Start matching from highest level to lowest
         for level in range(self.max_level, 0, -1):
             if level not in self.patterns:
                 continue
-            
+          
             for pattern in self.patterns[level]:
                 if pattern.match(text):
                     return level
@@ -64,16 +79,16 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
         patterns = json.loads(patterns_json)
         if not isinstance(patterns, dict):
             raise ValueError("Patterns must be a dictionary")
-        
+      
         validated_patterns = {}
         for level, pattern_list in patterns.items():
             level_num = int(level)
             if level_num not in [1, 2, 3]:
                 continue
-                
+              
             if not isinstance(pattern_list, list):
                 raise ValueError(f"Patterns for level {level} must be a list")
-                
+              
             valid_patterns = []
             for pattern in pattern_list:
                 try:
@@ -84,39 +99,33 @@ def validate_patterns(patterns_json: str) -> Dict[int, List[str]]:
                 except re.error:
                     print(f"Invalid regex pattern for level {level}: {pattern}")
                     continue
-                    
+                  
             if not valid_patterns:
                 raise ValueError(f"No valid patterns for level {level}")
-                
+              
             validated_patterns[level_num] = valid_patterns
-        
+      
         if not validated_patterns:
             raise ValueError("No valid patterns found")
-            
+          
         return validated_patterns
     except json.JSONDecodeError:
         raise ValueError("Invalid JSON format for patterns")
 
-#MODIFIED: 修改返回值类型，增加未匹配标题列表
+# MODIFIED: 修改返回值类型，增加未匹配标题列表
 def apply_patterns_to_items(items: List[dict], pattern_matcher: PatternMatcher) -> Tuple[List[dict], List[str]]:
     """使用模式匹配器为每个项目设置层级，返回处理后的项目和未匹配标题列表"""
     unmatched_titles = []
-    # 用一个集合来跟踪本次匹配中已经被匹配的标题
-    matched_texts = set()
-    
-    # 第一遍：尝试匹配所有标题
+  
     for item in items:
-        if item['text'] not in matched_texts:  # 只处理未匹配的标题
-            level = pattern_matcher.match_level(item['text'])
-            if level > 0:
-                item['level'] = level
-                matched_texts.add(item['text'])
-            else:
-                unmatched_titles.append(item['text'])
-    
-    # 对于未匹配的标题，保持原有的level值（通常是1）
-    
+        level = pattern_matcher.match_level(item['text'])
+        if level > 0:
+            item['level'] = level
+        else:
+            unmatched_titles.append(item['text'])
+  
     return items, unmatched_titles
+
 
 def prepare_data_for_model(data):
     """移除number、confirmed和level字段"""
@@ -130,18 +139,18 @@ def prepare_data_for_model(data):
         return [prepare_data_for_model(item) for item in data]
     return data
 
-#MODIFIED: 修改保存响应的函数，增加迭代轮次参数
+# MODIFIED: 修改保存响应的函数，增加迭代轮次参数
 def save_response(content: str, input_filename: str, iteration: int, cache_dir: Path) -> Path:
     """保存响应到缓存目录"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"response_{input_filename}_iteration_{iteration}_{timestamp}.json"
     filepath = cache_dir / filename
-    
+  
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(content)
     return filepath
 
-#MODIFIED: 新增函数，构建第二次及后续迭代的输入
+# MODIFIED: 新增函数，构建第二次及后续迭代的输入
 def prepare_iteration_input(original_json: str, current_patterns: dict, unmatched_titles: List[str]) -> str:
     return json.dumps({
         "original_structure": json.loads(original_json),  # 原始JSON结构
@@ -152,14 +161,14 @@ def prepare_iteration_input(original_json: str, current_patterns: dict, unmatche
 async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Path):
     try:
         print(f"Processing file: {file_path}")
-        
+      
         with open(file_path, 'r', encoding='utf-8') as f:
             original_data = json.load(f)
-        
+      
         model_input_data = prepare_data_for_model(original_data)
         model_input_json = json.dumps(model_input_data, ensure_ascii=False, indent=2)
-        
-        #MODIFIED: 保持原有的第一次系统提示词
+      
+        # MODIFIED: 保持原有的第一次系统提示词
         system_prompt = """请分析这份目录文件中各级标题的结构特征，并给出该目录特定的正则表达式模式。注意：只需识别当前目录的结构特征，不要试图覆盖其他可能的目录形式。
 
 示例目录1：
@@ -239,9 +248,20 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 4. 篇/部分标题、章/节标题、条/款标题等属于不同层级，切记不要将不同级别的标题视为同一级别
 5. 小结、习题等一般是章的下一级，具体要看它与什么级别的标题出现频率相近，但绝对不可能是第一级
 
-只输出JSON格式的结果，不要包含其他说明。"""
+只输出JSON格式的结果，不要包含其他说明。
+最终请以一个完整的JSON对象作为结果返回，并将该JSON包裹在三个反引号内，例如：
 
-        #MODIFIED: 第二次迭代的系统提示词预留位置
+```json
+{
+    "1": ["^第[一二三四五六七八九十百千万]+篇.*", "^参考文献$", "^附录[A-Z].*"],
+    "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\.[0-9]+.*"],
+    "3": ["^[一二三四五六七八九十百千万]+、.*"]
+}
+
+
+"""
+
+        # MODIFIED: 第二次迭代的系统提示词预留位置
         iteration_system_prompt = """
 请分析这份目录文件中各级标题的结构特征，然后分析当前的正则表达式为何会导致匹配遗漏，给出修正后的正则表达式。
 只输出JSON格式的结果，不要包含其他说明。
@@ -315,24 +335,24 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 """
 
         print("Starting first iteration...")
-        
+      
         # First iteration
         current_patterns = None
         best_patterns = None
         unmatched_titles = []
-        
+      
         for iteration in range(1, 5):  # 最多4次尝试
             print(f"\nIteration {iteration}:")
-            
+          
             if iteration == 1:
                 # First iteration uses original input and prompt
                 stream = await client.chat.completions.create(
-                    model="qwen-max-latest",
+                    model="qwen-max",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": model_input_json}
                     ],
-                    response_format={"type": "json_object"},
+                    extra_body={"enable_thinking": True},  # 可选：是否需要思考过程
                     stream=True
                 )
             else:
@@ -343,7 +363,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                     unmatched_titles           # 未匹配标题
                 )
                 stream = await client.chat.completions.create(
-                    model="qwen-max",
+                    model="qwen-max",  # 修改为 qwen3-235b-a22b
                     messages=[
                         {"role": "system", "content": iteration_system_prompt},
                         {"role": "user", "content": iteration_input}
@@ -370,55 +390,56 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
             print(f"\nResponse saved to: {cache_file}")
 
             try:
-                current_patterns = validate_patterns(accumulated_response)
+                json_content = extract_json_from_response(accumulated_response)
+                current_patterns = validate_patterns(json.dumps(json_content))
                 if not current_patterns:
                     raise ValueError("No valid patterns found in model response")
-                
+              
                 pattern_matcher = PatternMatcher(current_patterns)
-                
+              
                 # 应用模式进行匹配
                 processed_items, new_unmatched = apply_patterns_to_items(
                     original_data['items'].copy(),  # 使用副本避免修改原数据
                     pattern_matcher
                 )
-                
+              
                 # 保存第二次迭代的结果作为最佳结果
                 if iteration == 2:
                     best_patterns = current_patterns
-                
+              
                 # 检查是否还有未匹配的标题
                 if not new_unmatched:
                     print("All titles matched successfully!")
                     best_patterns = current_patterns  # 更新最佳结果
                     break
-                
+              
                 unmatched_titles = new_unmatched
                 print(f"\nUnmatched titles count: {len(unmatched_titles)}")
-                
+              
                 if iteration >= 4:  # 第四次迭代后使用第二次的结果
                     print("\nMaximum iterations reached. Using results from second iteration.")
                     current_patterns = best_patterns
                     break
-                
+              
             except Exception as e:
                 print(f"\nError processing patterns: {str(e)}")
                 if iteration == 1:
                     raise  # 第一次迭代失败时直接退出
                 break  # 后续迭代失败时使用之前的结果
-        
+      
         # 使用最终的模式处理数据
         final_pattern_matcher = PatternMatcher(best_patterns or current_patterns)
         original_data['items'], _ = apply_patterns_to_items(
             original_data['items'],
             final_pattern_matcher
         )
-        
+      
         # 保存结果
         output_file = output_dir / file_path.name
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(original_data, f, ensure_ascii=False, indent=2)
         print(f"\nProcessing complete. Final output saved to: {output_file}")
-            
+          
     except Exception as e:
         print(f"\nError processing {file_path.name}:")
         print(f"Type: {type(e).__name__}")
@@ -432,21 +453,21 @@ async def main():
     input_dir = Path(os.getenv("LEVEL_ADJUSTER_INPUT"))
     output_dir = Path(os.getenv("LEVEL_ADJUSTER_OUTPUT"))
     cache_dir = Path(os.getenv("LEVEL_ADJUSTER_CACHE"))
-    
+  
     for dir_path in [output_dir, cache_dir]:
         os.makedirs(dir_path, exist_ok=True)
-    
+  
     # Initialize client
     client = AsyncOpenAI(
         api_key=os.getenv("DASHSCOPE_API_KEY"),
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
-    
+  
     # Process all JSON files
     tasks = []
     for file_path in input_dir.glob("*.json"):
         tasks.append(process_file(client, file_path, output_dir, cache_dir))
-    
+  
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
