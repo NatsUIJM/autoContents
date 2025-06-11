@@ -15,8 +15,25 @@ import dotenv
 dotenv.load_dotenv()
 
 def is_pure_number(text):
-    """检查文本是否为纯数字"""
+    """检查文本是否为纯数字或被括号包裹的纯数字"""
+    text = text.strip()
+    if text.startswith('(') and text.endswith(')'):
+        content = text[1:-1]
+        return content.replace('.', '').isdigit()
     return text.replace('.', '').isdigit()
+
+def extract_number(text):
+    """提取并转换数字内容，删除括号"""
+    text = text.strip()
+    if text.startswith('(') and text.endswith(')'):
+        content = text[1:-1]
+        if content.replace('.', '').isdigit():
+            text = content
+    # 转换为数字类型
+    if '.' in text:
+        return float(text)
+    else:
+        return int(text)
 
 def calculate_reduced_height_box(bbox, reduction_percent=0.2):
     """计算缩减高度后的文本框范围"""
@@ -44,7 +61,7 @@ def create_horizontal_projection(bboxes, image_height):
 
 def find_text_pairs(results, image_height):
     """识别文本配对，基于水平投影判定同一行"""
-    # 过滤掉非纯数字的文本（右侧数字）
+    # 过滤文本框
     text_boxes = []
     number_boxes = []
     
@@ -54,7 +71,7 @@ def find_text_pairs(results, image_height):
         
         if is_pure_number(text):
             number_boxes.append({
-                'text': text,
+                'text': extract_number(text),  # 提取为数字类型
                 'bbox': bbox
             })
         else:
@@ -119,7 +136,7 @@ def find_text_pairs(results, image_height):
         for text_box in region_text_boxes:
             pair = {'text': text_box['text'], 'number': None}
             for number_box in region_number_boxes:
-                pair['number'] = number_box['text']
+                pair['number'] = number_box['text']  # 已经是数字类型
                 region_number_boxes.remove(number_box)  # 防止重复匹配
                 break
             paired_results.append(pair)

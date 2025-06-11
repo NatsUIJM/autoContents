@@ -53,7 +53,12 @@ def clean_text(text):
     return result
 
 def is_pure_number(text):
-    """检查文本是否为纯数字"""
+    """检查文本是否为纯数字或被括号包围的数字"""
+    # 移除首尾的括号（如果存在）
+    text = text.strip()
+    if len(text) >= 2 and text[0] in "({[<" and text[-1] in ")}]>":
+        text = text[1:-1].strip()
+    
     return text.replace('.', '').replace('·', '').replace('…', '').replace('●', '').replace('•', '').replace('。', '').isdigit()
 
 def is_short_english(text):
