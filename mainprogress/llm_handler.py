@@ -350,6 +350,11 @@ def get_system_prompt() -> str:
 5. 输入：`*3-4 戴维南定理和诺顿定理`
    错误输出：`3-4 戴维南定理和诺顿定理` // 丢失*号
    正确输出：`*3-4 戴维南定理和诺顿定理`
+6. 输入：`PARTA一THERMODYNAMICANDKINETICTHEORY`
+   正确输出：`PART A - THERMODYNAMIC AND KINETIC THEORY`
+   错误输出：`PART A 热力学与动力学理论（Thermodynamic and Kinetic Theory）` // 错误翻译，英文标题不应翻译成中文
+   错误输出：`PART A 热力学与动力学理论` // 错误翻译，英文标题不应翻译成中文
+   错误输出：`PART A Thermodynamic and Kinetic Theory` // 错误：原始内容是大写，不应该转换成小写
 """
 
 system = """
