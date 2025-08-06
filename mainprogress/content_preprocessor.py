@@ -248,6 +248,11 @@ def process_book_files(files: List[Path]) -> Dict[Path, FileInfo]:
     if not file_infos:
         return {}
     
+    # 如果只有一个文件，直接返回该文件信息，跳过辅助文件和组合文件生成
+    if len(files) == 1:
+        logging.info(f"Only one file found for book, skipping auxiliary and combined file generation")
+        return file_infos
+    
     # 生成辅助文件
     files_list = list(file_infos.items())
     
