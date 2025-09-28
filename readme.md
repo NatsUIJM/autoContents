@@ -1,6 +1,8 @@
 # autoContents 使用教程
 
-**更新提醒：最新版本是2025年8月6日发布的，你可以根据[获取更新](#获取更新)来更新程序。**
+**更新提醒：最新版本是2025年9月28日发布的，你可以根据[获取更新](#获取更新)来更新程序。**
+
+9月28日的版本对识别逻辑进行了完全重构，可实现任意版面结构的目录数据提取，且进一步简化了配置流程，强烈推荐更新。
 
 ## 项目概述
 
@@ -9,11 +11,10 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 ![工作流程](./docs/工作流程.png)
 
 ## 适用文档
-1. 支持单栏、双栏及混合排版的目录结构，适用于扫描质量合格（页面倾斜度 ≤2°，文字清晰度满足 OCR 识别要求）的 PDF 文档。
-2. 适用的文档长度无理论上限，实测 500+ 页可稳定生成，更高的还未测试。
-3. 支持简体中文/英文及中英混合目录。
 
-![目录结构及适用范围说明](./docs/目录结构及适用范围说明.svg)
+1. 支持目录页为任意版面结构的文档。
+2. 适用的文档长度无理论上限。
+3. 支持中文/英文及中英混合目录。
 
 ## Step 1 下载程序
 
@@ -21,16 +22,25 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 ## Step 2 配置环境
 
-### 2.1 申请云服务 API-KEY
+### 2.1 申请通义千问 API-KEY
 
-在 95% 以上的测试样本中，阿里云能够提供稳定且优质的服务，足以满足大多数需求。因此建议优先完成阿里云相关服务的申请。仅在生成结果质量严重低于预期时，再考虑使用 Azure 作为补充方案。[点此查看全部教程](./docs/如何申请云服务账户.md)。
+1. 注册账号：如果没有阿里云账号，请先[注册](https://account.aliyun.com/register/qr_register.htm?spm=a2c4g.11186623.0.0.5f7c5bbfotWlj8&oauth_callback=https%3A%2F%2Fbailian.console.aliyun.com%2F%3FapiKey%3D1)一个。
+2. 实名认证：参考[实名认证文档](https://help.aliyun.com/zh/account/user-guide/individual-identities?spm=a2c4g.11186623.0.0.5f7cb0a8OQmG74)对阿里云账号进行实名认证。
+3. 开通百炼：前往[百炼控制台](https://bailian.console.aliyun.com/?spm=a2c4g.11186623.0.0.5f7c5bbfotWlj8#/model-market)，开通百炼模型服务。
+4. 获取 API Key：在控制台的右上角点击设置图标，在左栏选择 API-KEY，然后创建一个 API-KEY。
+5. 在此处获取的 API-KEY 请务必保管好，在下一步会用到。
+6. 如果你有高校学生或教师身份，可前往[阿里云高校计划](https://university.aliyun.com)申请一些优惠。具体政策以该网页为准。
 
-### 2.2 配置运行环境与 API-KEY
+### 2.2 配置运行环境
 
 #### 2.2.1 Windows 用户
 
-1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择“以管理员身份运行”，等待脚本运行完成。
-2. 双击打开`setup_documents`文件夹中的`windows_setup_api_keys.bat`，并按要求配置。
+1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择`以管理员身份运行`，等待脚本运行完成。
+2. 按下`Windows徽标键+R`打开`运行`，然后在输入框中输入如下命令（其中`sk-xxx`的内容需替换为上一步获取的`sk-`开头的API-KEY）
+
+```cmd
+powershell -Command "[Environment]::SetEnvironmentVariable('DASHSCOPE_API_KEY', 'sk-xxx', 'User')"
+```
 
 #### 2.2.2 macOS 用户
 
@@ -39,7 +49,11 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
     - 如果未安装`Xcode CLI Tools`，会先安装该程序，安装完成后请重新运行该脚本，进行后续步骤。
     - 输入密码时，输入的内容并不会显示在屏幕上，输入完成后按`return`即可。
 3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。
-4. 输入`sudo zsh `，将`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`，并按要求配置。
+4. 输入如下命令（其中`sk-xxx`的内容需替换为上第一步获取的`sk-`开头的API-KEY）并`return`执行。
+
+```bash
+export DASHSCOPE_API_KEY="sk-xxx"
+```
 
 ## Step 3 使用方法
 
