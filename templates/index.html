@@ -176,6 +176,10 @@
             max-width: 400px;
             height: auto;
         }
+        /* 隐藏OCR选择框 */
+        #ocrModelContainer {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -184,7 +188,7 @@
             <input type="file" id="pdfFile" accept=".pdf" class="hidden">
             <button onclick="document.getElementById('pdfFile').click()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0.1-2 0 0 1-2-2v-4"></path>
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
@@ -206,11 +210,13 @@
                 <label for="contentStart">正文偏移量</label>
                 <input type="number" id="contentStart" min="1">
             </div>
-            <div class="input-group">
-                <label for="ocrModel">OCR模型选择</label>
+            <!-- 注释掉OCR方案选择 -->
+            <div id="ocrModelContainer" class="input-group">
+                <label for="ocrModel">识别方案选择</label>
                 <select id="ocrModel" class="form-select">
                     <option value="aliyun">Aliyun OCR</option>
                     <option value="azure">Azure OCR</option>
+                    <option value="qwen" selected>通义千问OCR</option>
                 </select>
             </div>
             <div class="input-group">
@@ -397,7 +403,8 @@
             document.getElementById('status').textContent = '正在执行...';
             
             try {
-                const ocrModel = document.getElementById('ocrModel').value;
+                // 默认使用通义千问OCR，不再从界面获取
+                const ocrModel = 'qwen';
                 const response = await fetchWithTimeout(
                     `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
                     FETCH_TIMEOUT

@@ -76,6 +76,17 @@ SCRIPT_SEQUENCE = [
     ('pdf_generator', 'PDF生成')
 ]
 
+QWEN_SCRIPT_SEQUENCE = [
+    ('pdf_to_image', 'PDF转换为图像（下一步可能需要一分钟或更长，请耐心等待）'),
+    ('qwen_vl_extract', '通义千问OCR识别'),
+    ('content_preprocessor', '内容预处理（下一步可能需要一分钟或更长，请耐心等待）'),
+    ('llm_handler', 'LLM处理'),
+    ('result_merger', '结果合并（下一步可能需要一分钟或更长，请耐心等待）'),
+    ('llm_level_adjuster', 'LLM层级调整'),
+    ('content_validator_auto', '内容自动验证'),
+    ('pdf_generator', 'PDF生成')
+]
+
 def generate_random_string(length=6):
     """生成指定长度的随机字母数字组合"""
     characters = string.ascii_letters + string.digits
@@ -258,13 +269,23 @@ def run_azure_with_timeout(python_executable, script_path, env, script_dir):
 
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
 def run_script(session_id, script_index, retry_count):
-    if script_index >= len(SCRIPT_SEQUENCE):
+    ocr_model = request.args.get('ocr_model', 'aliyun')  # 获取OCR模型参数
+    
+    # 根据OCR模型选择确定脚本序列
+    if ocr_model == 'qwen':
+        script_sequence = QWEN_SCRIPT_SEQUENCE
+        total_scripts = len(QWEN_SCRIPT_SEQUENCE)  # 8个脚本
+    else:
+        script_sequence = SCRIPT_SEQUENCE
+        total_scripts = len(SCRIPT_SEQUENCE)  # 14个脚本
+    
+    if script_index >= len(script_sequence):
         return jsonify({
             'status': 'completed',
             'message': '所有脚本执行完成'
         })
     
-    script_name, script_desc = SCRIPT_SEQUENCE[script_index]
+    script_name, script_desc = script_sequence[script_index]
     try:
         # 获取脚本的完整路径
         script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'mainprogress'))
@@ -413,7 +434,7 @@ def run_script(session_id, script_index, retry_count):
                         'currentScript': script_desc,
                         'message': f'{script_desc} (Azure) 执行成功',
                         'nextIndex': script_index + 1,
-                        'totalScripts': len(SCRIPT_SEQUENCE),
+                        'totalScripts': total_scripts,  # 使用正确的脚本总数
                         'retryCount': 0,
                         'session_id': session_id,
                         'stdout': azure_result.get('stdout', ''),
@@ -446,7 +467,7 @@ def run_script(session_id, script_index, retry_count):
             
             if result.returncode == 0:
                 # 如果是最后一个脚本(PDF生成)，检查生成的PDF是否有效
-                if script_index == len(SCRIPT_SEQUENCE) - 1:
+                if script_index == len(script_sequence) - 1:
                     output_folder = os.path.join(base_dir, 'output_pdf')
                     pdf_files = [f for f in os.listdir(output_folder) if f.endswith('.pdf')]
                     
@@ -471,7 +492,7 @@ def run_script(session_id, script_index, retry_count):
                     'currentScript': script_desc,
                     'message': f'{script_desc}执行成功',
                     'nextIndex': script_index + 1,
-                    'totalScripts': len(SCRIPT_SEQUENCE),
+                    'totalScripts': total_scripts,  # 使用正确的脚本总数
                     'retryCount': 0,
                     'session_id': session_id,
                     'stdout': result.stdout,
