@@ -27,7 +27,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 1. 注册账号：如果没有阿里云账号，请先[注册](https://account.aliyun.com/register/qr_register.htm?spm=a2c4g.11186623.0.0.5f7c5bbfotWlj8&oauth_callback=https%3A%2F%2Fbailian.console.aliyun.com%2F%3FapiKey%3D1)一个。
 2. 实名认证：参考[实名认证文档](https://help.aliyun.com/zh/account/user-guide/individual-identities?spm=a2c4g.11186623.0.0.5f7cb0a8OQmG74)对阿里云账号进行实名认证。
 3. 开通百炼：前往[百炼控制台](https://bailian.console.aliyun.com/?spm=a2c4g.11186623.0.0.5f7c5bbfotWlj8#/model-market)，开通百炼模型服务。
-4. 获取 API Key：在控制台的右上角点击设置图标，在左栏选择 API-KEY，然后创建一个 API-KEY。
+4. 获取 API Key：在控制台的右上角点击设置图标，在左栏选择 API-KEY，然后创建一个 API-KEY，它以`sk-`开头。
 5. 在此处获取的 API-KEY 请务必保管好，在下一步会用到。
 6. 如果你有高校学生或教师身份，可前往[阿里云高校计划](https://university.aliyun.com)申请一些优惠。具体政策以该网页为准。
 
@@ -35,11 +35,17 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 #### 2.2.1 Windows 用户
 
-1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择`以管理员身份运行`，等待脚本运行完成。
-2. 按下`Windows徽标键+R`打开`运行`，然后在输入框中输入如下命令（其中`sk-xxx`的内容需替换为上一步获取的`sk-`开头的API-KEY）
+1. 右键点击`setup_documents`文件夹中的`windows_install.bat`，选择`以管理员身份运行`，等待脚本运行完成。如果该脚本执行完成且无报错信息，表明上述所有操作均为正确操作。
+2. 按下`Windows徽标键+R`打开`运行`，然后在输入框中输入如下命令（其中`sk-xxx`的内容需替换为上第一步获取的`sk-`开头的API-KEY），然后点击`运行`。运行后命令行弹窗闪一下后退出是正常的。
 
 ```cmd
 powershell -Command "[Environment]::SetEnvironmentVariable('DASHSCOPE_API_KEY', 'sk-xxx', 'User')"
+```
+
+3. 如果想要确定上一步是否成功设置，可再次打开运行并输入如下命令。若弹出的命令行窗口第一行显示`sk-`开头的内容，表示设置成功。
+
+```cmd
+powershell -NoExit -Command "echo %DASHSCOPE_API_KEY%"
 ```
 
 #### 2.2.2 macOS 用户
@@ -48,11 +54,17 @@ powershell -Command "[Environment]::SetEnvironmentVariable('DASHSCOPE_API_KEY', 
 2. 将`macos_install.sh`文件拖入终端窗口，按`return`，然后根据提示进行安装。
     - 如果未安装`Xcode CLI Tools`，会先安装该程序，安装完成后请重新运行该脚本，进行后续步骤。
     - 输入密码时，输入的内容并不会显示在屏幕上，输入完成后按`return`即可。
-3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。
+3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。如果该脚本执行完成且无报错信息，表明上述所有操作均为正确操作。
 4. 输入如下命令（其中`sk-xxx`的内容需替换为上第一步获取的`sk-`开头的API-KEY）并`return`执行。
 
 ```bash
 export DASHSCOPE_API_KEY="sk-xxx"
+```
+
+5. 如果想要确定上一步是否成功设置，需关闭当前终端窗口，然后打开一个新的终端窗口，在其中运行如下命令。若运行结果为`sk-`开头的内容，表示设置成功。
+
+```bash
+echo $DASHSCOPE_API_KEY
 ```
 
 ## Step 3 使用方法
