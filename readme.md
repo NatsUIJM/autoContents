@@ -42,7 +42,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 powershell -Command "[Environment]::SetEnvironmentVariable('DASHSCOPE_API_KEY', 'sk-xxx', 'User')"
 ```
 
-3. 如果想要确定上一步是否成功设置，可再次打开运行并输入如下命令。若弹出的命令行窗口第一行显示`sk-`开头的内容，表示设置成功。
+3. 如果想要确定上一步是否成功设置，可再次打开`运行`并输入如下命令。若弹出的命令行窗口第一行显示`sk-`开头的内容，表示设置成功。
 
 ```cmd
 powershell -NoExit -Command "echo %DASHSCOPE_API_KEY%"
@@ -50,9 +50,9 @@ powershell -NoExit -Command "echo %DASHSCOPE_API_KEY%"
 
 #### 2.2.2 macOS 用户
 
-1. 打开“终端”APP，输入`chmod +x `（注意最后面有空格；注意是`+x`不是`-x`），然后将`setup_documents`文件夹中的`macos_install.sh`和`macos_setup_api_keys.sh`文件拖入终端窗口，按`return`。
+1. 打开“终端”APP，输入`chmod +x `（注意最后面有空格；注意是`+x`不是`-x`），然后将`setup_documents`文件夹中的`macos_install.sh`文件拖入终端窗口，按`return`。
 2. 将`macos_install.sh`文件拖入终端窗口，按`return`，然后根据提示进行安装。
-    - 如果未安装`Xcode CLI Tools`，会先安装该程序，安装完成后请重新运行该脚本，进行后续步骤。
+    - 如果未安装`Xcode CLI Tools`，会先安装该程序。安装完成后，请再次将`macos_install.sh`文件拖入终端窗口，按`return`，进行后续步骤。
     - 输入密码时，输入的内容并不会显示在屏幕上，输入完成后按`return`即可。
 3. 重新打开“终端”APP，输入`sudo `（注意最后面有空格），然后再将`macos_install.sh`文件拖入终端窗口，按`return`，等待脚本执行完成。如果该脚本执行完成且无报错信息，表明上述所有操作均为正确操作。
 4. 输入如下命令（其中`sk-xxx`的内容需替换为上第一步获取的`sk-`开头的API-KEY）并`return`执行。
