@@ -11,3 +11,4 @@ contents_editor/*.pdf
 contents_editor/*.csv
 *.dtmp
 *.bkp
+mainprogress/\[editing\]llm_level_adjuster.py
