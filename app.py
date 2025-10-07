@@ -414,8 +414,13 @@ def run_script(session_id, script_index, retry_count):
             
             # content_validator_auto.py路径配置
             'CONTENT_VALIDATOR_AUTO_INPUT': f"{base_dir}/level_adjusted_content",
-            'CONTENT_VALIDATOR_AUTO_OUTPUT': f"{base_dir}/validated_content"
+            'CONTENT_VALIDATOR_AUTO_OUTPUT': f"{base_dir}/validated_content",
+            
+            # qwen_vl_extract.py路径配置
+            'QWEN_VL_INPUT': f"{base_dir}/mark/input_image",
+            'QWEN_VL_OUTPUT': f"{base_dir}/automark_raw_data"
         })
+
         
         # 获取Python解释器的完整路径
         python_executable = sys.executable
