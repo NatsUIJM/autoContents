@@ -40,50 +40,21 @@ def convert_to_pinyin(text):
 
 SCRIPT_TIMEOUT = 300
 DATA_FOLDERS = [
-    'automark_raw_data',
-    'automarker_colour',
-    'image_cropper',
     'input_pdf',
-    'level_adjusted_content',
-    'level_adjuster_cache',
-    'llm_processed_content',
-    'logs',
-    'mark/image_metadata',
     'mark/input_image',
-    'merged_content',
-    'ocr_extracted_text',
-    'ocr_results',
-    'output_pdf',
-    'processed_images',
     'raw_content',
-    'validated_content'
+    'validated_content',
+    'output_pdf',
+    'mark/image_metadata',
+    'merged_content',
 ]
 
-SCRIPT_SEQUENCE = [
-    ('pdf_to_image', 'PDF转换为图像'),
-    ('ocr_and_projection_hybrid', 'OCR识别与投影'),  # Changed from aliyun to hybrid
-    ('mark_colour', '颜色标记处理'),
-    ('abcd_marker', 'ABCD标记处理'),
-    ('image_preprocessor', '图像预处理'),
-    ('ocr_hybrid', 'OCR识别'),  # Changed from aliyun to hybrid
-    ('ocr_processor', 'OCR后处理'),
-    ('text_matcher', '文本匹配'),
-    ('content_preprocessor', '内容预处理（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('llm_handler', 'LLM处理'),
-    ('result_merger', '结果合并（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('llm_level_adjuster', 'LLM层级调整'),
-    ('content_validator_auto', '内容自动验证'),
-    ('pdf_generator', 'PDF生成')
-]
 
 QWEN_SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('qwen_vl_extract', '通义千问OCR识别'),
-    ('content_preprocessor', '内容预处理（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('llm_handler', 'LLM处理'),
-    ('result_merger', '结果合并（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('llm_level_adjuster', 'LLM层级调整'),
-    ('content_validator_auto', '内容自动验证'),
+    ('qwen_vl_extract', '通义千问OCR识别（下一步可能需要一分钟或更长，请耐心等待'),
+    ('content_preprocessor', '内容预处理'),
+    ('llm_level_adjuster', '层级调整'),
     ('pdf_generator', 'PDF生成')
 ]
 
@@ -103,22 +74,6 @@ def create_data_folders(session_id):
         folder_path = os.path.join(base_dir, folder)
         os.makedirs(folder_path, exist_ok=True)
     return base_dir
-
-# 添加PDF验证函数，从testpdf.py导入的逻辑
-def check_pdf(file_path):
-    """检查PDF文件是否损坏"""
-    try:
-        with open(file_path, 'rb') as file:
-            # 尝试读取PDF文件
-            reader = PyPDF2.PdfReader(file)
-            # 尝试获取页数
-            num_pages = len(reader.pages)
-            # 尝试访问每一页以验证内容
-            for i in range(num_pages):
-                reader.pages[i]
-            return True, f"正常: {num_pages}页"
-    except Exception as e:
-        return False, str(e)
 
 @app.route('/')
 def home():
@@ -158,11 +113,6 @@ def upload_files():
         upload_folder = os.path.join(base_dir, 'input_pdf')
         pdf_path = os.path.join(upload_folder, pinyin_filename)
         pdf_file.save(pdf_path)
-        
-        # 检查上传的PDF是否有效
-        is_valid_pdf, error_message = check_pdf(pdf_path)
-        if not is_valid_pdf:
-            return jsonify({'status': 'error', 'message': f'上传的PDF文件已损坏: {error_message}'})
         
         json_data = {
             "toc_start": int(toc_start),
@@ -226,11 +176,6 @@ def download_result(session_id):
         # 万不得已，使用处理结果.pdf
         download_filename = '处理结果.pdf'
 
-    # 检查生成的PDF是否有效
-    is_valid, message = check_pdf(file_path)
-    if not is_valid:
-        return jsonify({'status': 'error', 'message': message})
-
     # 返回下载链接
     return send_file(file_path, as_attachment=True, download_name=download_filename)
 
@@ -276,8 +221,9 @@ def run_script(session_id, script_index, retry_count):
         script_sequence = QWEN_SCRIPT_SEQUENCE
         total_scripts = len(QWEN_SCRIPT_SEQUENCE)  # 8个脚本
     else:
-        script_sequence = SCRIPT_SEQUENCE
-        total_scripts = len(SCRIPT_SEQUENCE)  # 14个脚本
+        # 这里应该不会被执行到，因为我们只保留了qwen模式
+        script_sequence = []
+        total_scripts = 0
     
     if script_index >= len(script_sequence):
         return jsonify({
@@ -309,11 +255,6 @@ def run_script(session_id, script_index, retry_count):
             env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
             # 添加API相关的环境变量
             env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
-            env['DEEPSEEK_API_KEY'] = os.environ.get('DEEPSEEK_API_KEY', '')
-            env['ALIBABA_CLOUD_ACCESS_KEY_ID'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID', '')
-            env['ALIBABA_CLOUD_ACCESS_KEY_SECRET'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET', '')
-            env['AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT', '')
-            env['AZURE_DOCUMENT_INTELLIGENCE_KEY'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_KEY', '')
         elif os.name == 'posix':  # macOS系统
             # 添加系统路径
             env['PATH'] = os.environ.get('PATH', '')
@@ -322,11 +263,6 @@ def run_script(session_id, script_index, retry_count):
             env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
             # 添加API相关的环境变量
             env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
-            env['DEEPSEEK_API_KEY'] = os.environ.get('DEEPSEEK_API_KEY', '')
-            env['ALIBABA_CLOUD_ACCESS_KEY_ID'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_ID', '')
-            env['ALIBABA_CLOUD_ACCESS_KEY_SECRET'] = os.environ.get('ALIBABA_CLOUD_ACCESS_KEY_SECRET', '')
-            env['AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT', '')
-            env['AZURE_DOCUMENT_INTELLIGENCE_KEY'] = os.environ.get('AZURE_DOCUMENT_INTELLIGENCE_KEY', '')
         
         # 添加应用所需的环境变量（使用绝对路径）
         env.update({
@@ -336,89 +272,25 @@ def run_script(session_id, script_index, retry_count):
             'PDF2JPG_INPUT': f"{base_dir}/input_pdf",
             'PDF2JPG_OUTPUT': f"{base_dir}/mark/input_image",
             
-            # image_marker路径配置
-            'PICMARK_INPUT_DIR': f"{base_dir}/mark/input_image",
-            'PICMARK_OUTPUT_DIR': f"{base_dir}/mark/image_metadata",
-            
-            # image_preprocessor路径配置
-            'IMAGE_PREPROCESSOR_INPUT': f"{base_dir}/mark/input_image",
-            'IMAGE_PREPROCESSOR_JSON': f"{base_dir}/mark/image_metadata",
-            'IMAGE_PREPROCESSOR_OUTPUT': f"{base_dir}/processed_images",
-            'IMAGE_PREPROCESSOR_CUT': f"{base_dir}/image_cropper",
-            
-            # ocr_azure.py路径配置
-            'OCR_AZURE_INPUT_1': f"{base_dir}/processed_images",
-            'OCR_AZURE_OUTPUT_1': f"{base_dir}/ocr_results",
-            
-            # ocr_aliyun.py路径配置
-            'ALIYUN_OCR_INPUT': f"{base_dir}/processed_images",
-            'ALIYUN_OCR_OUTPUT': f"{base_dir}/ocr_results",
-            
-            # ocr_processor.py路径配置
-            'OCRPROCESS_INPUT_1': f"{base_dir}/processed_images",
-            'OCRPROCESS_INPUT_2': f"{base_dir}/ocr_results",
-            'OCRPROCESS_OUTPUT_1': f"{base_dir}/ocr_extracted_text",
-            
-            # text_matcher路径配置
-            'TEXT_MATCHER_INPUT': f"{base_dir}/ocr_extracted_text",
-            'TEXT_MATCHER_OUTPUT': f"{base_dir}/raw_content",
-            
             # content_preprocessor.py路径配置
             'CONTENT_PREPROCESSOR_INPUT': f"{base_dir}/raw_content",
-            
-            # llm_handler.py路径配置
-            'LLM_HANDLER_INPUT': f"{base_dir}/raw_content",
-            'LLM_HANDLER_OUTPUT': f"{base_dir}/llm_processed_content",
-            
-            # result_merger.py路径配置
-            'RESULT_MERGER_INPUT_RAW': f"{base_dir}/raw_content",
-            'RESULT_MERGER_INPUT_LLM': f"{base_dir}/llm_processed_content",
-            'RESULT_MERGER_OUTPUT': f"{base_dir}/merged_content",
-            'RESULT_MERGER_LOGS': f"{base_dir}/logs",
-            'RESULT_MERGER_JSON': f"{base_dir}/input_pdf",
-            
-            # llm_level_adjuster路径配置
-            'LEVEL_ADJUSTER_INPUT': f"{base_dir}/merged_content",
-            'LEVEL_ADJUSTER_OUTPUT': f"{base_dir}/level_adjusted_content",
-            'LEVEL_ADJUSTER_CACHE': f"{base_dir}/level_adjuster_cache",
-            
-            # content_validator.py路径配置
-            'CONTENT_VALIDATOR_INPUT': f"{base_dir}/level_adjusted_content",
-            'CONTENT_VALIDATOR_INPUT_2': f"{base_dir}/llm_processed_content",
-            'CONTENT_VALIDATOR_OUTPUT': f"{base_dir}/validated_content",
-            'CONTENT_VALIDATOR_IMAGES': f"{base_dir}/image_cropper",
-            
+            'CONTENT_PREPROCESSOR_OUTPUT': f"{base_dir}/merged_content",
+             
             # pdf_generator.py路径配置
-            'PDF_GENERATOR_INPUT_1': f"{base_dir}/validated_content",
+            'PDF_GENERATOR_INPUT_1': f"{base_dir}/level_adjusted_content",
             'PDF_GENERATOR_INPUT_2': f"{base_dir}/input_pdf",
             'PDF_GENERATOR_OUTPUT_1': f"{base_dir}/output_pdf",
             
-            # ocr_and_projection_azure.py路径配置
-            'OCR_PROJ_AZURE_INPUT': f"{base_dir}/mark/input_image",
-            'OCR_PROJ_AZURE_OUTPUT': f"{base_dir}/automark_raw_data",
-            
-            # ocr_processor.py路径配置
-            'OCR_PROJ_ALIYUN_INPUT': f"{base_dir}/mark/input_image",
-            'OCR_PROJ_ALIYUN_OUTPUT': f"{base_dir}/automark_raw_data",
-            
-            # mark_color.py路径配置
-            'MARK_COLOR_INPUT': f"{base_dir}/automark_raw_data",
-            'MARK_COLOR_INPUT_DATA': f"{base_dir}/input_pdf",
-            'MARK_COLOR_INPUT_IMAGE': f"{base_dir}/mark/input_image",
-            'MARK_COLOR_OUTPUT': f"{base_dir}/automarker_colour",
-            
-            # ABCD标记路径配置
-            'ABCD_INPUT_JSON': f"{base_dir}/automarker_colour",
-            'ABCD_INPUT_JPG': f"{base_dir}/mark/input_image",
-            'ABCD_OUTPUT': f"{base_dir}/mark/image_metadata",
-            
-            # content_validator_auto.py路径配置
-            'CONTENT_VALIDATOR_AUTO_INPUT': f"{base_dir}/level_adjusted_content",
-            'CONTENT_VALIDATOR_AUTO_OUTPUT': f"{base_dir}/validated_content",
-            
             # qwen_vl_extract.py路径配置
             'QWEN_VL_INPUT': f"{base_dir}/mark/input_image",
-            'QWEN_VL_OUTPUT': f"{base_dir}/automark_raw_data"
+            'QWEN_VL_OUTPUT': f"{base_dir}/automark_raw_data",
+
+            # llm_level_adjuster.py路径配置
+            'LEVEL_ADJUSTER_INPUT': f"{base_dir}/merged_content",
+            'LEVEL_ADJUSTER_OUTPUT': f"{base_dir}/level_adjusted_content",
+            'LEVEL_ADJUSTER_CACHE': f"{base_dir}/level_adjuster_cache",
+            'LEVEL_ADJUSTER_PICTURES': f"{base_dir}/mark/input_image"
+
         })
 
         
@@ -471,27 +343,6 @@ def run_script(session_id, script_index, retry_count):
             )
             
             if result.returncode == 0:
-                # 如果是最后一个脚本(PDF生成)，检查生成的PDF是否有效
-                if script_index == len(script_sequence) - 1:
-                    output_folder = os.path.join(base_dir, 'output_pdf')
-                    pdf_files = [f for f in os.listdir(output_folder) if f.endswith('.pdf')]
-                    
-                    if pdf_files:
-                        file_path = os.path.join(output_folder, pdf_files[0])
-                        is_valid_pdf, pdf_check_message = check_pdf(file_path)
-                        
-                        if not is_valid_pdf:
-                            return jsonify({
-                                'status': 'error',
-                                'currentScript': script_desc,
-                                'message': '输出文件校验失败，请查阅[问题排查方案](https://github.com/NatsUIJM/autoContents/blob/main/docs/问题排查方案.md)以获取帮助。',
-                                'stdout': result.stdout,
-                                'stderr': result.stderr,
-                                'retryCount': retry_count,
-                                'scriptIndex': script_index,
-                                'session_id': session_id
-                            })
-                
                 return jsonify({
                     'status': 'success',
                     'currentScript': script_desc,

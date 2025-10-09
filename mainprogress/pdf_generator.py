@@ -1,7 +1,3 @@
-"""
-文件名: pdf_generator.py (原名: 7_processPDF.py)
-功能: 处理PDF文件，添加书签结构
-"""
 import os
 import sys
 from datetime import datetime
@@ -45,11 +41,11 @@ def process_pdf_with_bookmarks():
                 'number': toc_start - 1,
                 'level': 1
             }
-            toc_data['items'].insert(0, toc_entry)
+            toc_data.insert(0, toc_entry)
             
             # 调整页码
             valid_items = []
-            for item in toc_data['items']:
+            for item in toc_data:
                 try:
                     if item['text'] != '目录':  # 不调整"目录"条目的页码
                         if not isinstance(item['number'], (int, float)):
@@ -156,7 +152,7 @@ def process_pdf_with_bookmarks():
             # 添加元数据
             pdf.docinfo = pdf.make_indirect(pikepdf.Dictionary({
                 '/Creator': 'autoContents',
-                '/Producer': 'autoContents v1.0',
+                '/Producer': 'autoContents v2.0',
                 '/CreationDate': datetime.now().strftime("D:%Y%m%d%H%M%S"),
                 '/URL': 'https://github.com/NatsUijm/autoContents',
                 '/Comments': '本PDF书签由autoContents程序生成，感谢您使用本程序！该程序在GitHub开源，明确禁止未经授权的商业使用。如果您是通过付费渠道获得此PDF，建议您访问GitHub官方网站查询程序的授权情况。如果确认未经授权，建议您申请退款。若您愿意将销售相关信息告知作者，将不胜感激。作者邮箱：uijm2004@outlook.com'

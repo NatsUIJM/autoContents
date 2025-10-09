@@ -1,7 +1,3 @@
-"""
-文件名: pdf2jpg.py (原名: 0_pdf2jpg.py)
-功能: 将PDF文件转换为高质量JPG图片，并进行自适应二值化处理
-"""
 import os
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

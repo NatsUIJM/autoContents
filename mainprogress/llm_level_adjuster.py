@@ -1,8 +1,3 @@
-
-"""
-文件名: llm_level_adjuster.py
-功能: 使用Qwen3-235b-A22b模型调整目录层级结构，通过正则表达式识别层级特征
-"""
 import os
 import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -158,12 +153,89 @@ def prepare_iteration_input(original_json: str, current_patterns: dict, unmatche
         "unmatched_titles": unmatched_titles            # 未匹配的标题列表
     }, ensure_ascii=False, indent=2)
 
+async def is_suitable_for_regex(client, items: List[dict]) -> bool:
+    """调用LLM判断目录是否适合使用正则表达式处理"""
+    # 提取所有标题文本
+    titles = [item['text'] for item in items]
+    titles_text = "\n".join([f"- {title}" for title in titles])
+    
+    prompt = f"""请判断以下目录标题是否具有明显的层级编号格式，从而适合使用正则表达式进行层级识别。
+
+适合使用正则表达式的目录示例：
+- 第1章 绪论
+- 1.1 什么是电力电子技术
+- 1.2 电力电子技术的发展史
+- 第一篇 基础理论
+- 第一章 概述
+- 一、基本概念
+- 第二篇 实践应用
+- 第三章 应用实例
+- A.1 详细推导
+
+不适合使用正则表达式的目录示例：
+1. 缺乏明显编号的自由格式：
+- 引言
+- 相关工作
+- 方法论
+- 实验结果
+- 讨论
+- 结论
+- 参考文献
+
+2. 内容描述型而非结构化标题：
+- 我们的研究目标与意义
+- 数据收集与预处理方法
+- 模型训练过程详解
+- 性能评估指标选择
+- 实际应用场景分析
+
+3. 混合无序格式：
+- Abstract
+- Introduction and Background
+- 2. 相关研究工作 // 中英文混合且无统一编号体系
+- 方法概述 (Method Overview)
+- 实验 setup
+- 结果与讨论 (Results and Discussion)
+- Conclusion & Future Work
+
+请仅回答"是"或"否"，不要附加任何其他内容。
+
+目录标题如下：
+{titles_text}
+"""
+
+    try:
+        completion = await client.chat.completions.create(
+            model="qwen3-235b-a22b-instruct-2507",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            extra_body={"enable_thinking": False},
+        )
+        
+        response = completion.choices[0].message.content.strip()
+        return response.lower() == "是"
+    except Exception as e:
+        print(f"Error calling LLM for suitability check: {e}")
+        # 出错时默认认为适合处理，避免跳过可能有效的目录
+        return True
+
 async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Path):
     try:
         print(f"Processing file: {file_path}")
       
         with open(file_path, 'r', encoding='utf-8') as f:
             original_data = json.load(f)
+      
+        # 检查是否适合使用正则表达式处理
+        if not await is_suitable_for_regex(client, original_data):
+            print("Directory structure not suitable for regex processing. Copying file directly.")
+            output_file = output_dir / file_path.name
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(original_data, f, ensure_ascii=False, indent=2)
+            print(f"File copied to: {output_file}")
+            return
       
         model_input_data = prepare_data_for_model(original_data)
         model_input_json = json.dumps(model_input_data, ensure_ascii=False, indent=2)
@@ -216,24 +288,41 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
     "3": ["^[一二三四五六七八九十百千万]+、.*"]
 }
 
-  示例目录2：
+ 示例目录2：
 - 第一章 引言
   - 1.1 研究背景
+    - 1.1.1 国内外发展概况
+    - 1.1.2 技术发展趋势
   - *1.2 研究意义
+    - *1.2.1 理论价值
+    - *1.2.2 实践指导意义
 - 第二章 文献综述
   - 2.1 国内研究现状
+    - 2.1.1 主流方法回顾
+    - 2.1.2 存在的问题分析
   - *2.2 国外研究进展
+    - *2.2.1 关键技术突破
+    - *2.2.2 应用场景拓展
   - 本章总结
   - 思考题
 - 附录
   - 附录A 数据集
+    - A.1 数据采集方式
+    - A.2 数据清洗标准
   - 附录B 算法详解
+    - B.1 核心公式推导
+    - B.2 参数设定说明
+
 
 对应的模式输出：
+```json
 {
     "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
-    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"]
+    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"],
+    "3": ["^\\**[0-9]+\\.[0-9]+\\.[0-9]+.*"]
 }
+
+```
 
 错误输出示例：
 {
@@ -257,6 +346,15 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
     "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\.[0-9]+.*"],
     "3": ["^[一二三四五六七八九十百千万]+、.*"]
 }
+错误示例：
+```json
+{
+    "1": ["^第[0-9]+章.*", "^结束语$", "^教学实验$", "^附录$", "^参考文献$"],
+    "2": ["^[0-9]+\\.[0-9]+.*", "^(本章小结|习题及思考题)$", "^实验[0-9]+.*", "^附录[A-Z].*"]
+}
+```
+
+分析：1.1和1.1.1一定是两个级别的标题，因此它们不应在同一层级
 
 
 """
@@ -294,22 +392,37 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
   示例目录2：
 - 第一章 引言
   - 1.1 研究背景
+    - 1.1.1 国内外发展概况
+    - 1.1.2 技术发展趋势
   - *1.2 研究意义
+    - *1.2.1 理论价值
+    - *1.2.2 实践指导意义
 - 第二章 文献综述
   - 2.1 国内研究现状
+    - 2.1.1 主流方法回顾
+    - 2.1.2 存在的问题分析
   - *2.2 国外研究进展
+    - *2.2.1 关键技术突破
+    - *2.2.2 应用场景拓展
   - 本章总结
   - 思考题
 - 附录
   - 附录A 数据集
+    - A.1 数据采集方式
+    - A.2 数据清洗标准
   - 附录B 算法详解
+    - B.1 核心公式推导
+    - B.2 参数设定说明
+
 
 对应的模式输出：
 ```json
 {
     "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
-    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"]
+    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"],
+    "3": ["^\\**[0-9]+\\.[0-9]+\\.[0-9]+.*"]
 }
+
 ```
 
 错误示例：
@@ -331,7 +444,17 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
   }
 }
 ```
-错误原因：未按照“对应的模式输出：”中的结构进行输出
+错误原因：未按照"对应的模式输出："中的结构进行输出
+
+错误示例：
+```json
+{
+    "1": ["^第[0-9]+章.*", "^结束语$", "^教学实验$", "^附录$", "^参考文献$"],
+    "2": ["^[0-9]+\\.[0-9]+.*", "^(本章小结|习题及思考题)$", "^实验[0-9]+.*", "^附录[A-Z].*"]
+}
+```
+
+分析：1.1和1.1.1一定是两个级别的标题，因此它们不应在同一层级
 """
 
         print("Starting first iteration...")
@@ -400,7 +523,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
               
                 # 应用模式进行匹配
                 processed_items, new_unmatched = apply_patterns_to_items(
-                    original_data['items'].copy(),  # 使用副本避免修改原数据
+                    original_data.copy(),  # 使用副本避免修改原数据
                     pattern_matcher
                 )
               
@@ -430,8 +553,8 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
       
         # 使用最终的模式处理数据
         final_pattern_matcher = PatternMatcher(best_patterns or current_patterns)
-        original_data['items'], _ = apply_patterns_to_items(
-            original_data['items'],
+        original_data, _ = apply_patterns_to_items(
+            original_data,
             final_pattern_matcher
         )
       
