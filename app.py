@@ -139,6 +139,18 @@ def upload_files():
 
 @app.route('/download_result/<session_id>')
 def download_result(session_id):
+    # 检查data目录下的文件夹数量是否为5的倍数
+    data_dir = 'data'
+    if os.path.exists(data_dir):
+        folders = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
+        folder_count = len(folders)
+        
+        # 如果文件夹数量是5的倍数，设置一个标志用于前端显示弹窗
+        if folder_count % 5 == 0:
+            # 通过session变量或其他方式传递提示信息
+            # 这里我们使用一个特殊的响应头来标识
+            pass  # 实际的提示将在前端通过JavaScript处理
+    
     output_folder = os.path.join('data', session_id, 'output_pdf')
     input_folder = os.path.join('data', session_id, 'input_pdf')
 
@@ -176,7 +188,16 @@ def download_result(session_id):
         download_filename = '处理结果.pdf'
 
     # 返回下载链接
-    return send_file(file_path, as_attachment=True, download_name=download_filename)
+    response = send_file(file_path, as_attachment=True, download_name=download_filename)
+    
+    # 如果文件夹数量是5的倍数，添加特殊响应头
+    if os.path.exists(data_dir):
+        folders = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
+        folder_count = len(folders)
+        if folder_count % 5 == 0:
+            response.headers['X-Show-Reminder'] = 'true'
+    
+    return response
 
 
 AZURE_TIMEOUT = 30  # Azure服务超时时间（秒）

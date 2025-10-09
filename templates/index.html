@@ -418,6 +418,9 @@
             try {
                 const response = await fetch(`/download_result/${currentSessionId}`);
                 if (response.ok) {
+                    // 检查是否有提醒头
+                    const showReminder = response.headers.get('X-Show-Reminder');
+                    
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -428,12 +431,47 @@
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
                     addLog('文件下载成功', 'success');
+                    
+                    // 如果需要显示提醒，则显示弹窗
+                    if (showReminder === 'true') {
+                        showReminderModal();
+                    }
                 } else {
                     const data = await response.json();
                     addLog(data.message, 'error');
                 }
             } catch (error) {
                 addLog(`下载失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 显示提醒弹窗的函数
+        function showReminderModal() {
+            // 创建或显示提醒弹窗
+            let reminderModal = document.getElementById('reminderModal');
+            if (!reminderModal) {
+                // 创建弹窗元素
+                reminderModal = document.createElement('div');
+                reminderModal.id = 'reminderModal';
+                reminderModal.className = 'modal';
+                reminderModal.innerHTML = `
+                    <div class="modal-content">
+                        <span class="close" onclick="closeReminderModal()">&times;</span>
+                        <h3>温馨提示</h3>
+                        <p>如果你认为这个程序有所帮助，希望可以打赏支持，谢谢！</p>
+                        <p>遇到任何问题，请向uijm2004@outlook.com反馈。</p>
+                    </div>
+                `;
+                document.body.appendChild(reminderModal);
+            }
+            reminderModal.style.display = 'block';
+        }
+
+        // 关闭提醒弹窗的函数
+        function closeReminderModal() {
+            const reminderModal = document.getElementById('reminderModal');
+            if (reminderModal) {
+                reminderModal.style.display = 'none';
             }
         }
 
