@@ -24,6 +24,24 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .test-btn {
+            background-color: #6366f1;
+            color: white;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .test-btn:hover {
+            background-color: #4f46e5;
+        }
         .file-input-container {
             margin-bottom: 20px;
             display: flex;
@@ -180,15 +198,51 @@
         #ocrModelContainer {
             display: none;
         }
+        /* Modal样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <div class="header">
+            <h2>autoContents目录生成工具</h2>
+            <button class="test-btn" onclick="testQwenService()">通义千问服务状态测试</button>
+        </div>
+
         <div class="file-input-container">
             <input type="file" id="pdfFile" accept=".pdf" class="hidden">
             <button onclick="document.getElementById('pdfFile').click()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0.1-2 0 0 1-2-2v-4"></path>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
@@ -239,6 +293,15 @@
         </div>
         
         <div id="log" class="log"></div>
+    </div>
+
+    <!-- 测试结果弹窗 -->
+    <div id="testModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeTestModal()">&times;</span>
+            <h3>通义千问服务状态测试结果</h3>
+            <div id="testResult"></div>
+        </div>
     </div>
 
     <div class="sponsor-container">
@@ -473,6 +536,59 @@
             const currentDisplay = window.getComputedStyle(content).display;
             content.style.display = currentDisplay === 'none' ? 'block' : 'none';
         }
+
+        async function testQwenService() {
+            const modal = document.getElementById('testModal');
+            const resultDiv = document.getElementById('testResult');
+            
+            // 显示测试中状态
+            resultDiv.innerHTML = '<p>正在测试通义千问服务状态...</p>';
+            modal.style.display = 'block';
+            
+            try {
+                const response = await fetch('/test_qwen_service', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = `
+                        <p style="color: green;">✓ ${data.message}</p>
+                        <p>响应内容: ${data.response}</p>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p style="color: red;">✗ 测试失败</p>
+                        <p>错误信息: ${data.message}</p>
+                        <p>错误类型: ${data.error_code}</p>
+                        <p><a href="https://help.aliyun.com/zh/model-studio/error-code?spm=a2c4g.11186623.help-menu-2400256.d_2_13_0.57704c44CQVCqj" target="_blank">查看错误码参考</a></p>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <p style="color: red;">✗ 请求失败</p>
+                    <p>错误信息: ${error.message}</p>
+                    <p><a href="https://help.aliyun.com/zh/model-studio/error-code?spm=a2c4g.11186623.help-menu-2400256.d_2_13_0.57704c44CQVCqj" target="_blank">查看错误码参考</a></p>
+                `;
+            }
+        }
+        
+        function closeTestModal() {
+            document.getElementById('testModal').style.display = 'none';
+        }
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('testModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+
     </script>
     <div class="links" style="text-align: center; color: blue;">
         <a href="https://github.com/NatsUIJM/autoContents" style="color: blue;" target="_blank">GitHub</a> · 

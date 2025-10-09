@@ -13,6 +13,10 @@ import sys
 import webbrowser
 import threading
 
+# 添加openai库导入
+from openai import OpenAI
+import traceback
+
 logger = logging.getLogger('gunicorn.error')
 
 app = Flask(__name__)
@@ -383,7 +387,40 @@ def run_script(session_id, script_index, retry_count):
             'session_id': session_id
         })
 
-    
+
+@app.route('/test_qwen_service', methods=['POST'])
+def test_qwen_service():
+    """
+    测试通义千问服务状态
+    """
+    try:
+        client = OpenAI(
+            api_key=os.getenv("DASHSCOPE_API_KEY"),
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+
+        completion = client.chat.completions.create(
+            model="qwen-plus",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "正在测试通义千问服务访问状态，请输出`正常`这两个中文字符，不要附带任何其他内容"},
+            ],
+        )
+        
+        return jsonify({
+            'status': 'success',
+            'message': '通义千问服务状态正常',
+            'response': completion.choices[0].message.content if completion.choices else ''
+        })
+    except Exception as e:
+        logger.error(f"通义千问服务测试失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'message': f'测试失败: {str(e)}',
+            'error_code': type(e).__name__
+        }), 500
+
 def find_available_port(start_port=5000, max_port=6000):
     """查找可用的端口号"""
     current_port = start_port
