@@ -9,6 +9,50 @@ import threading
 import traceback
 import sys
 
+# 用户提示词作为全局变量，便于修改
+PROMPT_TEXT = """
+请分析这张图片，提取其中的目录信息。
+对于每个目录项，请提供：标题（t）和页码（n）以及层级（level）。
+注意：
+1. 只需提取目录内容，不要包含其他文本
+2. 页码是数字
+3. 严格按照以下JSON格式返回（此处以共2级的目录为例，实际应根据你看到的图片而定），不要包含任何额外文本或说明：
+{
+  "level_1": [
+    {"t": "一级标题1", "n": 1},
+    {"t": "一级标题2", "n": 25}
+  ],
+  "level_2": [
+    {"t": "二级标题1", "n": 5},
+    {"t": "二级标题2", "n": 8}
+  ]
+}
+4. 不要遗漏任何目录项目，但是需要忽略"前言"或"第x版前言"这种与正文一点关系都没有的条目，有一些条目没有直接显示页码，并不代表它们不是目录条目，请基于具体语义而非是否有规范的格式来判断一个内容是否是目录的一部分
+5. 需严格按照原始目录的语言提取，如果出现繁体中文或英文等非简体中文文字，需直接提取原始内容，而不是全部翻译为简体中文
+6. 关于目录层级，应严格按照图片呈现出的层级特征（比如颜色、字体、文字大小等）而不是语义来进行判断。
+7. 部分目录条目缺失页码，请根据其附近的内容合理估测。例如当第1篇的页码丢失，而第1篇的第1章的页码为2时，那么估算第1篇的页码也是2。
+8. 特别注意：关于层级判定的易错点：
+```json
+level_1: [
+    {"t": "xx篇", "n": null}, // 错误：没有估算页码
+    {"t": "xx章", "n": 1}
+    {"t": "xx章", "n": 5} // 错误：如果xx篇为第一层级，那么xx章一定是第二层级；
+  ]
+```
+
+正确：
+```json
+level_1: [
+    {"t": "xx篇", "n": 1} // 正确：根据其附近的页码进行了合理推算
+  ],
+level_2: [
+    {"t": "xx章", "n": 1},
+    {"t": "xx章", "n": 5}
+  ]
+}
+```
+"""
+
 # 添加日志记录功能
 def write_log(message):
     """写入日志到项目根目录的log.txt"""
@@ -16,7 +60,7 @@ def write_log(message):
         # 获取项目根目录
         project_root = Path(__file__).parent.parent
         log_file = project_root / "log.txt"
-        
+      
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(f"[{threading.current_thread().name}] {message}\n")
     except Exception as e:
@@ -45,37 +89,24 @@ progress_lock = threading.Lock()
 
 def process_image(image_path: Path, output_path: Path):
     write_log(f"开始处理图像: {image_path}")
-    
+  
     try:
         # 检查文件是否存在
         if not image_path.exists():
             write_log(f"图像文件不存在: {image_path}")
             return None
-            
+          
         # 将图像编码为base64
         with open(image_path, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
             image_data_url = f"data:image/jpeg;base64,{base64_image}"
-        
+      
         write_log(f"图像编码完成: {image_path.name}")
-
-        prompt_text = (
-            "请分析这张图片，提取其中的目录信息。"
-            "对于每个目录项，请提供：标题（text）和页码（number）。"
-            "注意："
-            "1. 只需提取目录内容，不要包含其他文本"
-            "2. 页码如果是数字则保留为数字，如果没有页码则设置为null"
-            "3. 严格按照以下JSON格式返回，不要包含任何额外文本或说明："
-            "4. 不要遗漏任何目录项目，但是需要忽略“前言”或“第x版前言”这种与正文一点关系都没有的条目，有一些条目没有直接显示页码，并不代表它们不是目录条目，请基于具体语义而非是否有规范的格式来判断一个内容是否是目录的一部分"
-            "5. XX 篇也是目录的一部分，也需要提取"
-            "6. 需严格按照原始目录的语言提取，如果出现繁体中文或英文等非简体中文文字，需直接提取原始内容，而不是全部翻译为简体中文"
-            "[{\"text\": \"目录项1\", \"number\": 1}, {\"text\": \"目录项2\", \"number\": null}]"
-        )
 
         for attempt in range(5):
             try:
                 write_log(f"第{attempt+1}次尝试调用模型: {image_path.name}")
-                
+              
                 completion = client.chat.completions.create(
                     model="qwen3-vl-235b-a22b-instruct",
                     messages=[
@@ -83,7 +114,7 @@ def process_image(image_path: Path, output_path: Path):
                             "role": "user",
                             "content": [
                                 {"type": "image_url", "image_url": {"url": image_data_url}},
-                                {"type": "text", "text": prompt_text}
+                                {"type": "text", "text": PROMPT_TEXT}  # 使用全局变量
                             ]
                         }
                     ],
@@ -92,7 +123,7 @@ def process_image(image_path: Path, output_path: Path):
 
                 # 解析响应
                 response_content = completion.choices[0].message.content.strip()
-                
+              
                 write_log(f"模型响应内容长度: {len(response_content)} 字符")
 
                 # 调试输出原始响应内容
@@ -107,33 +138,67 @@ def process_image(image_path: Path, output_path: Path):
                     continue
 
                 directory_data = json.loads(response_content)
-                
+              
                 write_log(f"JSON解析成功: {image_path.name}")
 
-                # 验证数据结构
-                if isinstance(directory_data, list):
-                    valid = True
-                    for item in directory_data:
-                        if not isinstance(item, dict) or 'text' not in item:
-                            valid = False
-                            break
-                    if valid:
+                # 验证数据结构并重构
+                if isinstance(directory_data, dict):
+                    # 创建扁平化的结果列表
+                    flattened_data = []
+                  
+                    # 遍历所有level_x的键
+                    for level_key, items in directory_data.items():
+                        if level_key.startswith("level_") and isinstance(items, list):
+                            try:
+                                level = int(level_key.split("_")[1])
+                                for item in items:
+                                    if isinstance(item, dict) and 't' in item:
+                                        # 去除t字段中的所有空格
+                                        text = item["t"].replace(" ", "")
+                                        # 重构为包含level的扁平结构
+                                        flattened_item = {
+                                            "text": text,
+                                            "number": item.get("n", None),
+                                            "level": level
+                                        }
+                                        flattened_data.append(flattened_item)
+                            except (ValueError, IndexError):
+                                continue  # 跳过无法解析的level键
+                  
+                    if flattened_data:
+                        # 按照number字段排序
+                        sorted_data = sorted(flattened_data, key=lambda x: (x['number'] is None, x['number']))
+                      
                         # 保存到JSON文件
                         output_file = output_path / (image_path.stem + '_merged.json')
                         with open(output_file, 'w', encoding='utf-8') as f:
-                            json.dump(directory_data, f, ensure_ascii=False, indent=2)
-                        
+                            json.dump(sorted_data, f, ensure_ascii=False, indent=2)
+                      
                         write_log(f"结果保存成功: {output_file}")
-                        
+                      
                         with progress_lock:
                             print(f"已处理: {image_path.name} -> {output_file.name}")
-                        return directory_data  # 成功处理后返回数据
-                
+                        return sorted_data  # 成功处理后返回数据
+              
+                # 如果数据格式不正确，保存错误响应到error目录
+                error_dir = output_path / "error"
+                error_dir.mkdir(exist_ok=True)
+                error_file = error_dir / (image_path.stem + '_error_response.json')
+                with open(error_file, 'w', encoding='utf-8') as f:
+                    json.dump({"raw_response": response_content}, f, ensure_ascii=False, indent=2)
+              
                 with progress_lock:
                     print(f"处理 {image_path.name} 第{attempt+1}次尝试失败，数据格式不正确，重新尝试...")
                 write_log(f"处理 {image_path.name} 第{attempt+1}次尝试失败，数据格式不正确，重新尝试...")
-                
+              
             except json.JSONDecodeError as e:
+                # 保存错误响应到error目录
+                error_dir = output_path / "error"
+                error_dir.mkdir(exist_ok=True)
+                error_file = error_dir / (image_path.stem + '_error_response.json')
+                with open(error_file, 'w', encoding='utf-8') as f:
+                    json.dump({"raw_response": response_content}, f, ensure_ascii=False, indent=2)
+              
                 with progress_lock:
                     print(f"处理 {image_path.name} 第{attempt+1}次尝试失败，JSON解析错误: {e}")
                 write_log(f"处理 {image_path.name} 第{attempt+1}次尝试失败，JSON解析错误: {str(e)}")
@@ -143,12 +208,12 @@ def process_image(image_path: Path, output_path: Path):
                     print(f"处理 {image_path.name} 第{attempt+1}次尝试失败，错误: {e}")
                 write_log(f"处理 {image_path.name} 第{attempt+1}次尝试失败，错误: {str(e)}")
                 write_log(traceback.format_exc())
-        
+      
         with progress_lock:
             print(f"处理 {image_path.name} 失败，已达到最大重试次数")
         write_log(f"处理 {image_path.name} 失败，已达到最大重试次数")
         return None
-        
+      
     except Exception as e:
         write_log(f"处理图像时发生异常: {image_path}")
         write_log(f"错误信息: {str(e)}")
@@ -158,7 +223,7 @@ def process_image(image_path: Path, output_path: Path):
 
 def main():
     write_log("=== qwen_vl_extract.py 开始执行 ===")
-    
+  
     try:
         # 检查BASE_DIR环境变量是否存在
         base_dir = os.getenv("BASE_DIR")
@@ -173,42 +238,42 @@ def main():
             output_path_str = os.getenv("QWEN_VL_EXTRACT_OUTPUT")
             write_log(f"环境变量 QWEN_VL_EXTRACT_INPUT: {input_path_str}")
             write_log(f"环境变量 QWEN_VL_EXTRACT_OUTPUT: {output_path_str}")
-            
+          
             if not input_path_str or not output_path_str:
                 write_log("错误: 未设置必要的环境变量")
                 print("错误: 未设置必要的环境变量")
                 return
-                
+              
             input_path = Path(input_path_str)
             output_path = Path(output_path_str)
-        
+      
         write_log(f"输入路径: {input_path}")
         write_log(f"输出路径: {output_path}")
         write_log(f"输入路径是否存在: {input_path.exists()}")
         write_log(f"输出路径是否存在: {output_path.exists()}")
-        
+      
         # 确保输出目录存在
         output_path.mkdir(parents=True, exist_ok=True)
         write_log(f"输出目录创建完成: {output_path}")
-        
+      
         # 获取所有图像文件
         if not input_path.exists():
             write_log(f"输入路径不存在: {input_path}")
             print(f"输入路径不存在: {input_path}")
             return
-            
+          
         image_files = [f for f in input_path.iterdir() 
                        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
-        
+      
         write_log(f"找到 {len(image_files)} 个图像文件")
         print(f"找到 {len(image_files)} 个图像文件，开始处理...")
-        
+      
         # 使用线程池并发处理，最大并发度9
         with ThreadPoolExecutor(max_workers=9) as executor:
             # 提交所有任务
             future_to_image = {executor.submit(process_image, image_file, output_path): image_file 
                               for image_file in image_files}
-            
+          
             # 收集结果
             results = []
             for future in as_completed(future_to_image):
@@ -222,10 +287,10 @@ def main():
                         print(f"处理 {image_file.name} 时发生异常: {e}")
                     write_log(f"处理 {image_file.name} 时发生异常: {str(e)}")
                     write_log(traceback.format_exc())
-        
+      
         write_log(f"处理完成，共处理 {len(results)} 个文件")
         print(f"处理完成，共处理 {len(results)} 个文件")
-        
+      
     except Exception as e:
         write_log(f"主函数执行时发生异常: {str(e)}")
         write_log(traceback.format_exc())
