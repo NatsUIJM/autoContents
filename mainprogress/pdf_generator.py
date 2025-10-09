@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime
+import re
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 import json
@@ -8,6 +9,24 @@ import pikepdf
 
 import dotenv
 dotenv.load_dotenv()
+
+def should_remove_item(text, toc_structure):
+    """
+    根据toc_structure规则判断是否应该删除该书签项
+    """
+    if toc_structure == "original":
+        return False
+    elif toc_structure == "ignore_xxx":
+        # 匹配 ^[0-9]+\.[0-9]+\.[0-9]+.* 或 ^[0-9]+-[0-9]+-[0-9]+.*
+        pattern1 = r'^[0-9]+\.[0-9]+\.[0-9]+.*'
+        pattern2 = r'^[0-9]+-[0-9]+-[0-9]+.*'
+        return bool(re.match(pattern1, text)) or bool(re.match(pattern2, text))
+    elif toc_structure == "ignore_xxxx":
+        # 匹配 ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+.* 或 ^[0-9]+-[0-9]+-[0-9]+-[0-9]+.*
+        pattern1 = r'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+.*'
+        pattern2 = r'^[0-9]+-[0-9]+-[0-9]+-[0-9]+.*'
+        return bool(re.match(pattern1, text)) or bool(re.match(pattern2, text))
+    return False
 
 def process_pdf_with_bookmarks():
     # 确保输出目录存在
@@ -25,11 +44,12 @@ def process_pdf_with_bookmarks():
         print(f"正在处理 {base_name}...")
 
         try:
-            # 读取content_start和toc_start
+            # 读取content_start和toc_start以及toc_structure
             with open(info_json_path, 'r', encoding='utf-8') as f:
                 info_data = json.load(f)
             content_start = info_data.get('content_start', 1)
             toc_start = info_data.get('toc_start', 1)
+            toc_structure = info_data.get('toc_structure', 'original')  # 默认为original
             
             # 读取目录数据
             with open(content_json_path, 'r', encoding='utf-8') as f:
@@ -43,9 +63,21 @@ def process_pdf_with_bookmarks():
             }
             toc_data.insert(0, toc_entry)
             
+            # 根据toc_structure过滤不需要的条目
+            filtered_items = []
+            for item in toc_data:
+                # "目录"条目始终保留
+                if item['text'] == '目录':
+                    filtered_items.append(item)
+                # 根据规则决定是否移除其他条目
+                elif should_remove_item(item['text'], toc_structure):
+                    print(f"根据toc_structure规则移除条目: {item['text']}")
+                else:
+                    filtered_items.append(item)
+            
             # 调整页码
             valid_items = []
-            for item in toc_data:
+            for item in filtered_items:
                 try:
                     if item['text'] != '目录':  # 不调整"目录"条目的页码
                         if not isinstance(item['number'], (int, float)):

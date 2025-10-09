@@ -4,16 +4,12 @@ import os
 import logging
 import time
 import json
-import shutil
 from datetime import datetime
 import random
 import string
 import socket
 from pypinyin import lazy_pinyin
 import sys
-import concurrent.futures
-import asyncio
-import PyPDF2  # Added for PDF validation
 import webbrowser
 import threading
 
@@ -43,7 +39,6 @@ DATA_FOLDERS = [
     'input_pdf',
     'mark/input_image',
     'raw_content',
-    'validated_content',
     'output_pdf',
     'mark/image_metadata',
     'merged_content',
@@ -52,7 +47,7 @@ DATA_FOLDERS = [
 
 QWEN_SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('qwen_vl_extract', '通义千问OCR识别（下一步可能需要一分钟或更长，请耐心等待'),
+    ('qwen_vl_extract', '通义千问OCR识别'),
     ('content_preprocessor', '内容预处理'),
     ('llm_level_adjuster', '层级调整'),
     ('pdf_generator', 'PDF生成')
