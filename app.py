@@ -141,15 +141,23 @@ def upload_files():
 def download_result(session_id):
     # 检查data目录下的文件夹数量是否为5的倍数
     data_dir = 'data'
+    show_reminder = False
+    no_reminder_option = False
+    
     if os.path.exists(data_dir):
         folders = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
         folder_count = len(folders)
         
         # 如果文件夹数量是5的倍数，设置一个标志用于前端显示弹窗
         if folder_count % 5 == 0:
-            # 通过session变量或其他方式传递提示信息
-            # 这里我们使用一个特殊的响应头来标识
-            pass  # 实际的提示将在前端通过JavaScript处理
+            # 检查是否已经设置了不再弹出
+            no_reminder_file = os.path.join('data', 'no_reminder')
+            if not os.path.exists(no_reminder_file):
+                show_reminder = True
+                
+            # 如果文件夹数量大于等于15个，则显示"不再弹出"选项
+            if folder_count >= 15:
+                no_reminder_option = True
     
     output_folder = os.path.join('data', session_id, 'output_pdf')
     input_folder = os.path.join('data', session_id, 'input_pdf')
@@ -190,15 +198,28 @@ def download_result(session_id):
     # 返回下载链接
     response = send_file(file_path, as_attachment=True, download_name=download_filename)
     
-    # 如果文件夹数量是5的倍数，添加特殊响应头
-    if os.path.exists(data_dir):
-        folders = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
-        folder_count = len(folders)
-        if folder_count % 5 == 0:
-            response.headers['X-Show-Reminder'] = 'true'
+    # 如果需要显示提醒，则添加特殊响应头
+    if show_reminder:
+        response.headers['X-Show-Reminder'] = 'true'
+        
+    # 如果需要显示"不再弹出"选项，则添加另一个响应头
+    if no_reminder_option:
+        response.headers['X-No-Reminder-Option'] = 'true'
     
     return response
 
+# 添加新的路由处理不再提醒的设置
+@app.route('/set_no_reminder', methods=['POST'])
+def set_no_reminder():
+    try:
+        # 创建一个标记文件表示用户选择不再提醒
+        no_reminder_file = os.path.join('data', 'no_reminder')
+        os.makedirs('data', exist_ok=True)
+        with open(no_reminder_file, 'w') as f:
+            f.write('do not remind')
+        return jsonify({'status': 'success', 'message': '已设置不再提醒'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 AZURE_TIMEOUT = 30  # Azure服务超时时间（秒）
 

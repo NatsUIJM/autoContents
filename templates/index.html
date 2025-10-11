@@ -420,6 +420,7 @@
                 if (response.ok) {
                     // 检查是否有提醒头
                     const showReminder = response.headers.get('X-Show-Reminder');
+                    const showNoReminderOption = response.headers.get('X-No-Reminder-Option');
                     
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
@@ -434,7 +435,7 @@
                     
                     // 如果需要显示提醒，则显示弹窗
                     if (showReminder === 'true') {
-                        showReminderModal();
+                        showReminderModal(showNoReminderOption === 'true');
                     }
                 } else {
                     const data = await response.json();
@@ -446,7 +447,7 @@
         }
 
         // 显示提醒弹窗的函数
-        function showReminderModal() {
+        function showReminderModal(showNoReminderOption) {
             // 创建或显示提醒弹窗
             let reminderModal = document.getElementById('reminderModal');
             if (!reminderModal) {
@@ -460,11 +461,47 @@
                         <h3>温馨提示</h3>
                         <p>如果你认为这个程序有所帮助，希望可以打赏支持，谢谢！</p>
                         <p>遇到任何问题，请向uijm2004@outlook.com反馈。</p>
+                        <div id="noReminderOption" style="margin-top: 15px; display: none;">
+                            <button onclick="setNoReminder()" style="background-color: #f0f0f0; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+                                不再弹出
+                            </button>
+                        </div>
                     </div>
                 `;
                 document.body.appendChild(reminderModal);
             }
+            
+            // 根据后端返回的标记决定是否显示"不再弹出"选项
+            const noReminderOption = document.getElementById('noReminderOption');
+            if (noReminderOption) {
+                noReminderOption.style.display = showNoReminderOption ? 'block' : 'none';
+            }
+            
             reminderModal.style.display = 'block';
+        }
+
+        // 设置不再提醒
+        function setNoReminder() {
+            fetch('/set_no_reminder', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log('已设置不再提醒');
+                } else {
+                    console.error('设置失败:', data.message);
+                }
+                // 关闭弹窗
+                closeReminderModal();
+            })
+            .catch(error => {
+                console.error('请求失败:', error);
+                closeReminderModal();
+            });
         }
 
         // 关闭提醒弹窗的函数
