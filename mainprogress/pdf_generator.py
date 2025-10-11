@@ -90,6 +90,9 @@ def process_pdf_with_bookmarks():
                     print(f"警告: 跳过格式错误的条目: {str(e)}")
                     continue
             
+            # 按页码排序
+            valid_items.sort(key=lambda x: x['number'])
+            
             # 使用pikepdf处理PDF
             pdf = pikepdf.Pdf.open(pdf_path)
             
