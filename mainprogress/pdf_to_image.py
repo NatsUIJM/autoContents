@@ -12,6 +12,24 @@ import cv2  # 引入OpenCV库用于自适应二值化
 import dotenv
 dotenv.load_dotenv()
 
+def resize_image(image_path, max_dimension=2000):
+    """将图片长边调整为最多max_dimension像素"""
+    img = Image.open(image_path)
+    width, height = img.size
+    
+    # 如果图片的长边超过max_dimension，则进行缩放
+    if max(width, height) > max_dimension:
+        if width > height:
+            new_width = max_dimension
+            new_height = int(height * max_dimension / width)
+        else:
+            new_height = max_dimension
+            new_width = int(width * max_dimension / height)
+            
+        img = img.resize((new_width, new_height), Image.LANCZOS)
+        img.save(image_path, 'JPEG', quality=95)
+        print(f"已调整图片尺寸: {image_path} -> {new_width}x{new_height}")
+
 def adaptive_binarize_image(image_path, block_size=25, C=5):
     """针对条纹问题优化的自适应二值化处理"""
     # 读取图片
@@ -83,7 +101,12 @@ def convert_pdf_to_jpg():
                 saved_images.append(output_path)
                 print(f"已保存: {output_path}")
             
-            # 对保存的图片进行自适应二值化处理
+            # 先调整图片尺寸，再进行自适应二值化处理
+            print("\n开始调整图片尺寸...")
+            for image_path in saved_images:
+                resize_image(image_path, max_dimension=2000)
+                print(f"已完成尺寸调整: {image_path}")
+            
             print("\n开始自适应二值化处理...")
             for image_path in saved_images:
                 adaptive_binarize_image(image_path, block_size=11, C=2)
