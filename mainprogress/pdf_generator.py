@@ -127,7 +127,7 @@ def process_pdf_with_bookmarks():
                 try:
                     # 检查页码是否有效
                     if item['number'] < 1 or item['number'] > len(pdf.pages):
-                        print(f"警告: 页码 {item['number']} 超出范围，跳过条目 '{item['text']}'")
+                        print(f"警告: 页码 {item['number']} 超出范围(1-{len(pdf.pages)})，跳过条目 '{item['text']}'")
                         continue
                     
                     print(f"\n创建书签:")
@@ -136,7 +136,7 @@ def process_pdf_with_bookmarks():
                     print(f"级别: {item['level']}")
                     
                     # 创建书签，页码从0开始计数
-                    bookmark = pikepdf.OutlineItem(item['text'], item['number'], 'Fit')
+                    bookmark = pikepdf.OutlineItem(item['text'], item['number']-1, 'Fit')
                     
                     if item['level'] == 1:
                         current_l1 = bookmark
@@ -195,16 +195,24 @@ def process_pdf_with_bookmarks():
             return bookmarks
 
         # 清除现有书签
-        pdf.Root.Outlines = pdf.make_indirect(pikepdf.Dictionary())
-        
+        if '/Outlines' in pdf.Root:
+            del pdf.Root.Outlines
+            
         # 创建新书签
         bookmarks = create_bookmark_tree(valid_items)
         
         # 将书签添加到PDF
-        with pdf.open_outline() as outline:
-            outline.root.extend(bookmarks)
+        if bookmarks:  # 只有当有书签时才添加
+            with pdf.open_outline() as outline:
+                outline.root.extend(bookmarks)
         
         # 添加元数据
+        with pdf.open_metadata() as meta:
+            meta['xmp:CreatorTool'] = 'autoContents'
+            meta['pdf:Producer'] = 'autoContents v2.0'
+            meta['xmp:CreateDate'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            
+        # 添加文档信息
         pdf.docinfo = pdf.make_indirect(pikepdf.Dictionary({
             '/Creator': 'autoContents',
             '/Producer': 'autoContents v2.0',

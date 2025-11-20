@@ -54,20 +54,60 @@ def main():
         
         with codecs.open(csv_path, 'r', 'utf-8-sig') as csvfile:
             reader = csv.reader(csvfile)
-            next(reader)  # 跳过标题行
+            header = next(reader)  # 读取标题行
+            print(f"CSV标题行: {header}")
             
-            for row in reader:
+            for row_num, row in enumerate(reader, start=2):  # 从第2行开始计数
                 if len(row) >= 3:
-                    title, page, level = row[0], int(row[1]), int(row[2])
-                    toc_entries.append([level, title, page])
+                    try:
+                        title, page, level = row[0], int(row[1]), int(row[2])
+                        
+                        # 验证层级值（通常应该是正整数）
+                        if level < 1:
+                            print(f"警告: 第{row_num}行的层级值({level})小于1，已调整为1")
+                            level = 1
+                        
+                        toc_entries.append([level, title, page])
+                        print(f"读取条目: 层级={level}, 标题='{title}', 页码={page}")
+                    except ValueError as e:
+                        print(f"警告: 第{row_num}行数据格式错误，跳过该行: {row} 错误: {e}")
+                else:
+                    print(f"警告: 第{row_num}行列数不足，跳过该行: {row}")
         
         if not toc_entries:
             print(f"CSV文件 '{selected_csv}' 中没有找到有效的目录条目。")
             return
         
+        # 按页码从小到大排序
+        print("\n排序前的目录条目:")
+        for i, entry in enumerate(toc_entries):
+            print(f"{i+1}. 层级={entry[0]}, 标题='{entry[1]}', 页码={entry[2]}")
+        
+        toc_entries.sort(key=lambda x: x[2])
+        
+        print("\n排序后的目录条目:")
+        for i, entry in enumerate(toc_entries):
+            print(f"{i+1}. 层级={entry[0]}, 标题='{entry[1]}', 页码={entry[2]}")
+        
         # 修改PDF文件
         try:
             doc = fitz.open(pdf_path)
+            print(f"\nPDF总页数: {doc.page_count}")
+            
+            # 验证页码有效性
+            invalid_entries = []
+            for i, entry in enumerate(toc_entries):
+                level, title, page = entry
+                if page < 1 or page > doc.page_count:
+                    invalid_entries.append((i, entry))
+                    print(f"警告: 条目'{title}'的页码({page})超出有效范围(1-{doc.page_count})")
+            
+            if invalid_entries:
+                print("发现无效页码条目，是否继续处理？(y/n): ", end="")
+                if input().lower() != 'y':
+                    doc.close()
+                    return
+            
             # 删除原始目录
             doc.set_toc([])
             
@@ -79,10 +119,12 @@ def main():
             doc.save(output_path)
             doc.close()
             
-            print(f"成功创建修改后的PDF文件: {output_path}")
+            print(f"\n成功创建修改后的PDF文件: {output_path}")
             
         except Exception as e:
             print(f"处理PDF文件时出错: {e}")
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     main()
