@@ -75,6 +75,11 @@ def process_pdf_with_bookmarks():
         with open(content_json_path, 'r', encoding='utf-8') as f:
             toc_data = json.load(f)
         
+        # 修改：先将所有页码+1
+        for item in toc_data:
+            if 'number' in item and isinstance(item['number'], (int, float)):
+                item['number'] = item['number'] + 1
+        
         # 添加"目录"条目
         toc_entry = {
             'text': '目录',
@@ -125,7 +130,7 @@ def process_pdf_with_bookmarks():
             
             for item in items:
                 try:
-                    # 检查页码是否有效
+                    # 检查页码是否有效（页码从1开始，pdf.pages索引从0开始）
                     if item['number'] < 1 or item['number'] > len(pdf.pages):
                         print(f"警告: 页码 {item['number']} 超出范围(1-{len(pdf.pages)})，跳过条目 '{item['text']}'")
                         continue
@@ -135,8 +140,8 @@ def process_pdf_with_bookmarks():
                     print(f"页码: {item['number']}")
                     print(f"级别: {item['level']}")
                     
-                    # 创建书签，页码从0开始计数
-                    bookmark = pikepdf.OutlineItem(item['text'], item['number']-1, 'Fit')
+                    # 创建书签，页码需要转换为0基索引
+                    bookmark = pikepdf.OutlineItem(item['text'], item['number'] - 1, 'Fit')
                     
                     if item['level'] == 1:
                         current_l1 = bookmark
