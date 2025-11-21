@@ -80,10 +80,10 @@ def process_pdf_with_bookmarks():
             if 'number' in item and isinstance(item['number'], (int, float)):
                 item['number'] = item['number'] + 1
         
-        # 添加"目录"条目
+        # 添加"目录"条目，将其指向当前页面的下一页
         toc_entry = {
             'text': '目录',
-            'number': toc_start - 1,
+            'number': toc_start,  # 原来的toc_start是当前页，+1就是下一页
             'level': 1
         }
         toc_data.insert(0, toc_entry)
@@ -100,7 +100,7 @@ def process_pdf_with_bookmarks():
             else:
                 filtered_items.append(item)
         
-        # 调整页码
+        # 调整页码（注意：不再调整"目录"条目的页码）
         valid_items = []
         for item in filtered_items:
             try:
