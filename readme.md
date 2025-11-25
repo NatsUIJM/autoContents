@@ -91,7 +91,7 @@ echo $DASHSCOPE_API_KEY
 
 1. 将需要编辑的 PDF 文件放入`contents_editor`文件夹中；
 2. 运行`windows_extract.bat`或`macos_extract.command`脚本，进行目录提取；
-3. 使用`Microsoft Excel`，`Numbers`，`VSCode`或其他任何可编辑`csv`文件的软件编辑生成的`csv`文件：如果需要添加条目，那么插入一行；如果需要删除条目，那么删除对应行；如果只需要修改条目，那么修改对应行；
+3. 使用`Microsoft Excel`，`VSCode`或其他任何可编辑`csv`文件的软件编辑生成的`csv`文件：如果需要添加条目，那么插入一行；如果需要删除条目，那么删除对应行；如果只需要修改条目，那么修改对应行；
 4. 保存并关闭`csv`文件，然后再运行`windows_merge.bat`或`macos_merge.command`脚本，将修改后的目录与 PDF 文件合并；
 5. 该目录下的`*_edited.pdf`文件即为处理后的 PDF 文件。
 
