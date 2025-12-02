@@ -229,6 +229,46 @@
         .close:focus {
             color: black;
         }
+        /* 提示词输入框样式 */
+        .prompt-section {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            background-color: #f9fafb;
+        }
+        .prompt-section h3 {
+            margin-top: 0;
+            color: #374151;
+        }
+        .prompt-input {
+            width: 100%;
+            min-height: 100px;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            resize: vertical;
+        }
+        .save-prompts-btn {
+            background-color: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .save-prompts-btn:hover {
+            background-color: #059669;
+        }
+        .save-prompts-btn:disabled {
+            background-color: #d1d5db;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -293,6 +333,24 @@
         </div>
         
         <div id="log" class="log"></div>
+        
+        <!-- 提示词管理区域 -->
+        <div class="prompt-section">
+            <h3>提示词管理</h3>
+            <div class="input-group">
+                <label for="extractPrompt">目录提取提示词</label>
+                <textarea id="extractPrompt" class="prompt-input" placeholder="请输入目录提取提示词..."></textarea>
+            </div>
+            <div class="input-group">
+                <label for="adjusterRoutePrompt">层级识别路由提示词</label>
+                <textarea id="adjusterRoutePrompt" class="prompt-input" placeholder="请输入层级识别路由提示词..."></textarea>
+            </div>
+            <div class="input-group">
+                <label for="adjusterPrompt">层级识别提示词</label>
+                <textarea id="adjusterPrompt" class="prompt-input" placeholder="请输入层级识别提示词..."></textarea>
+            </div>
+            <button id="savePromptsBtn" class="save-prompts-btn" onclick="savePrompts()" disabled>保存提示词</button>
+        </div>
     </div>
 
     <!-- 测试结果弹窗 -->
@@ -325,6 +383,13 @@
         const SCRIPT_CHECK_INTERVAL = 1000; // 1秒检查一次进度
         // 添加全局变量存储session_id
         let currentSessionId = null;
+        // 添加变量跟踪提示词是否被修改
+        let promptsModified = false;
+
+        // 页面加载时读取提示词内容
+        window.addEventListener('DOMContentLoaded', function() {
+            loadPrompts();
+        });
 
         // 文件选择处理
         document.getElementById('pdfFile').addEventListener('change', function(e) {
@@ -366,6 +431,14 @@
         // 监听输入变化
         ['tocStart', 'tocEnd', 'contentStart'].forEach(id => {
             document.getElementById(id).addEventListener('input', updateStartButton);
+        });
+
+        // 监听提示词输入框变化
+        ['extractPrompt', 'adjusterRoutePrompt', 'adjusterPrompt'].forEach(id => {
+            document.getElementById(id).addEventListener('input', function() {
+                promptsModified = true;
+                document.getElementById('savePromptsBtn').disabled = false;
+            });
         });
 
         function updateProgress(current, total) {
@@ -664,6 +737,94 @@
             }
         }
 
+        // 加载提示词内容
+        async function loadPrompts() {
+            try {
+                // 加载目录提取提示词
+                const extractResponse = await fetch('/static/extract_prompt.md');
+                if (extractResponse.ok) {
+                    const extractContent = await extractResponse.text();
+                    document.getElementById('extractPrompt').value = extractContent;
+                }
+
+                // 加载层级识别路由提示词
+                const routeResponse = await fetch('/static/adjuster_prompt_route.md');
+                if (routeResponse.ok) {
+                    const routeContent = await routeResponse.text();
+                    document.getElementById('adjusterRoutePrompt').value = routeContent;
+                }
+
+                // 加载层级识别提示词
+                const adjusterResponse = await fetch('/static/adjuster_prompt.md');
+                if (adjusterResponse.ok) {
+                    const adjusterContent = await adjusterResponse.text();
+                    document.getElementById('adjusterPrompt').value = adjusterContent;
+                }
+
+                // 重置修改状态
+                promptsModified = false;
+                document.getElementById('savePromptsBtn').disabled = true;
+            } catch (error) {
+                console.error('加载提示词失败:', error);
+                addLog('加载提示词失败: ' + error.message, 'error');
+            }
+        }
+
+        // 保存提示词内容
+        async function savePrompts() {
+            try {
+                const extractContent = document.getElementById('extractPrompt').value;
+                const routeContent = document.getElementById('adjusterRoutePrompt').value;
+                const adjusterContent = document.getElementById('adjusterPrompt').value;
+
+                // 保存目录提取提示词
+                const extractResponse = await fetch('/save_prompt/extract_prompt.md', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: extractContent
+                });
+
+                if (!extractResponse.ok) {
+                    throw new Error('保存目录提取提示词失败');
+                }
+
+                // 保存层级识别路由提示词
+                const routeResponse = await fetch('/save_prompt/adjuster_prompt_route.md', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: routeContent
+                });
+
+                if (!routeResponse.ok) {
+                    throw new Error('保存层级识别路由提示词失败');
+                }
+
+                // 保存层级识别提示词
+                const adjusterResponse = await fetch('/save_prompt/adjuster_prompt.md', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: adjusterContent
+                });
+
+                if (!adjusterResponse.ok) {
+                    throw new Error('保存层级识别提示词失败');
+                }
+
+                // 重置修改状态
+                promptsModified = false;
+                document.getElementById('savePromptsBtn').disabled = true;
+                addLog('提示词保存成功', 'success');
+            } catch (error) {
+                console.error('保存提示词失败:', error);
+                addLog('保存提示词失败: ' + error.message, 'error');
+            }
+        }
     </script>
     <div class="links" style="text-align: center; color: blue;">
         <a href="https://github.com/NatsUIJM/autoContents" style="color: blue;" target="_blank">GitHub</a> · 

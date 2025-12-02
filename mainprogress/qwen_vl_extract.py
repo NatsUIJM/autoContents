@@ -10,71 +10,6 @@ import traceback
 import sys
 import re
 
-# 用户提示词作为全局变量，便于修改
-PROMPT_TEXT = """
-请分析这张图片，提取其中的目录信息。
-对于每个目录项，请提供：标题（t）和页码（n）以及层级（level）。
-注意：
-1. 只需提取目录内容，不要包含其他文本
-2. 你的任务只有一个，就是按照规范提取这个页面上的信息，请不要进行任何添加。例如当一个页面是以4.5.1开头时，你不需要（并且严格禁止）估计第四章的标题和4.5节的标题，而应该直接提取你所见到的全部内容。
-3. 严格按照以下JSON格式返回（此处以共2级的目录为例，实际应根据你看到的图片而定），不要包含任何额外文本或说明：
-{
-  "level_1": [
-    {"t": "一级标题1", "n": 1},
-    {"t": "一级标题2", "n": 25}
-  ],
-  "level_2": [
-    {"t": "二级标题1", "n": 5},
-    {"t": "二级标题2", "n": 8}
-  ]
-}
-4. 不要遗漏任何目录项目，但是需要忽略"前言"或"第x版前言"这种与正文一点关系都没有的条目，有一些条目没有直接显示页码，并不代表它们不是目录条目，请基于具体语义而非是否有规范的格式来判断一个内容是否是目录的一部分
-5. 需严格按照原始目录的语言提取，如果出现繁体中文或英文等非简体中文文字，需直接提取原始内容，而不是全部翻译为简体中文
-6. 关于目录层级，应严格按照图片呈现出的层级特征（比如颜色、字体、文字大小等）而不是语义来进行判断。
-7. 部分目录条目缺失页码，请根据其附近的内容合理估测。例如当第1篇的页码丢失，而第1篇的第1章的页码为2时，那么估算第1篇的页码也是2。
-8. 特别注意：关于层级判定的易错点：
-    1. 关于篇和章的常见错误：
-```json
-level_1: [
-    {"t": "xx篇", "n": null}, // 错误：没有估算页码
-    {"t": "xx章", "n": 1}
-    {"t": "xx章", "n": 5} // 错误：如果xx篇为第一层级，那么xx章一定是第二层级；
-  ]
-```
-
-正确：
-```json
-level_1: [
-    {"t": "xx篇", "n": 1} // 正确：根据其附近的页码进行了合理推算
-  ],
-level_2: [
-    {"t": "xx章", "n": 1},
-    {"t": "xx章", "n": 5}
-  ]
-}
-
-    2. 关于节和子节的常见错误：
-```json
-  {
-    "text": "2.4 典型全控型器件",
-    "number": 25,
-    "level": 2
-  },
-  {
-    "text": "2.4.1 门极可关断晶闸管",
-    "number": 26,
-    "level": 2
-  }, // 错误：2.4是节，2.4.1是子节，它们不可能具有相同的目录层级，子节的层级必须比节的层级低一级
-
-```
-9. 对于如何安排空格：
-    1. 纯中文目录，确保目录项的标题和页码之间有1个空格，除此之外不要加入任何空格。
-        1. `第1章 自动控制概述`正确；`第 1章 自动控制概述`错误；`第1 章自动控制概述`错误
-        2. `第2章 超前滞后校正与PID校正`正确；`第2章 超前滞后校正与 PID校正`错误；`第2章 超前滞后校正与PID 校正`错误
-    2. 纯英文目录，按照英语的标准语法处理即可。单词和数字之间应保留空格。
-    3. 混合目录，按照上述规则处理中文部分，按照英语的语法处理英文部分。  
-"""
-
 # 添加日志记录功能
 def write_log(message):
     """写入日志到项目根目录的log.txt"""
@@ -109,6 +44,33 @@ IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
 # 线程锁用于进度输出
 progress_lock = threading.Lock()
 
+def load_prompt():
+    """从static/extract_prompt.md加载提示词"""
+    try:
+        # 修改为与 mainprogress 同级的 static 目录
+        prompt_path = Path(__file__).parent.parent / "static" / "extract_prompt.md"
+        if not prompt_path.exists():
+            write_log(f"提示词文件不存在: {prompt_path}")
+            raise FileNotFoundError(f"提示词文件不存在: {prompt_path}")
+        
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            prompt_text = f.read()
+        
+        write_log("成功加载提示词")
+        return prompt_text
+    except Exception as e:
+        write_log(f"加载提示词时发生异常: {str(e)}")
+        write_log(traceback.format_exc())
+        raise
+
+
+# 在模块加载时就读取提示词
+try:
+    PROMPT_TEXT = load_prompt()
+except Exception as e:
+    write_log(f"无法加载提示词，程序退出: {str(e)}")
+    sys.exit(1)
+
 def process_image(image_path: Path, output_path: Path):
     write_log(f"开始处理图像: {image_path}")
 
@@ -136,7 +98,7 @@ def process_image(image_path: Path, output_path: Path):
                             "role": "user",
                             "content": [
                                 {"type": "image_url", "image_url": {"url": image_data_url}},
-                                {"type": "text", "text": PROMPT_TEXT}  # 使用全局变量
+                                {"type": "text", "text": PROMPT_TEXT}  # 使用从文件加载的提示词
                             ]
                         }
                     ],

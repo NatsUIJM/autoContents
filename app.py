@@ -429,6 +429,34 @@ def run_script(session_id, script_index, retry_count):
             'session_id': session_id
         })
 
+# 在 app.py 中添加以下新路由
+
+@app.route('/save_prompt/<filename>', methods=['POST'])
+def save_prompt(filename):
+    """保存提示词文件"""
+    try:
+        # 限制只能保存指定的提示词文件
+        allowed_files = ['extract_prompt.md', 'adjuster_prompt_route.md', 'adjuster_prompt.md']
+        if filename not in allowed_files:
+            return jsonify({'status': 'error', 'message': '不允许保存该文件'}), 403
+            
+        # 获取请求体中的内容
+        content = request.get_data(as_text=True)
+        
+        # 确保 static 目录存在
+        static_dir = app.static_folder
+        if not os.path.exists(static_dir):
+            os.makedirs(static_dir)
+            
+        # 保存文件
+        file_path = os.path.join(static_dir, filename)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        return jsonify({'status': 'success', 'message': f'{filename} 保存成功'})
+    except Exception as e:
+        logger.error(f"保存提示词文件失败: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'保存失败: {str(e)}'}), 500
 
 @app.route('/test_qwen_service', methods=['POST'])
 def test_qwen_service():

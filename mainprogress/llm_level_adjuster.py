@@ -10,11 +10,20 @@ from pathlib import Path
 from openai import AsyncOpenAI
 from datetime import datetime
 from typing import Dict, List, Tuple
+import threading
+import traceback
 
 from dotenv import load_dotenv
 load_dotenv()
-import re
-import json
+
+def write_log(message):
+    """写入日志到项目根目录的log.txt"""
+    try:
+        log_file = Path(project_root) / "log.txt"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"[{threading.current_thread().name}] {message}\n")
+    except Exception as e:
+        print(f"日志写入失败: {e}")
 
 def extract_json_from_response(response: str) -> dict:
     """从响应字符串中提取 JSON"""
@@ -158,58 +167,23 @@ async def is_suitable_for_regex(client, items: List[dict]) -> bool:
     # 提取所有标题文本
     titles = [item['text'] for item in items]
     titles_text = "\n".join([f"- {title}" for title in titles])
+    
+    # 读取路由提示词 - 使用与 qwen_vl_extract.py 相同的路径查找逻辑
+    route_prompt_path = Path(project_root) / "static" / "adjuster_prompt_route.md"
+    if not route_prompt_path.exists():
+        write_log(f"路由提示词文件不存在: {route_prompt_path}")
+        raise FileNotFoundError(f"Route prompt file not found: {route_prompt_path}")
+    
+    with open(route_prompt_path, 'r', encoding='utf-8') as f:
+        route_prompt = f.read()
   
-    prompt = f"""请判断以下目录标题是否具有明显的层级编号格式，从而适合使用正则表达式进行层级识别。
-
-适合使用正则表达式的目录示例：
-- 第1章 绪论
-- 1.1 什么是电力电子技术
-- 1.2 电力电子技术的发展史
-- 第一篇 基础理论
-- 第一章 概述
-- 一、基本概念
-- 第二篇 实践应用
-- 第三章 应用实例
-- A.1 详细推导
-
-不适合使用正则表达式的目录示例：
-1. 缺乏明显编号的自由格式：
-- 引言
-- 相关工作
-- 方法论
-- 实验结果
-- 讨论
-- 结论
-- 参考文献
-
-2. 内容描述型而非结构化标题：
-- 我们的研究目标与意义
-- 数据收集与预处理方法
-- 模型训练过程详解
-- 性能评估指标选择
-- 实际应用场景分析
-
-3. 混合无序格式：
-- Abstract
-- Introduction and Background
-- 2. 相关研究工作 // 中英文混合且无统一编号体系
-- 方法概述 (Method Overview)
-- 实验 setup
-- 结果与讨论 (Results and Discussion)
-- Conclusion & Future Work
-
-请仅回答"是"或"否"，不要附加任何其他内容。
-
-目录标题如下：
-{titles_text}
-"""
-
+    # 将提示词放在system prompt中，目录内容放在user prompt中
     try:
         completion = await client.chat.completions.create(
             model="qwen3-235b-a22b-instruct-2507",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": route_prompt},
+                {"role": "user", "content": f"目录标题如下：\n{titles_text}"}
             ],
             extra_body={"enable_thinking": False},
         )
@@ -217,12 +191,14 @@ async def is_suitable_for_regex(client, items: List[dict]) -> bool:
         response = completion.choices[0].message.content.strip()
         return response.lower() == "是"
     except Exception as e:
+        write_log(f"调用LLM检查适用性时出错: {e}")
         print(f"Error calling LLM for suitability check: {e}")
         # 出错时默认认为适合处理，避免跳过可能有效的目录
         return True
 
 async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Path):
     try:
+        write_log(f"开始处理文件: {file_path}")
         print(f"Processing file: {file_path}")
     
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -233,235 +209,31 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
     
         # 检查是否适合使用正则表达式处理
         if not await is_suitable_for_regex(client, original_data):
+            write_log("目录结构不适合正则表达式处理，直接复制文件")
             print("Directory structure not suitable for regex processing. Copying file directly.")
             output_file = output_dir / file_path.name
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(original_data_copy, f, ensure_ascii=False, indent=2)
             print(f"File copied to: {output_file}")
+            write_log(f"文件已复制到: {output_file}")
             return
     
         model_input_data = prepare_data_for_model(original_data)
         model_input_json = json.dumps(model_input_data, ensure_ascii=False, indent=2)
     
-        # MODIFIED: 保持原有的第一次系统提示词
-        system_prompt = """请分析这份目录文件中各级标题的结构特征，并给出该目录特定的正则表达式模式。注意：只需识别当前目录的结构特征，不要试图覆盖其他可能的目录形式。
+        # 读取主提示词 - 使用与 qwen_vl_extract.py 相同的路径查找逻辑
+        main_prompt_path = Path(project_root) / "static" / "adjuster_prompt.md"
+        if not main_prompt_path.exists():
+            write_log(f"主提示词文件不存在: {main_prompt_path}")
+            raise FileNotFoundError(f"Main prompt file not found: {main_prompt_path}")
+        
+        with open(main_prompt_path, 'r', encoding='utf-8') as f:
+            system_prompt = f.read()
 
-示例目录1：
-- 第一篇 基础理论
-  - 第一章 概述
-    - 一、基本概念
-    - 二、发展历程
-  - 第二章 核心理论
-    - 三、基本原理
-    - 四、应用方法
-- 第二篇 实践应用
-  - 第三章 应用实例
-    - 五、案例分析
-    - 六、效果评估
-- 参考文献
-- 附录A 补充材料
-  - A.1 详细推导
-  - A.2 数据表格
+        # 迭代专用提示词前缀（硬编码）
+        iteration_prefix = "请分析这份目录文件中各级标题的结构特征，然后分析当前的正则表达式为何会导致匹配遗漏，给出修正后的正则表达式。\n"
 
-对应的模式输出：
-{
-    "1": ["^第[一二三四五六七八九十百千万]+篇.*", "^参考文献$", "^附录[A-Z].*"],
-    "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\\.[0-9]+.*"],
-    "3": ["^[一二三四五六七八九十百千万]+、.*"]
-}
-
-错误输出示例1：
-{
-    "1": ["^第[一二三四五六七八九十]{1,3}篇.*", "^参考文献$", "^附录[A-Z].*"],  // 错误：匹配过于局限
-    "2": ["^第[一二三四五六七八九十]{1,3}章.*", "^[A-Z]\\.[0-9]+.*"],  // 错误：匹配过于局限
-    "3": ["^[一二三四五六七八九十]{1,3}、.*"]  // 错误：匹配过于局限
-}
-
-错误输出示例2：
-{
-    "1": ["^第[一二三四五六七八九十百千万]+(?:篇|章).*", "^参考文献$", "^附录[A-Z].*"],  // 错误：篇和章应该分属不同层级
-    "2": ["^[A-Z]\\.[0-9]+.*"],
-    "3": ["^[一二三四五六七八九十百千万]+、.*"]
-}
-
-错误输出示例3：
-{
-    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^参考文献$", "^附录[A-Z].*", "习题$", "小结$", "思考题$"],  // 错误：习题、小结、思考题等应与节（即章的下一级）处于同一层级，而不能与篇、章处于同一层级，也不能属于第一层级
-    "2": ["^[A-Z]\\.[0-9]+.*"],
-    "3": ["^[一二三四五六七八九十百千万]+、.*"]
-}
-
- 示例目录2：
-- 第一章 引言
-  - 1.1 研究背景
-    - 1.1.1 国内外发展概况
-    - 1.1.2 技术发展趋势
-  - *1.2 研究意义
-    - *1.2.1 理论价值
-    - *1.2.2 实践指导意义
-- 第二章 文献综述
-  - 2.1 国内研究现状
-    - 2.1.1 主流方法回顾
-    - 2.1.2 存在的问题分析
-  - *2.2 国外研究进展
-    - *2.2.1 关键技术突破
-    - *2.2.2 应用场景拓展
-  - 本章总结
-  - 思考题
-- 附录
-  - 附录A 数据集
-    - A.1 数据采集方式
-    - A.2 数据清洗标准
-  - 附录B 算法详解
-    - B.1 核心公式推导
-    - B.2 参数设定说明
-
-
-对应的模式输出：
-```json
-{
-    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
-    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"],
-    "3": ["^\\**[0-9]+\\.[0-9]+\\.[0-9]+.*"]
-}
-
-```
-
-错误输出示例：
-{
-    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"], 
-    "2": ["^[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"] // 错误：未考虑章节标题前的星号
-}
-
-请分析输入的目录结构，识别该目录特有的层级特征，给出准确的正则表达式模式。注意：
-1. 只关注输入目录的具体结构特征
-2. 正则表达式要准确匹配当前目录的各级标题格式
-3. 不要试图兼容其他可能的目录形式
-4. 篇/部分标题、章/节标题、条/款标题等属于不同层级，切记不要将不同级别的标题视为同一级别
-5. 小结、习题等一般是章的下一级，具体要看它与什么级别的标题出现频率相近，但绝对不可能是第一级
-
-只输出JSON格式的结果，不要包含其他说明。
-最终请以一个完整的JSON对象作为结果返回，并将该JSON包裹在三个反引号内，例如：
-
-```json
-{
-    "1": ["^第[一二三四五六七八九十百千万]+篇.*", "^参考文献$", "^附录[A-Z].*"],
-    "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\.[0-9]+.*"],
-    "3": ["^[一二三四五六七八九十百千万]+、.*"]
-}
-错误示例：
-```json
-{
-    "1": ["^第[0-9]+章.*", "^结束语$", "^教学实验$", "^附录$", "^参考文献$"],
-    "2": ["^[0-9]+\\.[0-9]+.*", "^(本章小结|习题及思考题)$", "^实验[0-9]+.*", "^附录[A-Z].*"],
-    "3": [] // 不要返回空数组，如果不存在这个级别的标题，那就直接不要输出这一个层级
-}
-```
-
-分析：1.1和1.1.1一定是两个级别的标题，因此它们不应在同一层级
-
-
-"""
-
-        # MODIFIED: 第二次迭代的系统提示词预留位置
-        iteration_system_prompt = """
-请分析这份目录文件中各级标题的结构特征，然后分析当前的正则表达式为何会导致匹配遗漏，给出修正后的正则表达式。
-只输出JSON格式的结果，不要包含其他说明。
-
-示例目录1：
-- 第一篇 基础理论
-  - 第一章 概述
-    - 一、基本概念
-    - 二、发展历程
-  - 第二章 核心理论
-    - 三、基本原理
-    - 四、应用方法
-- 第二篇 实践应用
-  - 第三章 应用实例
-    - 五、案例分析
-    - 六、效果评估
-- 参考文献
-- 附录A 补充材料
-  - A.1 详细推导
-  - A.2 数据表格
-
-对应的模式输出：
-```json
-{
-    "1": ["^第[一二三四五六七八九十百千万]+篇.*", "^参考文献$", "^附录[A-Z].*"],
-    "2": ["^第[一二三四五六七八九十百千万]+章.*", "^[A-Z]\\.[0-9]+.*"],
-    "3": ["^[一二三四五六七八九十百千万]+、.*"]
-}
-```
-  示例目录2：
-- 第一章 引言
-  - 1.1 研究背景
-    - 1.1.1 国内外发展概况
-    - 1.1.2 技术发展趋势
-  - *1.2 研究意义
-    - *1.2.1 理论价值
-    - *1.2.2 实践指导意义
-- 第二章 文献综述
-  - 2.1 国内研究现状
-    - 2.1.1 主流方法回顾
-    - 2.1.2 存在的问题分析
-  - *2.2 国外研究进展
-    - *2.2.1 关键技术突破
-    - *2.2.2 应用场景拓展
-  - 本章总结
-  - 思考题
-- 附录
-  - 附录A 数据集
-    - A.1 数据采集方式
-    - A.2 数据清洗标准
-  - 附录B 算法详解
-    - B.1 核心公式推导
-    - B.2 参数设定说明
-
-
-对应的模式输出：
-```json
-{
-    "1": ["^第[一二三四五六七八九十百千万]+章.*", "^附录$"],
-    "2": ["^\\**[0-9]+\\.[0-9]+.*", "^(本章总结|思考题)$", "^附录[A-Z].*"],
-    "3": ["^\\**[0-9]+\\.[0-9]+\\.[0-9]+.*"]
-}
-
-```
-
-错误示例：
-```json
-{ // 多了一层花括号
-  "revised_patterns": { // 不要有"revised_patterns"
-    "1": [
-      "^第[0-9]+篇.*",
-      "^参考文献$"
-    ],
-    "2": [
-      "^第[0-9]+章.*"
-    ],
-    "3": [
-      "^[0-9]+\\.[0-9]+.*",
-      "^(习题)$",
-      "^\\*[0-9]+\\.[0-9]+.*"
-    ]
-  }
-}
-```
-错误原因：未按照"对应的模式输出："中的结构进行输出
-
-错误示例：
-```json
-{
-    "1": ["^第[0-9]+章.*", "^结束语$", "^教学实验$", "^附录$", "^参考文献$"],
-    "2": ["^[0-9]+\\.[0-9]+.*", "^(本章小结|习题及思考题)$", "^实验[0-9]+.*", "^附录[A-Z].*"],
-    "3": [] // 不要返回空数组，如果不存在这个级别的标题，那就直接不要输出这一个层级
-}
-```
-
-分析：1.1和1.1.1一定是两个级别的标题，因此它们不应在同一层级
-"""
-
+        write_log("开始第一次迭代")
         print("Starting first iteration...")
     
         # First iteration
@@ -470,6 +242,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
         unmatched_titles = []
     
         for iteration in range(1, 5):  # 最多4次尝试
+            write_log(f"开始第 {iteration} 次迭代")
             print(f"\nIteration {iteration}:")
         
             if iteration == 1:
@@ -494,13 +267,14 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
 
                     model="qwen-max",  # 修改为 qwen3-235b-a22b
                     messages=[
-                        {"role": "system", "content": iteration_system_prompt},
+                        {"role": "system", "content": iteration_prefix + system_prompt},
                         {"role": "user", "content": iteration_input}
                     ],
                     response_format={"type": "json_object"},
                     stream=True
                 )
 
+            write_log("正在接收模型响应...")
             print("Receiving response...")
             accumulated_response = ""
             async for chunk in stream:
@@ -516,6 +290,7 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
                 iteration,
                 cache_dir
             )
+            write_log(f"响应已保存到: {cache_file}")
             print(f"\nResponse saved to: {cache_file}")
 
             try:
@@ -538,19 +313,23 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
             
                 # 检查是否还有未匹配的标题
                 if not new_unmatched:
+                    write_log("所有标题都已成功匹配!")
                     print("All titles matched successfully!")
                     best_patterns = current_patterns  # 更新最佳结果
                     break
             
                 unmatched_titles = new_unmatched
+                write_log(f"未匹配标题数量: {len(unmatched_titles)}")
                 print(f"\nUnmatched titles count: {len(unmatched_titles)}")
             
                 if iteration >= 4:  # 第四次迭代后使用第二次的结果
+                    write_log("已达最大迭代次数，使用第二次迭代的结果")
                     print("\nMaximum iterations reached. Using results from second iteration.")
                     current_patterns = best_patterns
                     break
             
             except Exception as e:
+                write_log(f"处理模式时出错: {str(e)}")
                 print(f"\nError processing patterns: {str(e)}")
                 if iteration == 1:
                     raise  # 第一次迭代失败时直接退出
@@ -567,17 +346,22 @@ async def process_file(client, file_path: Path, output_dir: Path, cache_dir: Pat
         output_file = output_dir / file_path.name
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(original_data, f, ensure_ascii=False, indent=2)
+        write_log(f"处理完成，最终输出已保存到: {output_file}")
         print(f"\nProcessing complete. Final output saved to: {output_file}")
         
     except Exception as e:
+        error_msg = f"处理 {file_path.name} 时出错:\n类型: {type(e).__name__}\n信息: {str(e)}"
+        write_log(error_msg)
         print(f"\nError processing {file_path.name}:")
         print(f"Type: {type(e).__name__}")
         print(f"Message: {str(e)}")
-        import traceback
+        write_log("完整错误追踪:")
+        write_log(traceback.format_exc())
         print("\nFull traceback:")
         traceback.print_exc()
 
 async def main():
+    write_log("=== llm_level_adjuster.py 开始执行 ===")
     # Setup directories
     input_dir = Path(os.getenv("LEVEL_ADJUSTER_INPUT"))
     output_dir = Path(os.getenv("LEVEL_ADJUSTER_OUTPUT"))
@@ -598,6 +382,7 @@ async def main():
         tasks.append(process_file(client, file_path, output_dir, cache_dir))
 
     await asyncio.gather(*tasks)
+    write_log("=== llm_level_adjuster.py 执行完成 ===")
 
 if __name__ == "__main__":
     if platform.system() == "Windows":
