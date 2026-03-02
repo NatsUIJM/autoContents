@@ -95,6 +95,7 @@ def upload_files():
         toc_end = request.form.get('tocEnd')
         content_start = request.form.get('contentStart')
         toc_structure = request.form.get('tocStructure', 'original')  # 默认为原始目录
+        export_filename = request.form.get('exportFilename', '%name-toc')  # 默认为%name-toc
         
         if not all([toc_start, toc_end, content_start]):
             return jsonify({'status': 'error', 'message': '页码信息不完整'})
@@ -103,8 +104,13 @@ def upload_files():
         original_filename = pdf_file.filename
         filename_without_ext, file_extension = os.path.splitext(original_filename)
         
-        # 转换文件名为拼音并限制长度为25个字符
+        # 转换文件名为拼音并限制长度为 25 个字符
         pinyin_filename = convert_to_pinyin(filename_without_ext)
+        # 清理文件名中的非法字符
+        invalid_chars = '<>:"/\\|？*'
+        for char in invalid_chars:
+            pinyin_filename = pinyin_filename.replace(char, '_')
+        # 限制长度为 25 个字符
         if len(pinyin_filename) > 25:
             pinyin_filename = pinyin_filename[:25]
         pinyin_filename = pinyin_filename + file_extension
@@ -118,11 +124,12 @@ def upload_files():
             "toc_end": int(toc_end),
             "content_start": int(content_start),
             "original_filename": original_filename,  # 添加原始文件名字段
-            "toc_structure": toc_structure  # 添加目录结构选择字段
+            "toc_structure": toc_structure,  # 添加目录结构选择字段
+            "export_filename": export_filename  # 添加导出文件名配置
         }
         
-        # JSON文件名使用拼音(限制长度)
-        json_filename = pinyin_filename.replace(file_extension, '.json')
+        # JSON 文件名使用拼音 (限制长度) - 确保与 PDF 文件名一致
+        json_filename = os.path.splitext(pinyin_filename)[0] + '.json'
         json_path = os.path.join(upload_folder, json_filename)
         
         with open(json_path, 'w', encoding='utf-8') as f:
@@ -174,7 +181,7 @@ def download_result(session_id):
         input_files = [f for f in os.listdir(input_folder) if f.endswith('.pdf') or f.endswith('.json')]
         original_pdf = next((f for f in input_files if f.endswith('.pdf')), None)
         if not original_pdf:
-            return jsonify({'status': 'error', 'message': '未找到原始PDF文件'})
+            return jsonify({'status': 'error', 'message': '未找到原始 PDF 文件'})
 
         json_file_name = os.path.splitext(original_pdf)[0] + '.json'
         json_path = os.path.join(input_folder, json_file_name)
@@ -182,15 +189,37 @@ def download_result(session_id):
         with open(json_path, 'r', encoding='utf-8') as f:
             json_data = json.load(f)
         original_filename = json_data.get('original_filename', None)
+        export_filename_template = json_data.get('export_filename', '%name-toc')
+        toc_start = json_data.get('toc_start', 1)
+        toc_end = json_data.get('toc_end', toc_start)
 
     except Exception as e:
-        print(f"[ERROR] 读取 JSON 时出错: {e}")
+        print(f"[ERROR] 读取 JSON 时出错：{e}")
         original_filename = None
+        export_filename_template = '%name-toc'
+        toc_start = 1
+        toc_end = 1
 
-    # 优先使用原始文件名生成 -toc 版本
+    # 使用自定义文件名或默认逻辑
     if original_filename:
-        base_name, ext = os.path.splitext(original_filename)
-        download_filename = f"{base_name}-toc{ext}"
+        # 使用与 pdf_generator.py 相同的占位符替换逻辑
+        from datetime import datetime
+        name_without_ext = os.path.splitext(original_filename)[0]
+        download_filename_base = export_filename_template.replace('%name', name_without_ext)
+        download_filename_base = download_filename_base.replace('%date', datetime.now().strftime("%Y%m%d_%H%M%S"))
+        
+        if toc_start and toc_end:
+            range_str = f"{toc_start}-{toc_end}"
+            download_filename_base = download_filename_base.replace('%range', range_str)
+        else:
+            download_filename_base = download_filename_base.replace('%range', '')
+        
+        # 清理非法字符
+        invalid_chars = '<>:"/\\|？*'
+        for char in invalid_chars:
+            download_filename_base = download_filename_base.replace(char, '_')
+        
+        download_filename = f"{download_filename_base}.pdf"
     else:
         # 万不得已，使用处理结果.pdf
         download_filename = '处理结果.pdf'
@@ -455,8 +484,46 @@ def save_prompt(filename):
             
         return jsonify({'status': 'success', 'message': f'{filename} 保存成功'})
     except Exception as e:
-        logger.error(f"保存提示词文件失败: {str(e)}")
-        return jsonify({'status': 'error', 'message': f'保存失败: {str(e)}'}), 500
+        logger.error(f"保存提示词文件失败：{str(e)}")
+        return jsonify({'status': 'error', 'message': f'保存失败：{str(e)}'}), 500
+
+@app.route('/save_default_export_filename', methods=['POST'])
+def save_default_export_filename():
+    """保存默认的导出文件名格式"""
+    try:
+        data = request.get_json()
+        export_filename = data.get('exportFilename', '%name-toc')
+        
+        # 确保 static 目录存在
+        static_dir = app.static_folder
+        if not os.path.exists(static_dir):
+            os.makedirs(static_dir)
+        
+        # 保存默认设置到文件
+        config_file = os.path.join(static_dir, 'default_export_filename.json')
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump({'export_filename': export_filename}, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'status': 'success', 'message': '默认导出文件名已保存'})
+    except Exception as e:
+        logger.error(f"保存默认导出文件名失败：{str(e)}")
+        return jsonify({'status': 'error', 'message': f'保存失败：{str(e)}'}), 500
+
+@app.route('/get_default_export_filename', methods=['GET'])
+def get_default_export_filename():
+    """获取默认的导出文件名格式"""
+    try:
+        config_file = os.path.join(app.static_folder, 'default_export_filename.json')
+        if os.path.exists(config_file):
+            with open(config_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return jsonify({'exportFilename': data.get('export_filename', '%name-toc')})
+        else:
+            # 返回默认值
+            return jsonify({'exportFilename': '%name-toc'})
+    except Exception as e:
+        logger.error(f"获取默认导出文件名失败：{str(e)}")
+        return jsonify({'exportFilename': '%name-toc'})
 
 @app.route('/test_qwen_service', methods=['POST'])
 def test_qwen_service():

@@ -10,6 +10,37 @@ import pikepdf
 import dotenv
 dotenv.load_dotenv()
 
+def replace_filename_placeholders(template, original_filename, toc_start=None, toc_end=None):
+    """
+    替换文件名中的占位符
+    :param template: 文件名模板，如 "%name-toc_%date"
+    :param original_filename: 原始文件名
+    :param toc_start: 目录起始页
+    :param toc_end: 目录结束页
+    :return: 替换后的文件名（不含扩展名）
+    """
+    # 获取不带扩展名的文件名
+    name_without_ext = os.path.splitext(original_filename)[0]
+    
+    # 替换占位符
+    result = template.replace('%name', name_without_ext)
+    result = result.replace('%date', datetime.now().strftime("%Y%m%d_%H%M%S"))
+    
+    # 处理%range 占位符
+    if toc_start is not None and toc_end is not None:
+        range_str = f"{toc_start}-{toc_end}"
+        result = result.replace('%range', range_str)
+    else:
+        # 如果没有页数范围，移除%range 占位符
+        result = result.replace('%range', '')
+    
+    # 清理非法字符
+    invalid_chars = '<>:"/\\|？*'
+    for char in invalid_chars:
+        result = result.replace(char, '_')
+    
+    return result
+
 def should_remove_item(text, toc_structure):
     """
     根据toc_structure规则判断是否应该删除该书签项
@@ -64,12 +95,15 @@ def process_pdf_with_bookmarks():
     print(f"正在处理 {base_name}...")
 
     try:
-        # 读取content_start和toc_start以及toc_structure
+        # 读取 content_start 和 toc_start 以及 toc_structure
         with open(info_json_path, 'r', encoding='utf-8') as f:
             info_data = json.load(f)
         content_start = info_data.get('content_start', 1)
         toc_start = info_data.get('toc_start', 1)
-        toc_structure = info_data.get('toc_structure', 'original')  # 默认为original
+        toc_end = info_data.get('toc_end', toc_start)  # 如果没有 toc_end，使用 toc_start
+        toc_structure = info_data.get('toc_structure', 'original')  # 默认为 original
+        export_filename_template = info_data.get('export_filename', '%name-toc')  # 默认为%name-toc
+        original_filename = info_data.get('original_filename', base_name + '.pdf')  # 原始文件名
         
         # 读取目录数据
         with open(content_json_path, 'r', encoding='utf-8') as f:
@@ -223,13 +257,21 @@ def process_pdf_with_bookmarks():
             '/Producer': 'autoContents v2.0',
             '/CreationDate': datetime.now().strftime("D:%Y%m%d%H%M%S"),
             '/URL': 'https://github.com/NatsUijm/autoContents',
-            '/Comments': '本PDF书签由autoContents程序生成，感谢您使用本程序！该程序在GitHub开源，明确禁止未经授权的商业使用。如果您是通过付费渠道获得此PDF，建议您访问GitHub官方网站查询程序的授权情况。如果确认未经授权，建议您申请退款。若您愿意将销售相关信息告知作者，将不胜感激。作者邮箱：uijm2004@outlook.com'
+            '/Comments': '本 PDF 书签由 autoContents 程序生成，感谢您使用本程序！该程序在 GitHub 开源，明确禁止未经授权的商业使用。如果您是通过付费渠道获得此 PDF，建议您访问 GitHub 官方网站查询程序的授权情况。如果确认未经授权，建议您申请退款。若您愿意将销售相关信息告知作者，将不胜感激。作者邮箱：uijm2004@outlook.com'
         }))
         
-        # 保存处理后的PDF到新目录
-        output_path = os.path.join(os.getenv('PDF_GENERATOR_OUTPUT_1'), f'{base_name}_with_toc.pdf')
+        # 生成输出文件名
+        output_filename_base = replace_filename_placeholders(
+            export_filename_template, 
+            original_filename,
+            toc_start,
+            toc_end
+        )
+        
+        # 保存处理后的 PDF 到新目录
+        output_path = os.path.join(os.getenv('PDF_GENERATOR_OUTPUT_1'), f'{output_filename_base}.pdf')
         pdf.save(output_path)
-        print(f"\n已成功处理 {base_name}")
+        print(f"\n已成功处理 {output_filename_base}")
         
     except Exception as e:
         print(f"处理 {base_name} 时出错: {str(e)}")
