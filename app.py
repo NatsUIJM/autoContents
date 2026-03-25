@@ -287,14 +287,12 @@ def get_api_key_from_config():
 
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
 def run_script(session_id, script_index, retry_count):
-    ocr_model = request.args.get('ocr_model', 'aliyun')  # 获取OCR模型参数
+    ocr_model = request.args.get('ocr_model', 'aliyun')
     
-    # 根据OCR模型选择确定脚本序列
     if ocr_model == 'qwen':
         script_sequence = QWEN_SCRIPT_SEQUENCE
-        total_scripts = len(QWEN_SCRIPT_SEQUENCE)  # 8个脚本
+        total_scripts = len(QWEN_SCRIPT_SEQUENCE)
     else:
-        # 这里应该不会被执行到，因为我们只保留了qwen模式
         script_sequence = []
         total_scripts = 0
     
@@ -306,76 +304,50 @@ def run_script(session_id, script_index, retry_count):
     
     script_name, script_desc = script_sequence[script_index]
     try:
-        # 获取脚本的完整路径
         script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'mainprogress'))
         script_path = os.path.join(script_dir, f'{script_name}.py')
-        
-        # 设置基础目录（使用绝对路径）
         base_dir = os.path.abspath(os.path.join('data', session_id))
         
-        # 从配置文件获取API KEY
-        api_key = get_api_key_from_config()
+        # 修复点1：继承父进程的所有环境变量，防止自定义环境变量丢失
+        env = os.environ.copy()
         
-        # 构建新的环境变量
-        env = {}  # 创建新的环境变量字典，而不是继承现有的
+        # 修复点2：动态解析并设置对应的环境变量名
+        config_path = os.path.join(app.static_folder, 'llm_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            api_key_value = config.get('api_key', '')
+            
+            env_var_name = extract_env_var_name(api_key_value)
+            if env_var_name:
+                actual_api_key = os.environ.get(env_var_name, '')
+                env[env_var_name] = actual_api_key
+                env['DASHSCOPE_API_KEY'] = actual_api_key  # 兼容保留
+            else:
+                env['DASHSCOPE_API_KEY'] = api_key_value
         
-        # 添加系统必要的环境变量
-        if os.name == 'nt':  # Windows系统
-            env = os.environ.copy()
-            # 添加系统路径
-            env['PATH'] = os.environ.get('PATH', '')
-            env['SYSTEMROOT'] = os.environ.get('SYSTEMROOT', '')
-            env['TEMP'] = os.environ.get('TEMP', '')
-            env['TMP'] = os.environ.get('TMP', '')
-            # 添加Python相关路径
-            env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
-            # 添加API相关的环境变量
-            env['DASHSCOPE_API_KEY'] = api_key  # 使用从配置文件获取的API KEY
-        elif os.name == 'posix':  # macOS系统
-            # 添加系统路径
-            env['PATH'] = os.environ.get('PATH', '')
-            env['TMPDIR'] = os.environ.get('TMPDIR', '')
-            # 添加Python相关路径
-            env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
-            # 添加API相关的环境变量
-            env['DASHSCOPE_API_KEY'] = api_key  # 使用从配置文件获取的API KEY
-        
-        # 添加应用所需的环境变量（使用绝对路径）
+        # 添加应用所需的环境变量
         env.update({
             'BASE_DIR': base_dir,
-            
-            # pdf2jpg.py路径配置
             'PDF2JPG_INPUT': f"{base_dir}/input_pdf",
             'PDF2JPG_OUTPUT': f"{base_dir}/mark/input_image",
-            
-            # content_preprocessor.py路径配置
             'CONTENT_PREPROCESSOR_INPUT': f"{base_dir}/raw_content",
             'CONTENT_PREPROCESSOR_OUTPUT': f"{base_dir}/merged_content",
-             
-            # pdf_generator.py路径配置
             'PDF_GENERATOR_INPUT_1': f"{base_dir}/level_adjusted_content",
             'PDF_GENERATOR_INPUT_2': f"{base_dir}/input_pdf",
             'PDF_GENERATOR_OUTPUT_1': f"{base_dir}/output_pdf",
-            
-            # qwen_vl_extract.py路径配置
             'QWEN_VL_INPUT': f"{base_dir}/mark/input_image",
             'QWEN_VL_OUTPUT': f"{base_dir}/automark_raw_data",
-
-            # llm_level_adjuster.py路径配置
             'LEVEL_ADJUSTER_INPUT': f"{base_dir}/merged_content",
             'LEVEL_ADJUSTER_OUTPUT': f"{base_dir}/level_adjusted_content",
             'LEVEL_ADJUSTER_CACHE': f"{base_dir}/level_adjuster_cache",
             'LEVEL_ADJUSTER_PICTURES': f"{base_dir}/mark/input_image"
-
         })
 
-        
-        # 获取Python解释器的完整路径
         python_executable = sys.executable
         
-        # 修改OCR相关脚本处理逻辑
         if script_name in ['ocr_hybrid', 'ocr_and_projection_hybrid']:
-            ocr_model = request.args.get('ocr_model', 'aliyun')  # 默认使用aliyun
+            ocr_model = request.args.get('ocr_model', 'aliyun')
             
             if ocr_model == 'azure':
                 script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
@@ -387,7 +359,7 @@ def run_script(session_id, script_index, retry_count):
                         'currentScript': script_desc,
                         'message': f'{script_desc} (Azure) 执行成功',
                         'nextIndex': script_index + 1,
-                        'totalScripts': total_scripts,  # 使用正确的脚本总数
+                        'totalScripts': total_scripts,
                         'retryCount': 0,
                         'session_id': session_id,
                         'stdout': azure_result.get('stdout', ''),
@@ -404,10 +376,9 @@ def run_script(session_id, script_index, retry_count):
                         'scriptIndex': script_index,
                         'session_id': session_id
                     })
-            else:  # aliyun
+            else:
                 script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "aliyun")}.py')
         
-        # 执行脚本（包括非OCR脚本和Aliyun OCR脚本）
         try:
             result = subprocess.run(
                 [python_executable, script_path],
@@ -424,7 +395,7 @@ def run_script(session_id, script_index, retry_count):
                     'currentScript': script_desc,
                     'message': f'{script_desc}执行成功',
                     'nextIndex': script_index + 1,
-                    'totalScripts': total_scripts,  # 使用正确的脚本总数
+                    'totalScripts': total_scripts,
                     'retryCount': 0,
                     'session_id': session_id,
                     'stdout': result.stdout,
@@ -463,7 +434,6 @@ def run_script(session_id, script_index, retry_count):
             'scriptIndex': script_index,
             'session_id': session_id
         })
-
 # 在 app.py 中添加以下新路由
 
 @app.route('/save_prompt/<filename>', methods=['POST'])

@@ -307,6 +307,9 @@ def main():
         # 初始化客户端配置
         try:
             llm_config = load_llm_config()
+            if not llm_config.get("api_key"):
+                raise ValueError("API Key 不能为空，请检查 llm_config.json 或环境变量配置")
+                
             client = OpenAI(
                 api_key=llm_config["api_key"],
                 base_url=llm_config["base_url"],
@@ -317,7 +320,7 @@ def main():
             write_log(f"OpenAI客户端初始化失败: {str(e)}")
             write_log(traceback.format_exc())
             print(f"OpenAI客户端初始化失败: {e}")
-            return
+            sys.exit(1)  # 修复点：使用 sys.exit(1) 抛出错误码
 
         # 检查BASE_DIR环境变量是否存在
         base_dir = os.getenv("BASE_DIR")
@@ -336,7 +339,7 @@ def main():
             if not input_path_str or not output_path_str:
                 write_log("错误: 未设置必要的环境变量")
                 print("错误: 未设置必要的环境变量")
-                return
+                sys.exit(1)  # 修复点：使用 sys.exit(1) 抛出错误码
             
             input_path = Path(input_path_str)
             output_path = Path(output_path_str)
@@ -354,7 +357,7 @@ def main():
         if not input_path.exists():
             write_log(f"输入路径不存在: {input_path}")
             print(f"输入路径不存在: {input_path}")
-            return
+            sys.exit(1)  # 修复点：使用 sys.exit(1) 抛出错误码
         
         image_files = [f for f in input_path.iterdir() 
                        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
@@ -395,6 +398,7 @@ def main():
         write_log(traceback.format_exc())
         print(f"主函数执行时发生异常: {e}")
         traceback.print_exc()
+        sys.exit(1)  # 修复点：确保全局异常时抛出错误码
 
 if __name__ == "__main__":
     main()
