@@ -51,7 +51,7 @@ DATA_FOLDERS = [
 
 QWEN_SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('qwen_vl_extract', '通义千问OCR识别'),
+    ('qwen_vl_extract', 'OCR识别'),
     ('content_preprocessor', '内容预处理'),
     ('llm_level_adjuster', '层级调整'),
     ('pdf_generator', 'PDF生成')
