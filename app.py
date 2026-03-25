@@ -253,6 +253,38 @@ def run_azure_with_timeout(python_executable, script_path, env, script_dir):
             'error': str(e)
         }
 
+def extract_env_var_name(api_key_value):
+    """
+    从API KEY值中提取环境变量名称
+    例如: $CHERRY_IN_API_KEY$ -> CHERRY_IN_API_KEY
+    """
+    if api_key_value.startswith('$') and api_key_value.endswith('$'):
+        return api_key_value[1:-1]  # 移除开头和结尾的$
+    return None
+
+def get_api_key_from_config():
+    """
+    从配置文件中获取API KEY，支持从环境变量读取
+    """
+    config_path = os.path.join(app.static_folder, 'llm_config.json')
+    if os.path.exists(config_path):
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        api_key_value = config.get('api_key', '')
+        
+        # 检查是否是环境变量引用格式
+        env_var_name = extract_env_var_name(api_key_value)
+        if env_var_name:
+            # 从环境变量中获取实际值
+            actual_api_key = os.environ.get(env_var_name, '')
+            return actual_api_key
+        else:
+            # 直接返回配置文件中的值（可能是硬编码的API KEY）
+            return api_key_value
+    else:
+        # 如果配置文件不存在，返回空字符串
+        return ''
+
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
 def run_script(session_id, script_index, retry_count):
     ocr_model = request.args.get('ocr_model', 'aliyun')  # 获取OCR模型参数
@@ -281,6 +313,9 @@ def run_script(session_id, script_index, retry_count):
         # 设置基础目录（使用绝对路径）
         base_dir = os.path.abspath(os.path.join('data', session_id))
         
+        # 从配置文件获取API KEY
+        api_key = get_api_key_from_config()
+        
         # 构建新的环境变量
         env = {}  # 创建新的环境变量字典，而不是继承现有的
         
@@ -295,7 +330,7 @@ def run_script(session_id, script_index, retry_count):
             # 添加Python相关路径
             env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
             # 添加API相关的环境变量
-            env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
+            env['DASHSCOPE_API_KEY'] = api_key  # 使用从配置文件获取的API KEY
         elif os.name == 'posix':  # macOS系统
             # 添加系统路径
             env['PATH'] = os.environ.get('PATH', '')
@@ -303,7 +338,7 @@ def run_script(session_id, script_index, retry_count):
             # 添加Python相关路径
             env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
             # 添加API相关的环境变量
-            env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
+            env['DASHSCOPE_API_KEY'] = api_key  # 使用从配置文件获取的API KEY
         
         # 添加应用所需的环境变量（使用绝对路径）
         env.update({
@@ -529,8 +564,16 @@ def test_qwen_service():
                 "model": "qwen3.5-397b-a17b"
             }
         
+        # 从配置文件获取API KEY，支持环境变量引用
+        api_key_value = config["api_key"]
+        env_var_name = extract_env_var_name(api_key_value)
+        if env_var_name:
+            actual_api_key = os.environ.get(env_var_name, "")
+        else:
+            actual_api_key = api_key_value
+        
         client = OpenAI(
-            api_key=config["api_key"].replace("$DASHSCOPE_API_KEY$", os.getenv("DASHSCOPE_API_KEY", "")),
+            api_key=actual_api_key,
             base_url=config["base_url"],
         )
 
@@ -576,10 +619,14 @@ def test_llm_service():
             }), 400
         
         # 处理API密钥中的环境变量引用
-        processed_api_key = api_key.replace("$DASHSCOPE_API_KEY$", os.getenv("DASHSCOPE_API_KEY", ""))
+        env_var_name = extract_env_var_name(api_key)
+        if env_var_name:
+            actual_api_key = os.environ.get(env_var_name, "")
+        else:
+            actual_api_key = api_key
         
         client = OpenAI(
-            api_key=processed_api_key,
+            api_key=actual_api_key,
             base_url=base_url,
         )
 
