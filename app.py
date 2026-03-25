@@ -458,19 +458,84 @@ def save_prompt(filename):
         logger.error(f"保存提示词文件失败: {str(e)}")
         return jsonify({'status': 'error', 'message': f'保存失败: {str(e)}'}), 500
 
+# 添加获取和保存 llm_config.json 的路由
+@app.route('/get_llm_config')
+def get_llm_config():
+    """获取 LLM 配置"""
+    try:
+        import json
+        config_path = os.path.join(app.static_folder, 'llm_config.json')
+        
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            return jsonify({'status': 'success', 'config': config})
+        else:
+            # 如果配置文件不存在，返回默认值
+            default_config = {
+                "api_key": "$DASHSCOPE_API_KEY$",
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "model": "qwen3.5-397b-a17b"
+            }
+            return jsonify({'status': 'success', 'config': default_config})
+    except Exception as e:
+        logger.error(f"获取 LLM 配置失败: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'获取配置失败: {str(e)}'}), 500
+
+@app.route('/save_llm_config', methods=['POST'])
+def save_llm_config():
+    """保存 LLM 配置"""
+    try:
+        import json
+        config = request.get_json()
+        
+        # 验证必需的字段
+        required_fields = ['api_key', 'base_url', 'model']
+        for field in required_fields:
+            if field not in config:
+                return jsonify({'status': 'error', 'message': f'缺少必需字段: {field}'}), 400
+        
+        # 确保 static 目录存在
+        static_dir = app.static_folder
+        if not os.path.exists(static_dir):
+            os.makedirs(static_dir)
+            
+        # 保存配置文件
+        config_path = os.path.join(static_dir, 'llm_config.json')
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+            
+        return jsonify({'status': 'success', 'message': 'LLM 配置保存成功'})
+    except Exception as e:
+        logger.error(f"保存 LLM 配置失败: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'保存配置失败: {str(e)}'}), 500
+
 @app.route('/test_qwen_service', methods=['POST'])
 def test_qwen_service():
     """
     测试通义千问服务状态
     """
     try:
+        # 读取配置文件
+        config_path = os.path.join(app.static_folder, 'llm_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        else:
+            # 使用默认配置
+            config = {
+                "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "model": "qwen3.5-397b-a17b"
+            }
+        
         client = OpenAI(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=config["api_key"].replace("$DASHSCOPE_API_KEY$", os.getenv("DASHSCOPE_API_KEY", "")),
+            base_url=config["base_url"],
         )
 
         completion = client.chat.completions.create(
-            model="qwen-plus",
+            model=config["model"],
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "正在测试通义千问服务访问状态，请输出`正常`这两个中文字符，不要附带任何其他内容"},
@@ -484,6 +549,55 @@ def test_qwen_service():
         })
     except Exception as e:
         logger.error(f"通义千问服务测试失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'message': f'测试失败: {str(e)}',
+            'error_code': type(e).__name__
+        }), 500
+
+
+@app.route('/test_llm_service', methods=['POST'])
+def test_llm_service():
+    """
+    测试任意LLM服务状态
+    """
+    try:
+        # 从前端获取配置
+        data = request.get_json()
+        api_key = data.get('api_key', '')
+        base_url = data.get('base_url', '')
+        model = data.get('model', '')
+        
+        if not api_key or not base_url or not model:
+            return jsonify({
+                'status': 'error',
+                'message': 'API配置信息不完整，请检查API Key、Base URL和Model是否都已填写'
+            }), 400
+        
+        # 处理API密钥中的环境变量引用
+        processed_api_key = api_key.replace("$DASHSCOPE_API_KEY$", os.getenv("DASHSCOPE_API_KEY", ""))
+        
+        client = OpenAI(
+            api_key=processed_api_key,
+            base_url=base_url,
+        )
+
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "正在测试LLM服务访问状态，请输出`正常`这两个中文字符，不要附带任何其他内容"},
+            ],
+        )
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'LLM服务状态正常',
+            'response': completion.choices[0].message.content if completion.choices else ''
+        })
+    except Exception as e:
+        logger.error(f"LLM服务测试失败: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({
             'status': 'error',

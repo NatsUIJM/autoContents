@@ -26,23 +26,33 @@ def write_log(message):
 # 加载环境变量
 load_dotenv()
 
-# 初始化客户端
-try:
-    client = OpenAI(
-        api_key=os.getenv("DASHSCOPE_API_KEY"),
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-    )
-    write_log("OpenAI客户端初始化成功")
-except Exception as e:
-    write_log(f"OpenAI客户端初始化失败: {str(e)}")
-    write_log(traceback.format_exc())
-    raise
-
 # 支持的图像格式
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
 
 # 线程锁用于进度输出
 progress_lock = threading.Lock()
+
+def load_llm_config() -> dict:
+    """从 static 文件夹加载 LLM 配置，并解析环境变量"""
+    project_root = Path(__file__).parent.parent
+    config_path = project_root / "static" / "llm_config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"LLM配置文件不存在: {config_path}")
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+        
+    def resolve_value(val):
+        if isinstance(val, str) and val.startswith('$') and val.endswith('$'):
+            env_var_name = val[1:-1]
+            return os.getenv(env_var_name)
+        return val
+
+    return {
+        "api_key": resolve_value(config.get("api_key")),
+        "base_url": resolve_value(config.get("base_url")),
+        "model": resolve_value(config.get("model"))
+    }
 
 def load_prompt():
     """从static/extract_prompt.md加载提示词"""
@@ -63,7 +73,6 @@ def load_prompt():
         write_log(traceback.format_exc())
         raise
 
-
 # 在模块加载时就读取提示词
 try:
     PROMPT_TEXT = load_prompt()
@@ -71,7 +80,7 @@ except Exception as e:
     write_log(f"无法加载提示词，程序退出: {str(e)}")
     sys.exit(1)
 
-def process_image(image_path: Path, output_path: Path):
+def process_image(client: OpenAI, model_name: str, image_path: Path, output_path: Path):
     write_log(f"开始处理图像: {image_path}")
 
     try:
@@ -92,7 +101,7 @@ def process_image(image_path: Path, output_path: Path):
                 write_log(f"第{attempt+1}次尝试调用模型: {image_path.name}")
             
                 completion = client.chat.completions.create(
-                    model="qwen3-vl-235b-a22b-instruct",
+                    model=model_name,
                     messages=[
                         {
                             "role": "user",
@@ -102,7 +111,8 @@ def process_image(image_path: Path, output_path: Path):
                             ]
                         }
                     ],
-                    response_format={"type": "json_object"}  # 强制JSON格式响应
+                    response_format={"type": "json_object"},  # 强制JSON格式响应
+                    extra_body={"enable_thinking": False}     # 关闭思考模式
                 )
 
                 # 解析响应
@@ -294,6 +304,21 @@ def main():
     write_log("=== qwen_vl_extract.py 开始执行 ===")
 
     try:
+        # 初始化客户端配置
+        try:
+            llm_config = load_llm_config()
+            client = OpenAI(
+                api_key=llm_config["api_key"],
+                base_url=llm_config["base_url"],
+            )
+            model_name = llm_config["model"]
+            write_log("OpenAI客户端初始化成功")
+        except Exception as e:
+            write_log(f"OpenAI客户端初始化失败: {str(e)}")
+            write_log(traceback.format_exc())
+            print(f"OpenAI客户端初始化失败: {e}")
+            return
+
         # 检查BASE_DIR环境变量是否存在
         base_dir = os.getenv("BASE_DIR")
         if base_dir:
@@ -337,11 +362,13 @@ def main():
         write_log(f"找到 {len(image_files)} 个图像文件")
         print(f"找到 {len(image_files)} 个图像文件，开始处理...")
     
-        # 使用线程池并发处理，最大并发度9
+        # 使用线程池并发处理
         with ThreadPoolExecutor(max_workers=9) as executor:
             # 提交所有任务
-            future_to_image = {executor.submit(process_image, image_file, output_path): image_file 
-                              for image_file in image_files}
+            future_to_image = {
+                executor.submit(process_image, client, model_name, image_file, output_path): image_file 
+                for image_file in image_files
+            }
         
             # 收集结果
             results = []
