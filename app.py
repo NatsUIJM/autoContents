@@ -589,6 +589,7 @@ def test_llm_service():
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "正在测试LLM服务访问状态，请输出`正常`这两个中文字符，不要附带任何其他内容"},
             ],
+            extra_body={"enable_thinking": False}
         )
         
         return jsonify({
