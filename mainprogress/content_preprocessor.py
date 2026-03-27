@@ -12,6 +12,28 @@ import dotenv
 dotenv.load_dotenv()
 
 
+def load_llm_config() -> dict:
+    """从 static 文件夹加载 LLM 配置，并解析环境变量"""
+    config_path = Path(project_root) / "static" / "llm_config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"LLM配置文件不存在: {config_path}")
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+        
+    def resolve_value(val):
+        if isinstance(val, str) and val.startswith('$') and val.endswith('$'):
+            env_var_name = val[1:-1]
+            return os.getenv(env_var_name)
+        return val
+
+    return {
+        "api_key": resolve_value(config.get("api_key")),
+        "base_url": resolve_value(config.get("base_url")),
+        "model": resolve_value(config.get("model"))
+    }
+
+
 def natural_sort_key(path: Path) -> tuple:
     """自然排序键函数"""
     parts = re.split(r'(\d+)', path.name)
@@ -60,13 +82,8 @@ def find_min_page_file(json_files: list) -> str:
     return min_file
 
 
-def send_to_llm(data: list) -> str:
+def send_to_llm(client: OpenAI, model_name: str, data: list) -> str:
     """将数据发送到LLM并获取响应"""
-    client = OpenAI(
-        api_key=os.getenv("DASHSCOPE_API_KEY"),
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-    )
-
     few_shot_example = """
 以下是示例输入和输出：
 
@@ -148,11 +165,12 @@ def send_to_llm(data: list) -> str:
 """
 
     completion = client.chat.completions.create(
-        model="qwen3-235b-a22b-instruct-2507",
+        model=model_name,
         messages=[
             {"role": "system", "content": "你是一个专门处理目录结构的助手。"},
             {"role": "user", "content": prompt},
         ],
+        response_format={"type": "json_object"},
         extra_body={"enable_thinking": False},
     )
     
@@ -188,6 +206,18 @@ def main():
     os.makedirs(input_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 
+    # 加载 LLM 配置并初始化客户端
+    try:
+        llm_config = load_llm_config()
+        client = OpenAI(
+            api_key=llm_config["api_key"],
+            base_url=llm_config["base_url"],
+        )
+        model_name = llm_config["model"]
+    except Exception as e:
+        print(f"初始化 LLM 客户端失败: {e}")
+        return
+
     json_files = sorted(input_dir.glob("*.json"), key=natural_sort_key)
     combined_data = []
     book_title = "booktitle"  # 默认书名
@@ -216,7 +246,8 @@ def main():
         json.dump(combined_data, f, ensure_ascii=False, indent=2)
 
     # 发送到LLM处理
-    llm_response = send_to_llm(combined_data)
+    print(f"正在调用模型 {model_name} 处理数据...")
+    llm_response = send_to_llm(client, model_name, combined_data)
     
     # 保存原始响应到与combined_output.json相同的位置
     initial_reply_file = input_dir / "initial_reply.txt"
@@ -225,13 +256,16 @@ def main():
     
     # 解析并应用修改
     try:
-        modifications = json.loads(llm_response)
+        # 尝试清理可能存在的 Markdown JSON 标记
+        clean_response = re.sub(r'^```json\s*|\s*```$', '', llm_response.strip(), flags=re.MULTILINE)
+        modifications = json.loads(clean_response)
         processed_data = apply_modifications(combined_data, modifications)
         
         # 保存处理后的数据到CONTENT_PREPROCESSOR_OUTPUT目录，使用书名作为文件名
         final_output_file = output_dir / f"{book_title}_final.json"
         with open(final_output_file, 'w', encoding='utf-8') as f:
             json.dump(processed_data, f, ensure_ascii=False, indent=2)
+        print(f"处理完成，结果已保存至: {final_output_file}")
             
     except json.JSONDecodeError as e:
         print(f"LLM返回的响应不是有效的JSON: {e}")

@@ -51,7 +51,7 @@ DATA_FOLDERS = [
 
 QWEN_SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('qwen_vl_extract', '通义千问OCR识别'),
+    ('qwen_vl_extract', 'OCR识别'),
     ('content_preprocessor', '内容预处理'),
     ('llm_level_adjuster', '层级调整'),
     ('pdf_generator', 'PDF生成')
@@ -282,16 +282,46 @@ def run_azure_with_timeout(python_executable, script_path, env, script_dir):
             'error': str(e)
         }
 
+def extract_env_var_name(api_key_value):
+    """
+    从API KEY值中提取环境变量名称
+    例如: $CHERRY_IN_API_KEY$ -> CHERRY_IN_API_KEY
+    """
+    if api_key_value.startswith('$') and api_key_value.endswith('$'):
+        return api_key_value[1:-1]  # 移除开头和结尾的$
+    return None
+
+def get_api_key_from_config():
+    """
+    从配置文件中获取API KEY，支持从环境变量读取
+    """
+    config_path = os.path.join(app.static_folder, 'llm_config.json')
+    if os.path.exists(config_path):
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        api_key_value = config.get('api_key', '')
+        
+        # 检查是否是环境变量引用格式
+        env_var_name = extract_env_var_name(api_key_value)
+        if env_var_name:
+            # 从环境变量中获取实际值
+            actual_api_key = os.environ.get(env_var_name, '')
+            return actual_api_key
+        else:
+            # 直接返回配置文件中的值（可能是硬编码的API KEY）
+            return api_key_value
+    else:
+        # 如果配置文件不存在，返回空字符串
+        return ''
+
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
 def run_script(session_id, script_index, retry_count):
-    ocr_model = request.args.get('ocr_model', 'aliyun')  # 获取OCR模型参数
+    ocr_model = request.args.get('ocr_model', 'aliyun')
     
-    # 根据OCR模型选择确定脚本序列
     if ocr_model == 'qwen':
         script_sequence = QWEN_SCRIPT_SEQUENCE
-        total_scripts = len(QWEN_SCRIPT_SEQUENCE)  # 8个脚本
+        total_scripts = len(QWEN_SCRIPT_SEQUENCE)
     else:
-        # 这里应该不会被执行到，因为我们只保留了qwen模式
         script_sequence = []
         total_scripts = 0
     
@@ -303,73 +333,50 @@ def run_script(session_id, script_index, retry_count):
     
     script_name, script_desc = script_sequence[script_index]
     try:
-        # 获取脚本的完整路径
         script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'mainprogress'))
         script_path = os.path.join(script_dir, f'{script_name}.py')
-        
-        # 设置基础目录（使用绝对路径）
         base_dir = os.path.abspath(os.path.join('data', session_id))
         
-        # 构建新的环境变量
-        env = {}  # 创建新的环境变量字典，而不是继承现有的
+        # 修复点1：继承父进程的所有环境变量，防止自定义环境变量丢失
+        env = os.environ.copy()
         
-        # 添加系统必要的环境变量
-        if os.name == 'nt':  # Windows系统
-            env = os.environ.copy()
-            # 添加系统路径
-            env['PATH'] = os.environ.get('PATH', '')
-            env['SYSTEMROOT'] = os.environ.get('SYSTEMROOT', '')
-            env['TEMP'] = os.environ.get('TEMP', '')
-            env['TMP'] = os.environ.get('TMP', '')
-            # 添加Python相关路径
-            env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
-            # 添加API相关的环境变量
-            env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
-        elif os.name == 'posix':  # macOS系统
-            # 添加系统路径
-            env['PATH'] = os.environ.get('PATH', '')
-            env['TMPDIR'] = os.environ.get('TMPDIR', '')
-            # 添加Python相关路径
-            env['PYTHONPATH'] = os.environ.get('PYTHONPATH', '')
-            # 添加API相关的环境变量
-            env['DASHSCOPE_API_KEY'] = os.environ.get('DASHSCOPE_API_KEY', '')
+        # 修复点2：动态解析并设置对应的环境变量名
+        config_path = os.path.join(app.static_folder, 'llm_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            api_key_value = config.get('api_key', '')
+            
+            env_var_name = extract_env_var_name(api_key_value)
+            if env_var_name:
+                actual_api_key = os.environ.get(env_var_name, '')
+                env[env_var_name] = actual_api_key
+                env['DASHSCOPE_API_KEY'] = actual_api_key  # 兼容保留
+            else:
+                env['DASHSCOPE_API_KEY'] = api_key_value
         
-        # 添加应用所需的环境变量（使用绝对路径）
+        # 添加应用所需的环境变量
         env.update({
             'BASE_DIR': base_dir,
-            
-            # pdf2jpg.py路径配置
             'PDF2JPG_INPUT': f"{base_dir}/input_pdf",
             'PDF2JPG_OUTPUT': f"{base_dir}/mark/input_image",
-            
-            # content_preprocessor.py路径配置
             'CONTENT_PREPROCESSOR_INPUT': f"{base_dir}/raw_content",
             'CONTENT_PREPROCESSOR_OUTPUT': f"{base_dir}/merged_content",
-             
-            # pdf_generator.py路径配置
             'PDF_GENERATOR_INPUT_1': f"{base_dir}/level_adjusted_content",
             'PDF_GENERATOR_INPUT_2': f"{base_dir}/input_pdf",
             'PDF_GENERATOR_OUTPUT_1': f"{base_dir}/output_pdf",
-            
-            # qwen_vl_extract.py路径配置
             'QWEN_VL_INPUT': f"{base_dir}/mark/input_image",
             'QWEN_VL_OUTPUT': f"{base_dir}/automark_raw_data",
-
-            # llm_level_adjuster.py路径配置
             'LEVEL_ADJUSTER_INPUT': f"{base_dir}/merged_content",
             'LEVEL_ADJUSTER_OUTPUT': f"{base_dir}/level_adjusted_content",
             'LEVEL_ADJUSTER_CACHE': f"{base_dir}/level_adjuster_cache",
             'LEVEL_ADJUSTER_PICTURES': f"{base_dir}/mark/input_image"
-
         })
 
-        
-        # 获取Python解释器的完整路径
         python_executable = sys.executable
         
-        # 修改OCR相关脚本处理逻辑
         if script_name in ['ocr_hybrid', 'ocr_and_projection_hybrid']:
-            ocr_model = request.args.get('ocr_model', 'aliyun')  # 默认使用aliyun
+            ocr_model = request.args.get('ocr_model', 'aliyun')
             
             if ocr_model == 'azure':
                 script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
@@ -381,7 +388,7 @@ def run_script(session_id, script_index, retry_count):
                         'currentScript': script_desc,
                         'message': f'{script_desc} (Azure) 执行成功',
                         'nextIndex': script_index + 1,
-                        'totalScripts': total_scripts,  # 使用正确的脚本总数
+                        'totalScripts': total_scripts,
                         'retryCount': 0,
                         'session_id': session_id,
                         'stdout': azure_result.get('stdout', ''),
@@ -398,10 +405,9 @@ def run_script(session_id, script_index, retry_count):
                         'scriptIndex': script_index,
                         'session_id': session_id
                     })
-            else:  # aliyun
+            else:
                 script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "aliyun")}.py')
         
-        # 执行脚本（包括非OCR脚本和Aliyun OCR脚本）
         try:
             result = subprocess.run(
                 [python_executable, script_path],
@@ -418,7 +424,7 @@ def run_script(session_id, script_index, retry_count):
                     'currentScript': script_desc,
                     'message': f'{script_desc}执行成功',
                     'nextIndex': script_index + 1,
-                    'totalScripts': total_scripts,  # 使用正确的脚本总数
+                    'totalScripts': total_scripts,
                     'retryCount': 0,
                     'session_id': session_id,
                     'stdout': result.stdout,
@@ -457,7 +463,6 @@ def run_script(session_id, script_index, retry_count):
             'scriptIndex': script_index,
             'session_id': session_id
         })
-
 # 在 app.py 中添加以下新路由
 
 @app.route('/save_prompt/<filename>', methods=['POST'])
@@ -525,19 +530,92 @@ def get_default_export_filename():
         logger.error(f"获取默认导出文件名失败：{str(e)}")
         return jsonify({'exportFilename': '%name-toc'})
 
+# 添加获取和保存 llm_config.json 的路由
+@app.route('/get_llm_config')
+def get_llm_config():
+    """获取 LLM 配置"""
+    try:
+        import json
+        config_path = os.path.join(app.static_folder, 'llm_config.json')
+        
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            return jsonify({'status': 'success', 'config': config})
+        else:
+            # 如果配置文件不存在，返回默认值
+            default_config = {
+                "api_key": "$DASHSCOPE_API_KEY$",
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "model": "qwen3.5-397b-a17b"
+            }
+            return jsonify({'status': 'success', 'config': default_config})
+    except Exception as e:
+        logger.error(f"获取 LLM 配置失败: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'获取配置失败: {str(e)}'}), 500
+
+@app.route('/save_llm_config', methods=['POST'])
+def save_llm_config():
+    """保存 LLM 配置"""
+    try:
+        import json
+        config = request.get_json()
+        
+        # 验证必需的字段
+        required_fields = ['api_key', 'base_url', 'model']
+        for field in required_fields:
+            if field not in config:
+                return jsonify({'status': 'error', 'message': f'缺少必需字段: {field}'}), 400
+        
+        # 确保 static 目录存在
+        static_dir = app.static_folder
+        if not os.path.exists(static_dir):
+            os.makedirs(static_dir)
+            
+        # 保存配置文件
+        config_path = os.path.join(static_dir, 'llm_config.json')
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+            
+        return jsonify({'status': 'success', 'message': 'LLM 配置保存成功'})
+    except Exception as e:
+        logger.error(f"保存 LLM 配置失败: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'保存配置失败: {str(e)}'}), 500
+
 @app.route('/test_qwen_service', methods=['POST'])
 def test_qwen_service():
     """
     测试通义千问服务状态
     """
     try:
+        # 读取配置文件
+        config_path = os.path.join(app.static_folder, 'llm_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        else:
+            # 使用默认配置
+            config = {
+                "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "model": "qwen3.5-397b-a17b"
+            }
+        
+        # 从配置文件获取API KEY，支持环境变量引用
+        api_key_value = config["api_key"]
+        env_var_name = extract_env_var_name(api_key_value)
+        if env_var_name:
+            actual_api_key = os.environ.get(env_var_name, "")
+        else:
+            actual_api_key = api_key_value
+        
         client = OpenAI(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=actual_api_key,
+            base_url=config["base_url"],
         )
 
         completion = client.chat.completions.create(
-            model="qwen-plus",
+            model=config["model"],
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "正在测试通义千问服务访问状态，请输出`正常`这两个中文字符，不要附带任何其他内容"},
@@ -551,6 +629,60 @@ def test_qwen_service():
         })
     except Exception as e:
         logger.error(f"通义千问服务测试失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'message': f'测试失败: {str(e)}',
+            'error_code': type(e).__name__
+        }), 500
+
+
+@app.route('/test_llm_service', methods=['POST'])
+def test_llm_service():
+    """
+    测试任意LLM服务状态
+    """
+    try:
+        # 从前端获取配置
+        data = request.get_json()
+        api_key = data.get('api_key', '')
+        base_url = data.get('base_url', '')
+        model = data.get('model', '')
+        
+        if not api_key or not base_url or not model:
+            return jsonify({
+                'status': 'error',
+                'message': 'API配置信息不完整，请检查API Key、Base URL和Model是否都已填写'
+            }), 400
+        
+        # 处理API密钥中的环境变量引用
+        env_var_name = extract_env_var_name(api_key)
+        if env_var_name:
+            actual_api_key = os.environ.get(env_var_name, "")
+        else:
+            actual_api_key = api_key
+        
+        client = OpenAI(
+            api_key=actual_api_key,
+            base_url=base_url,
+        )
+
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "正在测试LLM服务访问状态，请输出`正常`这两个中文字符，不要附带任何其他内容"},
+            ],
+            extra_body={"enable_thinking": False}
+        )
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'LLM服务状态正常',
+            'response': completion.choices[0].message.content if completion.choices else ''
+        })
+    except Exception as e:
+        logger.error(f"LLM服务测试失败: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({
             'status': 'error',

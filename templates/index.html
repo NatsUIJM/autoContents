@@ -289,6 +289,43 @@
 
         .file-name-link svg {
             flex-shrink: 0;
+        /* LLM配置区域样式 */
+        .llm-config-section {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            background-color: #f9fafb;
+        }
+        .llm-config-section h3 {
+            margin-top: 0;
+            color: #374151;
+        }
+        .llm-config-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }
+        .save-config-btn {
+            background-color: #6366f1;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .save-config-btn:hover {
+            background-color: #4f46e5;
+        }
+        .save-config-btn:disabled {
+            background-color: #d1d5db;
+            cursor: not-allowed;
         }
     </style>
 </head>
@@ -296,7 +333,7 @@
     <div class="container">
         <div class="header">
             <h2>autoContents目录生成工具</h2>
-            <button class="test-btn" onclick="testQwenService()">通义千问服务状态测试</button>
+            <button class="test-btn" onclick="testQwenService()">模型服务测试</button>
         </div>
 
         <div class="file-input-container">
@@ -366,6 +403,24 @@
         
         <div id="log" class="log"></div>
         
+        <!-- LLM配置区域 -->
+        <div class="llm-config-section">
+            <h3>LLM 配置管理</h3>
+            <div class="input-group">
+                <label for="apiKey">API 密钥（若为环境变量请使用$符号包裹，否则直接输入KEY即可）</label>
+                <input type="text" id="apiKey" class="llm-config-input" placeholder="请输入 API 密钥...">
+            </div>
+            <div class="input-group">
+                <label for="baseUrl">Base URL（需以v1结尾）</label>
+                <input type="text" id="baseUrl" class="llm-config-input" placeholder="请输入 Base URL...">
+            </div>
+            <div class="input-group">
+                <label for="model">模型名称</label>
+                <input type="text" id="model" class="llm-config-input" placeholder="请输入模型名称...">
+            </div>
+            <button id="saveConfigBtn" class="save-config-btn" onclick="saveLLMConfig()" disabled>保存 LLM 配置</button>
+        </div>
+        
         <!-- 提示词管理区域 -->
         <div class="prompt-section">
             <h3>提示词管理</h3>
@@ -389,7 +444,7 @@
     <div id="testModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeTestModal()">&times;</span>
-            <h3>通义千问服务状态测试结果</h3>
+            <h3>服务状态测试结果</h3>
             <div id="testResult"></div>
         </div>
     </div>
@@ -417,10 +472,13 @@
         const SCRIPT_CHECK_INTERVAL = 1000; // 1 秒检查一次进度
         // 添加变量跟踪提示词是否被修改
         let promptsModified = false;
+        // 添加变量跟踪LLM配置是否被修改
+        let llmConfigModified = false;
 
         // 页面加载时读取提示词内容
         window.addEventListener('DOMContentLoaded', function() {
             loadPrompts();
+            loadLLMConfig();
         });
 
         // 文件选择处理
@@ -538,6 +596,14 @@
             document.getElementById(id).addEventListener('input', function() {
                 promptsModified = true;
                 document.getElementById('savePromptsBtn').disabled = false;
+            });
+        });
+
+        // 监听LLM配置输入框变化
+        ['apiKey', 'baseUrl', 'model'].forEach(id => {
+            document.getElementById(id).addEventListener('input', function() {
+                llmConfigModified = true;
+                document.getElementById('saveConfigBtn').disabled = false;
             });
         });
 
@@ -806,15 +872,34 @@
             const resultDiv = document.getElementById('testResult');
             
             // 显示测试中状态
-            resultDiv.innerHTML = '<p>正在测试通义千问服务状态...</p>';
+            resultDiv.innerHTML = '<p>正在测试模型服务状态...</p>';
             modal.style.display = 'block';
             
             try {
-                const response = await fetch('/test_qwen_service', {
+                // 先获取当前的LLM配置
+                const configResponse = await fetch('/get_llm_config');
+                if (!configResponse.ok) {
+                    throw new Error('获取LLM配置失败');
+                }
+                
+                const configData = await configResponse.json();
+                if (configData.status !== 'success') {
+                    throw new Error(configData.message || '获取LLM配置失败');
+                }
+                
+                // 使用当前配置进行测试
+                const config = configData.config;
+                
+                const response = await fetch('/test_llm_service', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify({
+                        api_key: config.api_key,
+                        base_url: config.base_url,
+                        model: config.model
+                    })
                 });
                 
                 const data = await response.json();
@@ -823,20 +908,20 @@
                     resultDiv.innerHTML = `
                         <p style="color: green;">✓ ${data.message}</p>
                         <p>响应内容: ${data.response}</p>
+                        <p>使用的模型: ${config.model}</p>
                     `;
                 } else {
                     resultDiv.innerHTML = `
                         <p style="color: red;">✗ 测试失败</p>
                         <p>错误信息: ${data.message}</p>
                         <p>错误类型: ${data.error_code}</p>
-                        <p><a href="https://help.aliyun.com/zh/model-studio/error-code?spm=a2c4g.11186623.help-menu-2400256.d_2_13_0.57704c44CQVCqj" target="_blank">查看错误码参考</a></p>
+                        <p>尝试使用的模型: ${config.model}</p>
                     `;
                 }
             } catch (error) {
                 resultDiv.innerHTML = `
                     <p style="color: red;">✗ 请求失败</p>
                     <p>错误信息: ${error.message}</p>
-                    <p><a href="https://help.aliyun.com/zh/model-studio/error-code?spm=a2c4g.11186623.help-menu-2400256.d_2_13_0.57704c44CQVCqj" target="_blank">查看错误码参考</a></p>
                 `;
             }
         }
@@ -850,6 +935,68 @@
             const modal = document.getElementById('testModal');
             if (event.target == modal) {
                 modal.style.display = 'none';
+            }
+        }
+
+        // 加载LLM配置内容
+        async function loadLLMConfig() {
+            try {
+                const response = await fetch('/get_llm_config');
+                if (!response.ok) {
+                    throw new Error('获取LLM配置失败');
+                }
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    document.getElementById('apiKey').value = data.config.api_key;
+                    document.getElementById('baseUrl').value = data.config.base_url;
+                    document.getElementById('model').value = data.config.model;
+                    
+                    // 重置修改状态
+                    llmConfigModified = false;
+                    document.getElementById('saveConfigBtn').disabled = true;
+                } else {
+                    throw new Error(data.message || '获取LLM配置失败');
+                }
+            } catch (error) {
+                console.error('加载LLM配置失败:', error);
+                addLog('加载LLM配置失败: ' + error.message, 'error');
+            }
+        }
+
+        // 保存LLM配置内容
+        async function saveLLMConfig() {
+            try {
+                const config = {
+                    api_key: document.getElementById('apiKey').value,
+                    base_url: document.getElementById('baseUrl').value,
+                    model: document.getElementById('model').value
+                };
+
+                const response = await fetch('/save_llm_config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (!response.ok) {
+                    throw new Error('保存LLM配置失败');
+                }
+
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.message || '保存LLM配置失败');
+                }
+
+                // 重置修改状态
+                llmConfigModified = false;
+                document.getElementById('saveConfigBtn').disabled = true;
+                addLog('LLM配置保存成功', 'success');
+            } catch (error) {
+                console.error('保存LLM配置失败:', error);
+                addLog('保存LLM配置失败: ' + error.message, 'error');
             }
         }
 

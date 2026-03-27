@@ -13,3 +13,4 @@ contents_editor/*.csv
 *.bkp
 mainprogress/\[editing\]llm_level_adjuster.py
 log.txt
+debug.py
