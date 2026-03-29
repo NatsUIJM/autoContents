@@ -553,11 +553,26 @@
                     const showReminder = response.headers.get('X-Show-Reminder');
                     const showNoReminderOption = response.headers.get('X-No-Reminder-Option');
                     
+                    // 尝试从 Content-Disposition 头获取文件名
+                    let filename = '处理结果.pdf';
+                    const disposition = response.headers.get('Content-Disposition');
+                    if (disposition && disposition.indexOf('attachment') !== -1) {
+                        const filenameStarMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+                        if (filenameStarMatch && filenameStarMatch[1]) {
+                            filename = decodeURIComponent(filenameStarMatch[1]);
+                        } else {
+                            const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+                            if (filenameMatch && filenameMatch[1]) {
+                                filename = decodeURIComponent(filenameMatch[1]);
+                            }
+                        }
+                    }
+                    
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = '处理结果.pdf';
+                    a.download = filename;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);

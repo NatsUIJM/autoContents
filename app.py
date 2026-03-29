@@ -12,6 +12,9 @@ from pypinyin import lazy_pinyin
 import sys
 import webbrowser
 import threading
+import fitz  # 新增：PyMuPDF，用于提取第一页图片
+import base64 # 新增：用于图片编码
+import re     # 新增：用于清理文件名中的非法字符
 
 # 添加openai库导入
 from openai import OpenAI
@@ -48,7 +51,6 @@ DATA_FOLDERS = [
     'merged_content',
 ]
 
-
 QWEN_SCRIPT_SEQUENCE = [
     ('pdf_to_image', 'PDF转换为图像（下一步可能需要一分钟或更长，请耐心等待）'),
     ('qwen_vl_extract', 'OCR识别'),
@@ -74,6 +76,76 @@ def create_data_folders(session_id):
         os.makedirs(folder_path, exist_ok=True)
     return base_dir
 
+def extract_env_var_name(api_key_value):
+    """
+    从API KEY值中提取环境变量名称
+    例如: $CHERRY_IN_API_KEY$ -> CHERRY_IN_API_KEY
+    """
+    if api_key_value.startswith('$') and api_key_value.endswith('$'):
+        return api_key_value[1:-1]  # 移除开头和结尾的$
+    return None
+
+def extract_first_page_and_recognize(pdf_path, original_filename, session_dir, config):
+    """提取PDF第一页并调用LLM识别书名"""
+    try:
+        # 提取第一页
+        doc = fitz.open(pdf_path)
+        page = doc[0]
+        
+        # 计算缩放比例，使长边为1000px
+        rect = page.rect
+        max_dim = max(rect.width, rect.height)
+        zoom = 1000.0 / max_dim if max_dim > 1000 else 1.0
+        mat = fitz.Matrix(zoom, zoom)
+        
+        pix = page.get_pixmap(matrix=mat)
+        img_data = pix.tobytes("jpeg")
+        doc.close()
+        
+        base64_image = base64.b64encode(img_data).decode('utf-8')
+        image_data_url = f"data:image/jpeg;base64,{base64_image}"
+        
+        # 解析 config
+        api_key_value = config.get("api_key", "")
+        env_var_name = extract_env_var_name(api_key_value)
+        if env_var_name:
+            actual_api_key = os.environ.get(env_var_name, "")
+        else:
+            actual_api_key = api_key_value
+            
+        client = OpenAI(
+            api_key=actual_api_key,
+            base_url=config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        )
+        
+        prompt = f"这是PDF文件的第一页。该文件的原始文件名为：{original_filename}。请结合图片内容和原始文件名，识别并输出这本书的书名。只需输出书名文本，不要包含任何其他说明、标点或多余内容。"
+        
+        completion = client.chat.completions.create(
+            model=config.get("model", "qwen-vl-max"), # 注意：需要确保使用的模型支持视觉能力
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                        {"type": "text", "text": prompt}
+                    ]
+                }
+            ],
+            extra_body={"enable_thinking": False}
+        )
+        
+        book_name = completion.choices[0].message.content.strip()
+        # 清理可能的不合法字符
+        book_name = re.sub(r'[\\/:*?"<>|]', '_', book_name)
+        
+        # 保存书名到文件
+        info_path = os.path.join(session_dir, 'book_name.txt')
+        with open(info_path, 'w', encoding='utf-8') as f:
+            f.write(book_name)
+            
+    except Exception as e:
+        logger.error(f"识别书名失败: {str(e)}")
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -94,16 +166,14 @@ def upload_files():
         toc_start = request.form.get('tocStart')
         toc_end = request.form.get('tocEnd')
         content_start = request.form.get('contentStart')
-        toc_structure = request.form.get('tocStructure', 'original')  # 默认为原始目录
+        toc_structure = request.form.get('tocStructure', 'original')
         
         if not all([toc_start, toc_end, content_start]):
             return jsonify({'status': 'error', 'message': '页码信息不完整'})
             
-        # 保存原始文件名（中文）
         original_filename = pdf_file.filename
         filename_without_ext, file_extension = os.path.splitext(original_filename)
         
-        # 转换文件名为拼音并限制长度为25个字符
         pinyin_filename = convert_to_pinyin(filename_without_ext)
         if len(pinyin_filename) > 25:
             pinyin_filename = pinyin_filename[:25]
@@ -117,16 +187,32 @@ def upload_files():
             "toc_start": int(toc_start),
             "toc_end": int(toc_end),
             "content_start": int(content_start),
-            "original_filename": original_filename,  # 添加原始文件名字段
-            "toc_structure": toc_structure  # 添加目录结构选择字段
+            "original_filename": original_filename,
+            "toc_structure": toc_structure
         }
         
-        # JSON文件名使用拼音(限制长度)
         json_filename = pinyin_filename.replace(file_extension, '.json')
         json_path = os.path.join(upload_folder, json_filename)
         
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(json_data, f, ensure_ascii=False, indent=4)
+            
+        # 开启后台线程识别书名
+        config_path = os.path.join(app.static_folder, 'llm_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                llm_config = json.load(f)
+        else:
+            llm_config = {
+                "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "model": "qwen-vl-max"
+            }
+            
+        threading.Thread(
+            target=extract_first_page_and_recognize,
+            args=(pdf_path, original_filename, base_dir, llm_config)
+        ).start()
             
         return jsonify({
             'status': 'success', 
@@ -139,7 +225,6 @@ def upload_files():
 
 @app.route('/download_result/<session_id>')
 def download_result(session_id):
-    # 检查data目录下的文件夹数量是否为5的倍数
     data_dir = 'data'
     show_reminder = False
     no_reminder_option = False
@@ -148,29 +233,23 @@ def download_result(session_id):
         folders = [f for f in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, f))]
         folder_count = len(folders)
         
-        # 如果文件夹数量是5的倍数，设置一个标志用于前端显示弹窗
         if folder_count % 5 == 0:
-            # 检查是否已经设置了不再弹出
             no_reminder_file = os.path.join('data', 'no_reminder')
             if not os.path.exists(no_reminder_file):
                 show_reminder = True
                 
-            # 如果文件夹数量大于等于15个，则显示"不再弹出"选项
             if folder_count >= 15:
                 no_reminder_option = True
     
     output_folder = os.path.join('data', session_id, 'output_pdf')
     input_folder = os.path.join('data', session_id, 'input_pdf')
 
-    # 获取输出文件（假设只有一个）
     pdf_files = [f for f in os.listdir(output_folder) if f.endswith('.pdf')]
     if not pdf_files:
         return jsonify({'status': 'error', 'message': '未找到输出PDF文件'})
     file_path = os.path.join(output_folder, pdf_files[0])
 
-    # 使用与上传时一致的 JSON 文件名
     try:
-        # 假设上传时 JSON 文件名为 input_pdf_dir/原始文件名.json
         input_files = [f for f in os.listdir(input_folder) if f.endswith('.pdf') or f.endswith('.json')]
         original_pdf = next((f for f in input_files if f.endswith('.pdf')), None)
         if not original_pdf:
@@ -187,32 +266,47 @@ def download_result(session_id):
         print(f"[ERROR] 读取 JSON 时出错: {e}")
         original_filename = None
 
-    # 优先使用原始文件名生成 -toc 版本
-    if original_filename:
-        base_name, ext = os.path.splitext(original_filename)
-        download_filename = f"{base_name}-toc{ext}"
-    else:
-        # 万不得已，使用处理结果.pdf
-        download_filename = '处理结果.pdf'
+    # 优先尝试读取LLM识别出的书名
+    book_name = ""
+    book_name_path = os.path.join('data', session_id, 'book_name.txt')
+    if os.path.exists(book_name_path):
+        try:
+            with open(book_name_path, 'r', encoding='utf-8') as f:
+                book_name = f.read().strip()
+        except Exception:
+            pass
 
-    # 返回下载链接
+    # 如果没有识别结果，则回退到原始文件名
+    if not book_name:
+        if original_filename:
+            book_name, _ = os.path.splitext(original_filename)
+        else:
+            book_name = "处理结果"
+
+    # 生成下载文件名：[LLM识别结果]-时间（yymmddhhmmss）-TOC.pdf
+    time_str = datetime.now().strftime("%y%m%d%H%M%S")
+    download_filename = f"{book_name}-{time_str}-TOC.pdf"
+
     response = send_file(file_path, as_attachment=True, download_name=download_filename)
     
-    # 如果需要显示提醒，则添加特殊响应头
+    # 暴露 Content-Disposition 和自定义头供前端读取
+    expose_headers = ['Content-Disposition']
+    
     if show_reminder:
         response.headers['X-Show-Reminder'] = 'true'
+        expose_headers.append('X-Show-Reminder')
         
-    # 如果需要显示"不再弹出"选项，则添加另一个响应头
     if no_reminder_option:
         response.headers['X-No-Reminder-Option'] = 'true'
+        expose_headers.append('X-No-Reminder-Option')
+        
+    response.headers['Access-Control-Expose-Headers'] = ', '.join(expose_headers)
     
     return response
 
-# 添加新的路由处理不再提醒的设置
 @app.route('/set_no_reminder', methods=['POST'])
 def set_no_reminder():
     try:
-        # 创建一个标记文件表示用户选择不再提醒
         no_reminder_file = os.path.join('data', 'no_reminder')
         os.makedirs('data', exist_ok=True)
         with open(no_reminder_file, 'w') as f:
@@ -221,10 +315,9 @@ def set_no_reminder():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-AZURE_TIMEOUT = 30  # Azure服务超时时间（秒）
+AZURE_TIMEOUT = 30
 
 def run_azure_with_timeout(python_executable, script_path, env, script_dir):
-    """运行Azure OCR脚本，带有超时控制"""
     try:
         result = subprocess.run(
             [python_executable, script_path],
@@ -253,36 +346,20 @@ def run_azure_with_timeout(python_executable, script_path, env, script_dir):
             'error': str(e)
         }
 
-def extract_env_var_name(api_key_value):
-    """
-    从API KEY值中提取环境变量名称
-    例如: $CHERRY_IN_API_KEY$ -> CHERRY_IN_API_KEY
-    """
-    if api_key_value.startswith('$') and api_key_value.endswith('$'):
-        return api_key_value[1:-1]  # 移除开头和结尾的$
-    return None
-
 def get_api_key_from_config():
-    """
-    从配置文件中获取API KEY，支持从环境变量读取
-    """
     config_path = os.path.join(app.static_folder, 'llm_config.json')
     if os.path.exists(config_path):
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
         api_key_value = config.get('api_key', '')
         
-        # 检查是否是环境变量引用格式
         env_var_name = extract_env_var_name(api_key_value)
         if env_var_name:
-            # 从环境变量中获取实际值
             actual_api_key = os.environ.get(env_var_name, '')
             return actual_api_key
         else:
-            # 直接返回配置文件中的值（可能是硬编码的API KEY）
             return api_key_value
     else:
-        # 如果配置文件不存在，返回空字符串
         return ''
 
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
@@ -308,10 +385,8 @@ def run_script(session_id, script_index, retry_count):
         script_path = os.path.join(script_dir, f'{script_name}.py')
         base_dir = os.path.abspath(os.path.join('data', session_id))
         
-        # 修复点1：继承父进程的所有环境变量，防止自定义环境变量丢失
         env = os.environ.copy()
         
-        # 修复点2：动态解析并设置对应的环境变量名
         config_path = os.path.join(app.static_folder, 'llm_config.json')
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -322,11 +397,10 @@ def run_script(session_id, script_index, retry_count):
             if env_var_name:
                 actual_api_key = os.environ.get(env_var_name, '')
                 env[env_var_name] = actual_api_key
-                env['DASHSCOPE_API_KEY'] = actual_api_key  # 兼容保留
+                env['DASHSCOPE_API_KEY'] = actual_api_key
             else:
                 env['DASHSCOPE_API_KEY'] = api_key_value
         
-        # 添加应用所需的环境变量
         env.update({
             'BASE_DIR': base_dir,
             'PDF2JPG_INPUT': f"{base_dir}/input_pdf",
@@ -434,26 +508,20 @@ def run_script(session_id, script_index, retry_count):
             'scriptIndex': script_index,
             'session_id': session_id
         })
-# 在 app.py 中添加以下新路由
 
 @app.route('/save_prompt/<filename>', methods=['POST'])
 def save_prompt(filename):
-    """保存提示词文件"""
     try:
-        # 限制只能保存指定的提示词文件
         allowed_files = ['extract_prompt.md', 'adjuster_prompt_route.md', 'adjuster_prompt.md']
         if filename not in allowed_files:
             return jsonify({'status': 'error', 'message': '不允许保存该文件'}), 403
             
-        # 获取请求体中的内容
         content = request.get_data(as_text=True)
         
-        # 确保 static 目录存在
         static_dir = app.static_folder
         if not os.path.exists(static_dir):
             os.makedirs(static_dir)
             
-        # 保存文件
         file_path = os.path.join(static_dir, filename)
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -463,12 +531,9 @@ def save_prompt(filename):
         logger.error(f"保存提示词文件失败: {str(e)}")
         return jsonify({'status': 'error', 'message': f'保存失败: {str(e)}'}), 500
 
-# 添加获取和保存 llm_config.json 的路由
 @app.route('/get_llm_config')
 def get_llm_config():
-    """获取 LLM 配置"""
     try:
-        import json
         config_path = os.path.join(app.static_folder, 'llm_config.json')
         
         if os.path.exists(config_path):
@@ -476,7 +541,6 @@ def get_llm_config():
                 config = json.load(f)
             return jsonify({'status': 'success', 'config': config})
         else:
-            # 如果配置文件不存在，返回默认值
             default_config = {
                 "api_key": "$DASHSCOPE_API_KEY$",
                 "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -489,23 +553,18 @@ def get_llm_config():
 
 @app.route('/save_llm_config', methods=['POST'])
 def save_llm_config():
-    """保存 LLM 配置"""
     try:
-        import json
         config = request.get_json()
         
-        # 验证必需的字段
         required_fields = ['api_key', 'base_url', 'model']
         for field in required_fields:
             if field not in config:
                 return jsonify({'status': 'error', 'message': f'缺少必需字段: {field}'}), 400
         
-        # 确保 static 目录存在
         static_dir = app.static_folder
         if not os.path.exists(static_dir):
             os.makedirs(static_dir)
             
-        # 保存配置文件
         config_path = os.path.join(static_dir, 'llm_config.json')
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
@@ -517,24 +576,18 @@ def save_llm_config():
 
 @app.route('/test_qwen_service', methods=['POST'])
 def test_qwen_service():
-    """
-    测试通义千问服务状态
-    """
     try:
-        # 读取配置文件
         config_path = os.path.join(app.static_folder, 'llm_config.json')
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
         else:
-            # 使用默认配置
             config = {
                 "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
                 "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "model": "qwen3.5-397b-a17b"
             }
         
-        # 从配置文件获取API KEY，支持环境变量引用
         api_key_value = config["api_key"]
         env_var_name = extract_env_var_name(api_key_value)
         if env_var_name:
@@ -569,14 +622,9 @@ def test_qwen_service():
             'error_code': type(e).__name__
         }), 500
 
-
 @app.route('/test_llm_service', methods=['POST'])
 def test_llm_service():
-    """
-    测试任意LLM服务状态
-    """
     try:
-        # 从前端获取配置
         data = request.get_json()
         api_key = data.get('api_key', '')
         base_url = data.get('base_url', '')
@@ -588,7 +636,6 @@ def test_llm_service():
                 'message': 'API配置信息不完整，请检查API Key、Base URL和Model是否都已填写'
             }), 400
         
-        # 处理API密钥中的环境变量引用
         env_var_name = extract_env_var_name(api_key)
         if env_var_name:
             actual_api_key = os.environ.get(env_var_name, "")
@@ -624,7 +671,6 @@ def test_llm_service():
         }), 500
 
 def find_available_port(start_port=5000, max_port=6000):
-    """查找可用的端口号"""
     current_port = start_port
     while (current_port <= max_port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -638,19 +684,16 @@ def find_available_port(start_port=5000, max_port=6000):
             sock.close()
     return None
 
-# Then modify the if __name__ == '__main__' section:
 if __name__ == '__main__':
     port = find_available_port()
     if port is None:
         print("Error: No available ports found between 5000 and 6000")
     else:
-        # Define function to open browser after a delay
         def open_browser():
-            time.sleep(1.5)  # Wait a bit for server to start, even after reload
+            time.sleep(1.5)
             webbrowser.open_new(f'http://127.0.0.1:{port}')
             
-        # Start browser in a separate thread
         threading.Thread(target=open_browser).start()
         
         print(f"Starting server on port {port}")
-        app.run(debug=True, port=port, use_reloader=False)  # Disable reloader to avoid port changes
+        app.run(debug=True, port=port, use_reloader=False)
