@@ -12,9 +12,11 @@ from pypinyin import lazy_pinyin
 import sys
 import webbrowser
 import threading
-import fitz  # 新增：PyMuPDF，用于提取第一页图片
-import base64 # 新增：用于图片编码
-import re     # 新增：用于清理文件名中的非法字符
+import fitz  # PyMuPDF，用于提取图片
+import base64 # 用于图片编码
+import re     # 用于清理文件名中的非法字符
+import concurrent.futures # 新增：用于并发请求
+from collections import Counter # 新增：用于计算众数
 
 # 添加openai库导入
 from openai import OpenAI
@@ -88,11 +90,9 @@ def extract_env_var_name(api_key_value):
 def extract_first_page_and_recognize(pdf_path, original_filename, session_dir, config):
     """提取PDF第一页并调用LLM识别书名"""
     try:
-        # 提取第一页
         doc = fitz.open(pdf_path)
         page = doc[0]
         
-        # 计算缩放比例，使长边为1000px
         rect = page.rect
         max_dim = max(rect.width, rect.height)
         zoom = 1000.0 / max_dim if max_dim > 1000 else 1.0
@@ -105,13 +105,9 @@ def extract_first_page_and_recognize(pdf_path, original_filename, session_dir, c
         base64_image = base64.b64encode(img_data).decode('utf-8')
         image_data_url = f"data:image/jpeg;base64,{base64_image}"
         
-        # 解析 config
         api_key_value = config.get("api_key", "")
         env_var_name = extract_env_var_name(api_key_value)
-        if env_var_name:
-            actual_api_key = os.environ.get(env_var_name, "")
-        else:
-            actual_api_key = api_key_value
+        actual_api_key = os.environ.get(env_var_name, "") if env_var_name else api_key_value
             
         client = OpenAI(
             api_key=actual_api_key,
@@ -121,7 +117,7 @@ def extract_first_page_and_recognize(pdf_path, original_filename, session_dir, c
         prompt = f"这是PDF文件的第一页。该文件的原始文件名为：{original_filename}。请结合图片内容和原始文件名，识别并输出这本书的书名。只需输出书名文本，不要包含任何其他说明、标点或多余内容。"
         
         completion = client.chat.completions.create(
-            model=config.get("model", "qwen-vl-max"), # 注意：需要确保使用的模型支持视觉能力
+            model=config.get("model", "qwen-vl-max"),
             messages=[
                 {
                     "role": "user",
@@ -135,16 +131,119 @@ def extract_first_page_and_recognize(pdf_path, original_filename, session_dir, c
         )
         
         book_name = completion.choices[0].message.content.strip()
-        # 清理可能的不合法字符
         book_name = re.sub(r'[\\/:*?"<>|]', '_', book_name)
         
-        # 保存书名到文件
         info_path = os.path.join(session_dir, 'book_name.txt')
         with open(info_path, 'w', encoding='utf-8') as f:
             f.write(book_name)
             
     except Exception as e:
         logger.error(f"识别书名失败: {str(e)}")
+
+def calculate_offset(pdf_path, json_path, config):
+    """自动计算正文偏移量并更新JSON"""
+    try:
+        doc = fitz.open(pdf_path)
+        total_pages = len(doc)
+        start_idx = int(total_pages * 0.2)
+        end_idx = int(total_pages * 0.8)
+        if end_idx <= start_idx:
+            end_idx = total_pages - 1
+            start_idx = 0
+            
+        pool = list(range(start_idx, end_idx + 1))
+        selected_pages = random.sample(pool, min(5, len(pool)))
+        
+        images_data = []
+        for p in selected_pages:
+            page = doc[p]
+            rect = page.rect
+            max_dim = max(rect.width, rect.height)
+            zoom = 1500.0 / max_dim if max_dim > 1500 else 2.0
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+            img_data = pix.tobytes("jpeg")
+            base64_image = base64.b64encode(img_data).decode('utf-8')
+            images_data.append((p + 1, base64_image)) # p+1 为物理页码
+        doc.close()
+        
+        api_key_value = config.get("api_key", "")
+        env_var_name = extract_env_var_name(api_key_value)
+        actual_api_key = os.environ.get(env_var_name, "") if env_var_name else api_key_value
+        
+        client = OpenAI(
+            api_key=actual_api_key,
+            base_url=config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        )
+        
+        def fetch_offset(page_num, b64_img):
+            prompt = f"""你是一个专业的文档页码识别专家。你的任务是识别图片中页面底部或顶部标注的实际印刷页码，并计算正文偏移量。
+计算公式：正文偏移量 = PDF物理页码 - 印刷页码。
+
+当前图片的PDF物理页码是：{page_num}
+
+【示例1】
+物理页码：25
+图片中底部写着："10"
+输出：15
+
+【示例2】
+物理页码：12
+图片中顶部写着："- 2 -"
+输出：10
+
+【示例3】
+物理页码：100
+图片中没有明确的阿拉伯数字页码
+输出：Error
+
+请仔细观察图片，找到印刷页码，并严格按照上述格式，仅输出计算后的正文偏移量数字。不要输出任何解释。"""
+            try:
+                completion = client.chat.completions.create(
+                    model=config.get("model", "qwen-vl-max"),
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
+                                {"type": "text", "text": prompt}
+                            ]
+                        }
+                    ],
+                    extra_body={"enable_thinking": False}
+                )
+                return completion.choices[0].message.content.strip()
+            except Exception as e:
+                logger.error(f"获取偏移量失败: {e}")
+                return "Error"
+
+        offsets = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(fetch_offset, p_num, b64) for p_num, b64 in images_data]
+            for future in concurrent.futures.as_completed(futures):
+                res = future.result()
+                if res.isdigit() or (res.startswith('-') and res[1:].isdigit()):
+                    offsets.append(int(res))
+                    
+        if offsets:
+            most_common_offset = Counter(offsets).most_common(1)[0][0]
+            with open(json_path, 'r', encoding='utf-8') as f:
+                j_data = json.load(f)
+            j_data['content_start'] = most_common_offset
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(j_data, f, ensure_ascii=False, indent=4)
+            logger.info(f"自动计算偏移量成功: {most_common_offset}")
+        else:
+            logger.warning("未能自动计算出有效的偏移量")
+            
+    except Exception as e:
+        logger.error(f"自动计算偏移量过程发生异常: {str(e)}")
+
+def background_tasks(pdf_path, original_filename, session_dir, config, json_path, auto_offset):
+    """后台执行书名识别和偏移量计算"""
+    extract_first_page_and_recognize(pdf_path, original_filename, session_dir, config)
+    if auto_offset:
+        calculate_offset(pdf_path, json_path, config)
 
 @app.route('/')
 def home():
@@ -166,9 +265,10 @@ def upload_files():
         toc_start = request.form.get('tocStart')
         toc_end = request.form.get('tocEnd')
         content_start = request.form.get('contentStart')
+        auto_offset = request.form.get('autoOffset') == 'true'
         toc_structure = request.form.get('tocStructure', 'original')
         
-        if not all([toc_start, toc_end, content_start]):
+        if not toc_start or not toc_end or (not auto_offset and not content_start):
             return jsonify({'status': 'error', 'message': '页码信息不完整'})
             
         original_filename = pdf_file.filename
@@ -186,7 +286,7 @@ def upload_files():
         json_data = {
             "toc_start": int(toc_start),
             "toc_end": int(toc_end),
-            "content_start": int(content_start),
+            "content_start": int(content_start) if content_start else 0,
             "original_filename": original_filename,
             "toc_structure": toc_structure
         }
@@ -197,7 +297,6 @@ def upload_files():
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(json_data, f, ensure_ascii=False, indent=4)
             
-        # 开启后台线程识别书名
         config_path = os.path.join(app.static_folder, 'llm_config.json')
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -210,8 +309,8 @@ def upload_files():
             }
             
         threading.Thread(
-            target=extract_first_page_and_recognize,
-            args=(pdf_path, original_filename, base_dir, llm_config)
+            target=background_tasks,
+            args=(pdf_path, original_filename, base_dir, llm_config, json_path, auto_offset)
         ).start()
             
         return jsonify({
@@ -266,7 +365,6 @@ def download_result(session_id):
         print(f"[ERROR] 读取 JSON 时出错: {e}")
         original_filename = None
 
-    # 优先尝试读取LLM识别出的书名
     book_name = ""
     book_name_path = os.path.join('data', session_id, 'book_name.txt')
     if os.path.exists(book_name_path):
@@ -276,20 +374,17 @@ def download_result(session_id):
         except Exception:
             pass
 
-    # 如果没有识别结果，则回退到原始文件名
     if not book_name:
         if original_filename:
             book_name, _ = os.path.splitext(original_filename)
         else:
             book_name = "处理结果"
 
-    # 生成下载文件名：[LLM识别结果]-时间（yymmddhhmmss）-TOC.pdf
     time_str = datetime.now().strftime("%y%m%d%H%M%S")
     download_filename = f"{book_name}-{time_str}-TOC.pdf"
 
     response = send_file(file_path, as_attachment=True, download_name=download_filename)
     
-    # 暴露 Content-Disposition 和自定义头供前端读取
     expose_headers = ['Content-Disposition']
     
     if show_reminder:

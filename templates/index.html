@@ -93,7 +93,7 @@
             font-weight: 500;
             color: #374151;
         }
-        .input-group input {
+        .input-group input[type="number"], .input-group input[type="text"] {
             padding: 8px;
             border: 1px solid #d1d5db;
             border-radius: 4px;
@@ -194,11 +194,9 @@
             max-width: 400px;
             height: auto;
         }
-        /* 隐藏OCR选择框 */
         #ocrModelContainer {
             display: none;
         }
-        /* Modal样式 */
         .modal {
             display: none;
             position: fixed;
@@ -229,7 +227,6 @@
         .close:focus {
             color: black;
         }
-        /* 提示词输入框样式 */
         .prompt-section {
             margin-top: 20px;
             padding: 15px;
@@ -269,7 +266,6 @@
             background-color: #d1d5db;
             cursor: not-allowed;
         }
-        /* LLM配置区域样式 */
         .llm-config-section {
             margin-top: 20px;
             padding: 15px;
@@ -340,9 +336,13 @@
             </div>
             <div class="input-group">
                 <label for="contentStart">正文偏移量</label>
-                <input type="number" id="contentStart" min="1">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="number" id="contentStart" min="1" style="flex: 1;" disabled placeholder="自动计算">
+                    <label style="display: flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="autoOffset" checked> 自动计算
+                    </label>
+                </div>
             </div>
-            <!-- 注释掉OCR方案选择 -->
             <div id="ocrModelContainer" class="input-group">
                 <label for="ocrModel">识别方案选择</label>
                 <select id="ocrModel" class="form-select">
@@ -364,7 +364,6 @@
         
         <div id="log" class="log"></div>
         
-        <!-- LLM配置区域 -->
         <div class="llm-config-section">
             <h3>LLM 配置管理</h3>
             <div class="input-group">
@@ -382,7 +381,6 @@
             <button id="saveConfigBtn" class="save-config-btn" onclick="saveLLMConfig()" disabled>保存 LLM 配置</button>
         </div>
         
-        <!-- 提示词管理区域 -->
         <div class="prompt-section">
             <h3>提示词管理</h3>
             <div class="input-group">
@@ -401,7 +399,6 @@
         </div>
     </div>
 
-    <!-- 测试结果弹窗 -->
     <div id="testModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeTestModal()">&times;</span>
@@ -426,23 +423,18 @@
         let isProcessing = false;
         let selectedFile = null;
         const MAX_RETRIES = 3;
-        const RETRY_DELAY = 1000; // 1秒
-        const FETCH_TIMEOUT = 360000; // 6分钟
-        const SCRIPT_CHECK_INTERVAL = 1000; // 1秒检查一次进度
-        // 添加全局变量存储session_id
+        const RETRY_DELAY = 1000;
+        const FETCH_TIMEOUT = 360000;
+        const SCRIPT_CHECK_INTERVAL = 1000;
         let currentSessionId = null;
-        // 添加变量跟踪提示词是否被修改
         let promptsModified = false;
-        // 添加变量跟踪LLM配置是否被修改
         let llmConfigModified = false;
 
-        // 页面加载时读取提示词内容
         window.addEventListener('DOMContentLoaded', function() {
             loadPrompts();
             loadLLMConfig();
         });
 
-        // 文件选择处理
         document.getElementById('pdfFile').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file && file.type === 'application/pdf') {
@@ -470,21 +462,33 @@
             updateStartButton();
         }
 
+        document.getElementById('autoOffset').addEventListener('change', function(e) {
+            const contentStartInput = document.getElementById('contentStart');
+            if (e.target.checked) {
+                contentStartInput.disabled = true;
+                contentStartInput.placeholder = "自动计算中...";
+                contentStartInput.value = "";
+            } else {
+                contentStartInput.disabled = false;
+                contentStartInput.placeholder = "";
+            }
+            updateStartButton();
+        });
+
         function updateStartButton() {
             const tocStart = document.getElementById('tocStart').value;
             const tocEnd = document.getElementById('tocEnd').value;
             const contentStart = document.getElementById('contentStart').value;
+            const autoOffset = document.getElementById('autoOffset').checked;
             const startButton = document.getElementById('startButton');
             
-            startButton.disabled = !selectedFile || !tocStart || !tocEnd || !contentStart || isProcessing;
+            startButton.disabled = !selectedFile || !tocStart || !tocEnd || (!autoOffset && !contentStart) || isProcessing;
         }
 
-        // 监听输入变化
         ['tocStart', 'tocEnd', 'contentStart'].forEach(id => {
             document.getElementById(id).addEventListener('input', updateStartButton);
         });
 
-        // 监听提示词输入框变化
         ['extractPrompt', 'adjusterRoutePrompt', 'adjusterPrompt'].forEach(id => {
             document.getElementById(id).addEventListener('input', function() {
                 promptsModified = true;
@@ -492,7 +496,6 @@
             });
         });
 
-        // 监听LLM配置输入框变化
         ['apiKey', 'baseUrl', 'model'].forEach(id => {
             document.getElementById(id).addEventListener('input', function() {
                 llmConfigModified = true;
@@ -521,7 +524,8 @@
             formData.append('pdf', selectedFile);
             formData.append('tocStart', document.getElementById('tocStart').value);
             formData.append('tocEnd', document.getElementById('tocEnd').value);
-            formData.append('contentStart', document.getElementById('contentStart').value);
+            formData.append('autoOffset', document.getElementById('autoOffset').checked);
+            formData.append('contentStart', document.getElementById('contentStart').value || 0);
 
             try {
                 const response = await fetch('/upload', {
@@ -531,7 +535,6 @@
                 
                 const data = await response.json();
                 if (data.status === 'success') {
-                    // 保存session_id
                     currentSessionId = data.session_id;
                     addLog('文件上传成功', 'success');
                     return true;
@@ -549,11 +552,9 @@
             try {
                 const response = await fetch(`/download_result/${currentSessionId}`);
                 if (response.ok) {
-                    // 检查是否有提醒头
                     const showReminder = response.headers.get('X-Show-Reminder');
                     const showNoReminderOption = response.headers.get('X-No-Reminder-Option');
                     
-                    // 尝试从 Content-Disposition 头获取文件名
                     let filename = '处理结果.pdf';
                     const disposition = response.headers.get('Content-Disposition');
                     if (disposition && disposition.indexOf('attachment') !== -1) {
@@ -579,7 +580,6 @@
                     window.URL.revokeObjectURL(url);
                     addLog('文件下载成功', 'success');
                     
-                    // 如果需要显示提醒，则显示弹窗
                     if (showReminder === 'true') {
                         showReminderModal(showNoReminderOption === 'true');
                     }
@@ -592,12 +592,9 @@
             }
         }
 
-        // 显示提醒弹窗的函数
         function showReminderModal(showNoReminderOption) {
-            // 创建或显示提醒弹窗
             let reminderModal = document.getElementById('reminderModal');
             if (!reminderModal) {
-                // 创建弹窗元素
                 reminderModal = document.createElement('div');
                 reminderModal.id = 'reminderModal';
                 reminderModal.className = 'modal';
@@ -617,7 +614,6 @@
                 document.body.appendChild(reminderModal);
             }
             
-            // 根据后端返回的标记决定是否显示"不再弹出"选项
             const noReminderOption = document.getElementById('noReminderOption');
             if (noReminderOption) {
                 noReminderOption.style.display = showNoReminderOption ? 'block' : 'none';
@@ -626,7 +622,6 @@
             reminderModal.style.display = 'block';
         }
 
-        // 设置不再提醒
         function setNoReminder() {
             fetch('/set_no_reminder', {
                 method: 'POST',
@@ -641,7 +636,6 @@
                 } else {
                     console.error('设置失败:', data.message);
                 }
-                // 关闭弹窗
                 closeReminderModal();
             })
             .catch(error => {
@@ -650,7 +644,6 @@
             });
         }
 
-        // 关闭提醒弹窗的函数
         function closeReminderModal() {
             const reminderModal = document.getElementById('reminderModal');
             if (reminderModal) {
@@ -687,7 +680,6 @@
             document.getElementById('status').textContent = '正在执行...';
             
             try {
-                // 默认使用通义千问OCR，不再从界面获取
                 const ocrModel = 'qwen';
                 const response = await fetchWithTimeout(
                     `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
@@ -719,10 +711,10 @@
                 } else {
                     handleError(data, scriptIndex, retryCount);
                 }
-                } catch (error) {
-                    handleError({ message: error.message }, scriptIndex, retryCount);
-                }
+            } catch (error) {
+                handleError({ message: error.message }, scriptIndex, retryCount);
             }
+        }
 
         function handleError(data, scriptIndex, retryCount) {
             if (retryCount < MAX_RETRIES - 1) {
@@ -762,12 +754,10 @@
             const modal = document.getElementById('testModal');
             const resultDiv = document.getElementById('testResult');
             
-            // 显示测试中状态
             resultDiv.innerHTML = '<p>正在测试模型服务状态...</p>';
             modal.style.display = 'block';
             
             try {
-                // 先获取当前的LLM配置
                 const configResponse = await fetch('/get_llm_config');
                 if (!configResponse.ok) {
                     throw new Error('获取LLM配置失败');
@@ -778,7 +768,6 @@
                     throw new Error(configData.message || '获取LLM配置失败');
                 }
                 
-                // 使用当前配置进行测试
                 const config = configData.config;
                 
                 const response = await fetch('/test_llm_service', {
@@ -821,7 +810,6 @@
             document.getElementById('testModal').style.display = 'none';
         }
 
-        // 点击模态框外部关闭
         window.onclick = function(event) {
             const modal = document.getElementById('testModal');
             if (event.target == modal) {
@@ -829,7 +817,6 @@
             }
         }
 
-        // 加载LLM配置内容
         async function loadLLMConfig() {
             try {
                 const response = await fetch('/get_llm_config');
@@ -843,7 +830,6 @@
                     document.getElementById('baseUrl').value = data.config.base_url;
                     document.getElementById('model').value = data.config.model;
                     
-                    // 重置修改状态
                     llmConfigModified = false;
                     document.getElementById('saveConfigBtn').disabled = true;
                 } else {
@@ -855,7 +841,6 @@
             }
         }
 
-        // 保存LLM配置内容
         async function saveLLMConfig() {
             try {
                 const config = {
@@ -881,7 +866,6 @@
                     throw new Error(data.message || '保存LLM配置失败');
                 }
 
-                // 重置修改状态
                 llmConfigModified = false;
                 document.getElementById('saveConfigBtn').disabled = true;
                 addLog('LLM配置保存成功', 'success');
@@ -891,31 +875,26 @@
             }
         }
 
-        // 加载提示词内容
         async function loadPrompts() {
             try {
-                // 加载目录提取提示词
                 const extractResponse = await fetch('/static/extract_prompt.md');
                 if (extractResponse.ok) {
                     const extractContent = await extractResponse.text();
                     document.getElementById('extractPrompt').value = extractContent;
                 }
 
-                // 加载层级识别路由提示词
                 const routeResponse = await fetch('/static/adjuster_prompt_route.md');
                 if (routeResponse.ok) {
                     const routeContent = await routeResponse.text();
                     document.getElementById('adjusterRoutePrompt').value = routeContent;
                 }
 
-                // 加载层级识别提示词
                 const adjusterResponse = await fetch('/static/adjuster_prompt.md');
                 if (adjusterResponse.ok) {
                     const adjusterContent = await adjusterResponse.text();
                     document.getElementById('adjusterPrompt').value = adjusterContent;
                 }
 
-                // 重置修改状态
                 promptsModified = false;
                 document.getElementById('savePromptsBtn').disabled = true;
             } catch (error) {
@@ -924,14 +903,12 @@
             }
         }
 
-        // 保存提示词内容
         async function savePrompts() {
             try {
                 const extractContent = document.getElementById('extractPrompt').value;
                 const routeContent = document.getElementById('adjusterRoutePrompt').value;
                 const adjusterContent = document.getElementById('adjusterPrompt').value;
 
-                // 保存目录提取提示词
                 const extractResponse = await fetch('/save_prompt/extract_prompt.md', {
                     method: 'POST',
                     headers: {
@@ -944,7 +921,6 @@
                     throw new Error('保存目录提取提示词失败');
                 }
 
-                // 保存层级识别路由提示词
                 const routeResponse = await fetch('/save_prompt/adjuster_prompt_route.md', {
                     method: 'POST',
                     headers: {
@@ -957,7 +933,6 @@
                     throw new Error('保存层级识别路由提示词失败');
                 }
 
-                // 保存层级识别提示词
                 const adjusterResponse = await fetch('/save_prompt/adjuster_prompt.md', {
                     method: 'POST',
                     headers: {
@@ -970,7 +945,6 @@
                     throw new Error('保存层级识别提示词失败');
                 }
 
-                // 重置修改状态
                 promptsModified = false;
                 document.getElementById('savePromptsBtn').disabled = true;
                 addLog('提示词保存成功', 'success');
