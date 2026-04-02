@@ -4,104 +4,147 @@
     <title>autoContents目录生成工具</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
-        }
-        .form-select {
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            width: 100%;
-            box-sizing: border-box;
-            background-color: white;
-            font-size: 14px;
+            padding: 40px 20px;
+            background-color: #f3f4f6;
+            color: #1f2937;
         }
         .container {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 15px;
+        }
+        .header h2 {
+            margin: 0;
+            color: #111827;
+        }
+        /* 输入框通用样式 */
+        .form-select, input[type="number"], input[type="text"], .prompt-input {
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            background-color: #fff;
+        }
+        .form-select:focus, input[type="number"]:focus, input[type="text"]:focus, .prompt-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .prompt-input {
+            min-height: 100px;
+            resize: vertical;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+        /* 按钮通用样式 */
+        button {
+            transition: all 0.2s ease;
         }
         .test-btn {
             background-color: #6366f1;
             color: white;
-            padding: 6px 12px;
+            padding: 8px 16px;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
+            font-weight: 500;
         }
         .test-btn:hover {
             background-color: #4f46e5;
+            transform: translateY(-1px);
         }
         .file-input-container {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 15px;
         }
         .file-input-container button {
             background-color: #3b82f6;
             color: white;
-            padding: 8px 16px;
+            padding: 10px 20px;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 8px;
+            font-weight: 500;
         }
         .file-input-container button:hover {
             background-color: #2563eb;
+            transform: translateY(-1px);
         }
         .file-name {
             display: flex;
             align-items: center;
             gap: 8px;
+            font-size: 14px;
+            color: #4b5563;
         }
         .remove-file {
-            color: #6b7280;
+            color: #9ca3af;
             cursor: pointer;
             border: none;
             background: none;
             padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .remove-file:hover {
-            color: #374151;
+            color: #ef4444;
+            background-color: #fee2e2;
+            border-radius: 4px;
         }
         .page-inputs {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 20px;
+            gap: 20px;
+            margin-bottom: 25px;
         }
         .input-group {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 8px;
         }
         .input-group label {
             font-size: 14px;
             font-weight: 500;
             color: #374151;
         }
-        .input-group input[type="number"], .input-group input[type="text"] {
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            width: 100%;
-            box-sizing: border-box;
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: normal !important;
+            cursor: pointer;
+            white-space: nowrap;
+            color: #4b5563 !important;
+        }
+        .checkbox-label input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #3b82f6;
         }
         .progress-container {
-            margin: 20px 0;
+            margin: 25px 0;
         }
         .progress-bar {
             width: 100%;
@@ -114,89 +157,163 @@
             width: 0%;
             height: 100%;
             background-color: #10b981;
-            transition: width 0.3s ease;
+            transition: width 0.4s ease;
         }
         .status {
             margin: 10px 0;
             text-align: center;
-            color: #4b5563;
+            color: #6b7280;
             font-size: 14px;
         }
         .log {
             margin-top: 20px;
-            padding: 10px;
-            background-color: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-radius: 4px;
+            padding: 15px;
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
             max-height: 200px;
             overflow-y: auto;
-            font-size: 14px;
+            font-size: 13px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            line-height: 1.6;
         }
-        .error {
-            color: #dc2626;
-        }
-        .warning {
-            color: #d97706;
-        }
-        .success {
-            color: #059669;
-        }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .success { color: #10b981; }
+        
         button#startButton {
             width: 100%;
             background-color: #10b981;
             color: white;
-            padding: 12px 20px;
+            padding: 14px 20px;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 16px;
+            font-weight: 600;
+            margin-top: 10px;
         }
-        button#startButton:hover {
+        button#startButton:hover:not(:disabled) {
             background-color: #059669;
+            transform: translateY(-1px);
         }
         button#startButton:disabled {
             background-color: #d1d5db;
             cursor: not-allowed;
         }
-        .hidden {
-            display: none;
+        .hidden { display: none; }
+        
+        /* 折叠面板样式 */
+        .collapsible-wrapper {
+            margin-top: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background-color: #f9fafb;
+            overflow: hidden;
         }
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            cursor: pointer;
+            user-select: none;
+            background-color: #f9fafb;
+            transition: background-color 0.2s;
+        }
+        .collapsible-header:hover {
+            background-color: #f3f4f6;
+        }
+        .collapsible-header h3 {
+            margin: 0;
+            font-size: 15px;
+            color: #374151;
+            font-weight: 600;
+        }
+        .collapsible-content {
+            display: none;
+            padding: 20px;
+            background-color: #ffffff;
+            border-top: 1px solid #e5e7eb;
+        }
+        .collapsible-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chevron {
+            transition: transform 0.3s ease;
+            color: #6b7280;
+        }
+        .chevron.active {
+            transform: rotate(180deg);
+        }
+        .llm-config-section, .prompt-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .save-btn {
+            align-self: flex-start;
+            background-color: #6366f1;
+            color: white;
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 5px;
+        }
+        .save-btn:hover:not(:disabled) {
+            background-color: #4f46e5;
+        }
+        .save-btn:disabled {
+            background-color: #d1d5db;
+            cursor: not-allowed;
+        }
+
+        /* 模态框与赞助 */
         .sponsor-container {
             max-width: 800px;
-            margin: 20px auto;
+            margin: 30px auto;
             text-align: center;
         }
         .sponsor-button {
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 8px;
-            margin: 0 auto;
-            padding: 8px 16px;
-            background-color: #f3f4f6;
-            border: 1px solid #e5e7eb;
-            border-radius: 4px;
+            padding: 10px 24px;
+            background-color: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 20px;
             color: #4b5563;
             cursor: pointer;
-            transition: all 0.2s;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         .sponsor-button:hover {
-            background-color: #e5e7eb;
+            background-color: #f9fafb;
+            border-color: #9ca3af;
         }
         .sponsor-content {
             display: none;
-            margin-top: 16px;
-            padding: 16px;
+            margin-top: 20px;
+            padding: 20px;
             background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
         .sponsor-qr {
-            max-width: 400px;
+            max-width: 300px;
             height: auto;
+            border-radius: 8px;
         }
-        #ocrModelContainer {
-            display: none;
-        }
+        #ocrModelContainer { display: none; }
         .modal {
             display: none;
             position: fixed;
@@ -205,103 +322,54 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.4);
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(2px);
         }
         .modal-content {
-            background-color: #fefefe;
-            margin: 15% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
+            background-color: #ffffff;
+            margin: 10% auto;
+            padding: 25px;
+            border: none;
+            width: 90%;
             max-width: 500px;
-            border-radius: 8px;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
         .close {
-            color: #aaa;
+            color: #9ca3af;
             float: right;
-            font-size: 28px;
+            font-size: 24px;
             font-weight: bold;
             cursor: pointer;
+            line-height: 1;
         }
-        .close:hover,
-        .close:focus {
-            color: black;
+        .close:hover { color: #374151; }
+        
+        /* 底部链接 */
+        .footer-links {
+            text-align: center;
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
         }
-        .prompt-section {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid #e5e7eb;
-            border-radius: 4px;
-            background-color: #f9fafb;
-        }
-        .prompt-section h3 {
-            margin-top: 0;
-            color: #374151;
-        }
-        .prompt-input {
-            width: 100%;
-            min-height: 100px;
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-family: Arial, sans-serif;
+        .footer-links a {
+            color: #4f46e5;
+            text-decoration: none;
             font-size: 14px;
-            resize: vertical;
+            font-weight: 500;
+            transition: color 0.2s;
         }
-        .save-prompts-btn {
-            background-color: #10b981;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-top: 10px;
+        .footer-links a:hover {
+            color: #312e81;
+            text-decoration: underline;
         }
-        .save-prompts-btn:hover {
-            background-color: #059669;
-        }
-        .save-prompts-btn:disabled {
-            background-color: #d1d5db;
-            cursor: not-allowed;
-        }
-        .llm-config-section {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid #e5e7eb;
-            border-radius: 4px;
-            background-color: #f9fafb;
-        }
-        .llm-config-section h3 {
-            margin-top: 0;
-            color: #374151;
-        }
-        .llm-config-input {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            box-sizing: border-box;
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-        }
-        .save-config-btn {
-            background-color: #6366f1;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-        .save-config-btn:hover {
-            background-color: #4f46e5;
-        }
-        .save-config-btn:disabled {
-            background-color: #d1d5db;
-            cursor: not-allowed;
+        .footer-text {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 30px;
         }
     </style>
 </head>
@@ -315,7 +383,7 @@
         <div class="file-input-container">
             <input type="file" id="pdfFile" accept=".pdf" class="hidden">
             <button onclick="document.getElementById('pdfFile').click()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
@@ -338,7 +406,7 @@
                 <label for="contentStart">正文偏移量</label>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <input type="number" id="contentStart" min="1" style="flex: 1;" disabled placeholder="自动计算">
-                    <label style="display: flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer;">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="autoOffset" checked> 自动计算
                     </label>
                 </div>
@@ -364,59 +432,85 @@
         
         <div id="log" class="log"></div>
         
-        <div class="llm-config-section">
-            <h3>LLM 配置管理</h3>
-            <div class="input-group">
-                <label for="apiKey">API 密钥（若为环境变量请使用$符号包裹，否则直接输入KEY即可）</label>
-                <input type="text" id="apiKey" class="llm-config-input" placeholder="请输入 API 密钥...">
+        <!-- LLM 配置折叠面板 -->
+        <div class="collapsible-wrapper">
+            <div class="collapsible-header" onclick="toggleCollapsible('llmContent', 'llmChevron')">
+                <h3>LLM 配置管理</h3>
+                <svg id="llmChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
-            <div class="input-group">
-                <label for="baseUrl">Base URL（需以v1结尾）</label>
-                <input type="text" id="baseUrl" class="llm-config-input" placeholder="请输入 Base URL...">
+            <div id="llmContent" class="collapsible-content">
+                <div class="llm-config-section">
+                    <div class="input-group">
+                        <label for="apiKey">API 密钥（若为环境变量请使用$符号包裹，否则直接输入KEY即可）</label>
+                        <input type="text" id="apiKey" class="llm-config-input" placeholder="请输入 API 密钥...">
+                    </div>
+                    <div class="input-group">
+                        <label for="baseUrl">Base URL（需以v1结尾）</label>
+                        <input type="text" id="baseUrl" class="llm-config-input" placeholder="请输入 Base URL...">
+                    </div>
+                    <div class="input-group">
+                        <label for="model">模型名称</label>
+                        <input type="text" id="model" class="llm-config-input" placeholder="请输入模型名称...">
+                    </div>
+                    <button id="saveConfigBtn" class="save-btn" onclick="saveLLMConfig()" disabled>保存 LLM 配置</button>
+                </div>
             </div>
-            <div class="input-group">
-                <label for="model">模型名称</label>
-                <input type="text" id="model" class="llm-config-input" placeholder="请输入模型名称...">
-            </div>
-            <button id="saveConfigBtn" class="save-config-btn" onclick="saveLLMConfig()" disabled>保存 LLM 配置</button>
         </div>
         
-        <div class="prompt-section">
-            <h3>提示词管理</h3>
-            <div class="input-group">
-                <label for="extractPrompt">目录提取提示词</label>
-                <textarea id="extractPrompt" class="prompt-input" placeholder="请输入目录提取提示词..."></textarea>
+        <!-- 提示词管理折叠面板 -->
+        <div class="collapsible-wrapper">
+            <div class="collapsible-header" onclick="toggleCollapsible('promptContent', 'promptChevron')">
+                <h3>提示词管理</h3>
+                <svg id="promptChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
-            <div class="input-group">
-                <label for="adjusterRoutePrompt">层级识别路由提示词</label>
-                <textarea id="adjusterRoutePrompt" class="prompt-input" placeholder="请输入层级识别路由提示词..."></textarea>
+            <div id="promptContent" class="collapsible-content">
+                <div class="prompt-section">
+                    <div class="input-group">
+                        <label for="extractPrompt">目录提取提示词</label>
+                        <textarea id="extractPrompt" class="prompt-input" placeholder="请输入目录提取提示词..."></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label for="adjusterRoutePrompt">层级识别路由提示词</label>
+                        <textarea id="adjusterRoutePrompt" class="prompt-input" placeholder="请输入层级识别路由提示词..."></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label for="adjusterPrompt">层级识别提示词</label>
+                        <textarea id="adjusterPrompt" class="prompt-input" placeholder="请输入层级识别提示词..."></textarea>
+                    </div>
+                    <button id="savePromptsBtn" class="save-btn" style="background-color: #10b981;" onclick="savePrompts()" disabled>保存提示词</button>
+                </div>
             </div>
-            <div class="input-group">
-                <label for="adjusterPrompt">层级识别提示词</label>
-                <textarea id="adjusterPrompt" class="prompt-input" placeholder="请输入层级识别提示词..."></textarea>
-            </div>
-            <button id="savePromptsBtn" class="save-prompts-btn" onclick="savePrompts()" disabled>保存提示词</button>
         </div>
     </div>
 
     <div id="testModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeTestModal()">&times;</span>
-            <h3>服务状态测试结果</h3>
-            <div id="testResult"></div>
+            <h3 style="margin-top: 0;">服务状态测试结果</h3>
+            <div id="testResult" style="margin-top: 15px; line-height: 1.5;"></div>
         </div>
     </div>
 
     <div class="sponsor-container">
         <button id="sponsorButton" class="sponsor-button" onclick="toggleSponsor()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/>
             </svg>
-            赞助链接
+            赞助支持
         </button>
         <div id="sponsorContent" class="sponsor-content">
             <img src="/static/qrcode.jpg" alt="赞助二维码" class="sponsor-qr">
         </div>
+    </div>
+
+    <div class="footer-links">
+        <a href="https://github.com/NatsUIJM/autoContents" target="_blank">GitHub</a>
+        <a href="https://bbs.marginnote.com.cn/t/topic/59344/2" target="_blank">MarginNote</a>
+        <a href="https://www.bilibili.com/video/BV14wKGeQEvr/" target="_blank">Bilibili</a>
+        <a href="https://www.zhihu.com/question/392666875/answer/100357892412" target="_blank">知乎</a>
+    </div>
+    <div class="footer-text">
+        本项目完全开源免费，任何个人或组织不得将此工具进行商业销售。
     </div>
 
     <script>
@@ -435,6 +529,20 @@
             loadLLMConfig();
         });
 
+        // 折叠面板控制逻辑
+        function toggleCollapsible(contentId, chevronId) {
+            const content = document.getElementById(contentId);
+            const chevron = document.getElementById(chevronId);
+            
+            if (content.classList.contains('active')) {
+                content.classList.remove('active');
+                chevron.classList.remove('active');
+            } else {
+                content.classList.add('active');
+                chevron.classList.add('active');
+            }
+        }
+
         document.getElementById('pdfFile').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file && file.type === 'application/pdf') {
@@ -442,8 +550,8 @@
                 const fileNameDiv = document.getElementById('fileName');
                 fileNameDiv.innerHTML = `
                     <span>${file.name}</span>
-                    <button class="remove-file" onclick="removeFile()">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <button class="remove-file" onclick="removeFile()" title="移除文件">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
@@ -466,7 +574,7 @@
             const contentStartInput = document.getElementById('contentStart');
             if (e.target.checked) {
                 contentStartInput.disabled = true;
-                contentStartInput.placeholder = "自动计算中...";
+                contentStartInput.placeholder = "自动计算";
                 contentStartInput.value = "";
             } else {
                 contentStartInput.disabled = false;
@@ -511,7 +619,7 @@
         function addLog(message, type = 'normal') {
             const log = document.getElementById('log');
             const entry = document.createElement('div');
-            entry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
             if (type === 'error') entry.className = 'error';
             if (type === 'warning') entry.className = 'warning';
             if (type === 'success') entry.className = 'success';
@@ -601,11 +709,11 @@
                 reminderModal.innerHTML = `
                     <div class="modal-content">
                         <span class="close" onclick="closeReminderModal()">&times;</span>
-                        <h3>温馨提示</h3>
+                        <h3 style="margin-top: 0;">温馨提示</h3>
                         <p>如果你认为这个程序有所帮助，希望可以打赏支持，谢谢！</p>
                         <p>遇到任何问题，请向uijm2004@outlook.com反馈。</p>
-                        <div id="noReminderOption" style="margin-top: 15px; display: none;">
-                            <button onclick="setNoReminder()" style="background-color: #f0f0f0; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; cursor: pointer;">
+                        <div id="noReminderOption" style="margin-top: 20px; display: none;">
+                            <button onclick="setNoReminder()" style="background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 6px; cursor: pointer; color: #4b5563;">
                                 不再弹出
                             </button>
                         </div>
@@ -754,7 +862,7 @@
             const modal = document.getElementById('testModal');
             const resultDiv = document.getElementById('testResult');
             
-            resultDiv.innerHTML = '<p>正在测试模型服务状态...</p>';
+            resultDiv.innerHTML = '<p style="color: #4b5563;">正在测试模型服务状态...</p>';
             modal.style.display = 'block';
             
             try {
@@ -786,21 +894,21 @@
                 
                 if (data.status === 'success') {
                     resultDiv.innerHTML = `
-                        <p style="color: green;">✓ ${data.message}</p>
-                        <p>响应内容: ${data.response}</p>
-                        <p>使用的模型: ${config.model}</p>
+                        <p style="color: #10b981; font-weight: 500;">✓ ${data.message}</p>
+                        <p style="background: #f3f4f6; padding: 10px; border-radius: 6px; font-family: monospace;">响应内容: ${data.response}</p>
+                        <p style="color: #6b7280; font-size: 13px;">使用的模型: ${config.model}</p>
                     `;
                 } else {
                     resultDiv.innerHTML = `
-                        <p style="color: red;">✗ 测试失败</p>
+                        <p style="color: #ef4444; font-weight: 500;">✗ 测试失败</p>
                         <p>错误信息: ${data.message}</p>
                         <p>错误类型: ${data.error_code}</p>
-                        <p>尝试使用的模型: ${config.model}</p>
+                        <p style="color: #6b7280; font-size: 13px;">尝试使用的模型: ${config.model}</p>
                     `;
                 }
             } catch (error) {
                 resultDiv.innerHTML = `
-                    <p style="color: red;">✗ 请求失败</p>
+                    <p style="color: #ef4444; font-weight: 500;">✗ 请求失败</p>
                     <p>错误信息: ${error.message}</p>
                 `;
             }
@@ -954,14 +1062,5 @@
             }
         }
     </script>
-    <div class="links" style="text-align: center; color: blue;">
-        <a href="https://github.com/NatsUIJM/autoContents" style="color: blue;" target="_blank">GitHub</a> · 
-        <a href="https://bbs.marginnote.com.cn/t/topic/59344/2" style="color: blue;" target="_blank">MarginNote</a> · 
-        <a href="https://www.bilibili.com/video/BV14wKGeQEvr/" style="color: blue;" target="_blank">Bilibili</a> · 
-        <a href="https://www.zhihu.com/question/392666875/answer/100357892412" style="color: blue;" target="_blank">知乎</a>
-    </div>
-    <div style="text-align: center; margin-top: 20px; font-size: 14px; color: #666;">
-        本项目完全开源免费，任何个人或组织不得将此工具进行商业销售。
-    </div>
 </body>
 </html>
