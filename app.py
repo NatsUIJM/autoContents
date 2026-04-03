@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request, send_file, send_from_directory
 import subprocess
 import os
 import logging
@@ -12,20 +12,12 @@ from pypinyin import lazy_pinyin
 import sys
 import webbrowser
 import threading
-import fitz  # PyMuPDF，用于提取图片
-import base64 # 用于图片编码
-import re     # 用于清理文件名中的非法字符
-import concurrent.futures # 新增：用于并发请求
-from collections import Counter # 新增：用于计算众数
-
-# 添加openai库导入
 from openai import OpenAI
 import traceback
 
 logger = logging.getLogger('gunicorn.error')
 
 app = Flask(__name__)
-from flask import send_from_directory
 
 @app.route('/favicon.ico')
 def favicon():
@@ -54,11 +46,12 @@ DATA_FOLDERS = [
 ]
 
 QWEN_SCRIPT_SEQUENCE = [
-    ('pdf_to_image', 'PDF转换为图像（下一步可能需要一分钟或更长，请耐心等待）'),
-    ('qwen_vl_extract', 'OCR识别'),
-    ('content_preprocessor', '内容预处理'),
+    ('pdf_metadata_extractor', 'PDF元数据提取'),
+    ('pdf_to_image', 'PDF转JPG'),
+    ('qwen_vl_extract', '目录数据提取'),
+    ('content_preprocessor', '目录后处理'),
     ('llm_level_adjuster', '层级调整'),
-    ('pdf_generator', 'PDF生成')
+    ('pdf_generator', '生成PDF')
 ]
 
 def generate_random_string(length=6):
@@ -87,164 +80,6 @@ def extract_env_var_name(api_key_value):
         return api_key_value[1:-1]  # 移除开头和结尾的$
     return None
 
-def extract_first_page_and_recognize(pdf_path, original_filename, session_dir, config):
-    """提取PDF第一页并调用LLM识别书名"""
-    try:
-        doc = fitz.open(pdf_path)
-        page = doc[0]
-        
-        rect = page.rect
-        max_dim = max(rect.width, rect.height)
-        zoom = 1000.0 / max_dim if max_dim > 1000 else 1.0
-        mat = fitz.Matrix(zoom, zoom)
-        
-        pix = page.get_pixmap(matrix=mat)
-        img_data = pix.tobytes("jpeg")
-        doc.close()
-        
-        base64_image = base64.b64encode(img_data).decode('utf-8')
-        image_data_url = f"data:image/jpeg;base64,{base64_image}"
-        
-        api_key_value = config.get("api_key", "")
-        env_var_name = extract_env_var_name(api_key_value)
-        actual_api_key = os.environ.get(env_var_name, "") if env_var_name else api_key_value
-            
-        client = OpenAI(
-            api_key=actual_api_key,
-            base_url=config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        )
-        
-        prompt = f"这是PDF文件的第一页。该文件的原始文件名为：{original_filename}。请结合图片内容和原始文件名，识别并输出这本书的书名。只需输出书名文本，不要包含任何其他说明、标点或多余内容。"
-        
-        completion = client.chat.completions.create(
-            model=config.get("model", "qwen-vl-max"),
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": image_data_url}},
-                        {"type": "text", "text": prompt}
-                    ]
-                }
-            ],
-            extra_body={"enable_thinking": False}
-        )
-        
-        book_name = completion.choices[0].message.content.strip()
-        book_name = re.sub(r'[\\/:*?"<>|]', '_', book_name)
-        
-        info_path = os.path.join(session_dir, 'book_name.txt')
-        with open(info_path, 'w', encoding='utf-8') as f:
-            f.write(book_name)
-            
-    except Exception as e:
-        logger.error(f"识别书名失败: {str(e)}")
-
-def calculate_offset(pdf_path, json_path, config):
-    """自动计算正文偏移量并更新JSON"""
-    try:
-        doc = fitz.open(pdf_path)
-        total_pages = len(doc)
-        start_idx = int(total_pages * 0.2)
-        end_idx = int(total_pages * 0.8)
-        if end_idx <= start_idx:
-            end_idx = total_pages - 1
-            start_idx = 0
-            
-        pool = list(range(start_idx, end_idx + 1))
-        selected_pages = random.sample(pool, min(5, len(pool)))
-        
-        images_data = []
-        for p in selected_pages:
-            page = doc[p]
-            rect = page.rect
-            max_dim = max(rect.width, rect.height)
-            zoom = 1500.0 / max_dim if max_dim > 1500 else 2.0
-            mat = fitz.Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
-            img_data = pix.tobytes("jpeg")
-            base64_image = base64.b64encode(img_data).decode('utf-8')
-            images_data.append((p + 1, base64_image)) # p+1 为物理页码
-        doc.close()
-        
-        api_key_value = config.get("api_key", "")
-        env_var_name = extract_env_var_name(api_key_value)
-        actual_api_key = os.environ.get(env_var_name, "") if env_var_name else api_key_value
-        
-        client = OpenAI(
-            api_key=actual_api_key,
-            base_url=config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        )
-        
-        def fetch_offset(page_num, b64_img):
-            prompt = f"""你是一个专业的文档页码识别专家。你的任务是识别图片中页面底部或顶部标注的实际印刷页码，并计算正文偏移量。
-计算公式：正文偏移量 = PDF物理页码 - 印刷页码。
-
-当前图片的PDF物理页码是：{page_num}
-
-【示例1】
-物理页码：25
-图片中底部写着："10"
-输出：15
-
-【示例2】
-物理页码：12
-图片中顶部写着："- 2 -"
-输出：10
-
-【示例3】
-物理页码：100
-图片中没有明确的阿拉伯数字页码
-输出：Error
-
-请仔细观察图片，找到印刷页码，并严格按照上述格式，仅输出计算后的正文偏移量数字。不要输出任何解释。"""
-            try:
-                completion = client.chat.completions.create(
-                    model=config.get("model", "qwen-vl-max"),
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
-                                {"type": "text", "text": prompt}
-                            ]
-                        }
-                    ],
-                    extra_body={"enable_thinking": False}
-                )
-                return completion.choices[0].message.content.strip()
-            except Exception as e:
-                logger.error(f"获取偏移量失败: {e}")
-                return "Error"
-
-        offsets = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(fetch_offset, p_num, b64) for p_num, b64 in images_data]
-            for future in concurrent.futures.as_completed(futures):
-                res = future.result()
-                if res.isdigit() or (res.startswith('-') and res[1:].isdigit()):
-                    offsets.append(int(res))
-                    
-        if offsets:
-            most_common_offset = Counter(offsets).most_common(1)[0][0]
-            with open(json_path, 'r', encoding='utf-8') as f:
-                j_data = json.load(f)
-            j_data['content_start'] = most_common_offset
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(j_data, f, ensure_ascii=False, indent=4)
-            logger.info(f"自动计算偏移量成功: {most_common_offset}")
-        else:
-            logger.warning("未能自动计算出有效的偏移量")
-            
-    except Exception as e:
-        logger.error(f"自动计算偏移量过程发生异常: {str(e)}")
-
-def background_tasks(pdf_path, original_filename, session_dir, config, json_path, auto_offset):
-    """后台执行书名识别和偏移量计算"""
-    extract_first_page_and_recognize(pdf_path, original_filename, session_dir, config)
-    if auto_offset:
-        calculate_offset(pdf_path, json_path, config)
-
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -262,15 +97,6 @@ def upload_files():
         if pdf_file.filename == '':
             return jsonify({'status': 'error', 'message': '未选择 PDF 文件'})
             
-        toc_start = request.form.get('tocStart')
-        toc_end = request.form.get('tocEnd')
-        content_start = request.form.get('contentStart')
-        auto_offset = request.form.get('autoOffset') == 'true'
-        # 已移除 toc_structure 的读取逻辑，因为该字段已被废弃
-        
-        if not toc_start or not toc_end or (not auto_offset and not content_start):
-            return jsonify({'status': 'error', 'message': '页码信息不完整'})
-            
         original_filename = pdf_file.filename
         filename_without_ext, file_extension = os.path.splitext(original_filename)
         
@@ -283,35 +109,20 @@ def upload_files():
         pdf_path = os.path.join(upload_folder, pinyin_filename)
         pdf_file.save(pdf_path)
         
-        json_data = {
-            "toc_start": int(toc_start),
-            "toc_end": int(toc_end),
-            "content_start": int(content_start) if content_start else 0,
-            "original_filename": original_filename
-            # 已移除 "toc_structure": toc_structure 字段
-        }
-        
+        # 创建初始 JSON 文件，字段由首个脚本 pdf_metadata_extractor.py 填充
         json_filename = pinyin_filename.replace(file_extension, '.json')
         json_path = os.path.join(upload_folder, json_filename)
         
+        initial_json_data = {
+            "toc_start": 0,
+            "toc_end": 0,
+            "content_start": 0,
+            "original_filename": original_filename,
+            "book_name": ""
+        }
+        
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(json_data, f, ensure_ascii=False, indent=4)
-            
-        config_path = os.path.join(app.static_folder, 'llm_config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                llm_config = json.load(f)
-        else:
-            llm_config = {
-                "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
-                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "model": "qwen-vl-max"
-            }
-            
-        threading.Thread(
-            target=background_tasks,
-            args=(pdf_path, original_filename, base_dir, llm_config, json_path, auto_offset)
-        ).start()
+            json.dump(initial_json_data, f, ensure_ascii=False, indent=4)
             
         return jsonify({
             'status': 'success', 
@@ -348,37 +159,19 @@ def download_result(session_id):
         return jsonify({'status': 'error', 'message': '未找到输出PDF文件'})
     file_path = os.path.join(output_folder, pdf_files[0])
 
+    book_name = "处理结果"
     try:
-        input_files = [f for f in os.listdir(input_folder) if f.endswith('.pdf') or f.endswith('.json')]
-        original_pdf = next((f for f in input_files if f.endswith('.pdf')), None)
-        if not original_pdf:
-            return jsonify({'status': 'error', 'message': '未找到原始PDF文件'})
-
-        json_file_name = os.path.splitext(original_pdf)[0] + '.json'
-        json_path = os.path.join(input_folder, json_file_name)
-
-        with open(json_path, 'r', encoding='utf-8') as f:
-            json_data = json.load(f)
-        original_filename = json_data.get('original_filename', None)
-
+        # 从 input_pdf 文件夹中读取唯一的 JSON 文件获取书名
+        json_files = [f for f in os.listdir(input_folder) if f.endswith('.json')]
+        if json_files:
+            json_path = os.path.join(input_folder, json_files[0])
+            with open(json_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            extracted_name = json_data.get('book_name', '')
+            if extracted_name:
+                book_name = extracted_name
     except Exception as e:
-        print(f"[ERROR] 读取 JSON 时出错: {e}")
-        original_filename = None
-
-    book_name = ""
-    book_name_path = os.path.join('data', session_id, 'book_name.txt')
-    if os.path.exists(book_name_path):
-        try:
-            with open(book_name_path, 'r', encoding='utf-8') as f:
-                book_name = f.read().strip()
-        except Exception:
-            pass
-
-    if not book_name:
-        if original_filename:
-            book_name, _ = os.path.splitext(original_filename)
-        else:
-            book_name = "处理结果"
+        logger.error(f"读取 JSON 时出错: {e}")
 
     time_str = datetime.now().strftime("%y%m%d%H%M%S")
     download_filename = f"{book_name}-{time_str}-TOC.pdf"
@@ -410,65 +203,12 @@ def set_no_reminder():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-AZURE_TIMEOUT = 30
-
-def run_azure_with_timeout(python_executable, script_path, env, script_dir):
-    try:
-        result = subprocess.run(
-            [python_executable, script_path],
-            env=env,
-            cwd=script_dir,
-            capture_output=True,
-            text=True,
-            timeout=AZURE_TIMEOUT
-        )
-        
-        return {
-            'success': result.returncode == 0,
-            'stdout': result.stdout,
-            'stderr': result.stderr
-        }
-    except subprocess.TimeoutExpired as e:
-        return {
-            'success': False,
-            'error': 'Azure OCR timeout',
-            'stdout': e.stdout.decode() if e.stdout else '',
-            'stderr': e.stderr.decode() if e.stderr else ''
-        }
-    except Exception as e:
-        return {
-            'success': False,
-            'error': str(e)
-        }
-
-def get_api_key_from_config():
-    config_path = os.path.join(app.static_folder, 'llm_config.json')
-    if os.path.exists(config_path):
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        api_key_value = config.get('api_key', '')
-        
-        env_var_name = extract_env_var_name(api_key_value)
-        if env_var_name:
-            actual_api_key = os.environ.get(env_var_name, '')
-            return actual_api_key
-        else:
-            return api_key_value
-    else:
-        return ''
-
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
 def run_script(session_id, script_index, retry_count):
-    ocr_model = request.args.get('ocr_model', 'aliyun')
+    script_sequence = QWEN_SCRIPT_SEQUENCE
+    total_scripts = len(script_sequence)
     
-    if ocr_model == 'qwen':
-        script_sequence = QWEN_SCRIPT_SEQUENCE
-        total_scripts = len(QWEN_SCRIPT_SEQUENCE)
-    else:
-        script_sequence = []
-        total_scripts = 0
-    
-    if script_index >= len(script_sequence):
+    if script_index >= total_scripts:
         return jsonify({
             'status': 'completed',
             'message': '所有脚本执行完成'
@@ -498,6 +238,8 @@ def run_script(session_id, script_index, retry_count):
         
         env.update({
             'BASE_DIR': base_dir,
+            'PDF_METADATA_EXTRACTOR_INPUT': f"{base_dir}/input_pdf",
+            'PDF_METADATA_EXTRACTOR_OUTPUT': f"{base_dir}/input_pdf",
             'PDF2JPG_INPUT': f"{base_dir}/input_pdf",
             'PDF2JPG_OUTPUT': f"{base_dir}/mark/input_image",
             'CONTENT_PREPROCESSOR_INPUT': f"{base_dir}/raw_content",
@@ -514,39 +256,6 @@ def run_script(session_id, script_index, retry_count):
         })
 
         python_executable = sys.executable
-        
-        if script_name in ['ocr_hybrid', 'ocr_and_projection_hybrid']:
-            ocr_model = request.args.get('ocr_model', 'aliyun')
-            
-            if ocr_model == 'azure':
-                script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "azure")}.py')
-                azure_result = run_azure_with_timeout(python_executable, script_path, env, script_dir)
-                
-                if azure_result.get('success', False):
-                    return jsonify({
-                        'status': 'success',
-                        'currentScript': script_desc,
-                        'message': f'{script_desc} (Azure) 执行成功',
-                        'nextIndex': script_index + 1,
-                        'totalScripts': total_scripts,
-                        'retryCount': 0,
-                        'session_id': session_id,
-                        'stdout': azure_result.get('stdout', ''),
-                        'stderr': azure_result.get('stderr', '')
-                    })
-                else:
-                    return jsonify({
-                        'status': 'error',
-                        'currentScript': script_desc,
-                        'message': f'{script_desc} (Azure) 执行失败',
-                        'stdout': azure_result.get('stdout', ''),
-                        'stderr': azure_result.get('stderr', ''),
-                        'retryCount': retry_count,
-                        'scriptIndex': script_index,
-                        'session_id': session_id
-                    })
-            else:
-                script_path = os.path.join(script_dir, f'{script_name.replace("hybrid", "aliyun")}.py')
         
         try:
             result = subprocess.run(

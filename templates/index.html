@@ -112,37 +112,6 @@
             background-color: #fee2e2;
             border-radius: 4px;
         }
-        .page-inputs {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 25px;
-        }
-        .input-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .input-group label {
-            font-size: 14px;
-            font-weight: 500;
-            color: #374151;
-        }
-        .checkbox-label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-weight: normal !important;
-            cursor: pointer;
-            white-space: nowrap;
-            color: #4b5563 !important;
-        }
-        .checkbox-label input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            accent-color: #3b82f6;
-        }
         .progress-container {
             margin: 25px 0;
         }
@@ -392,26 +361,7 @@
             <div id="fileName" class="file-name"></div>
         </div>
 
-        <div class="page-inputs">
-            <div class="input-group">
-                <label for="tocStart">目录起始页</label>
-                <input type="number" id="tocStart" min="1">
-            </div>
-            <div class="input-group">
-                <label for="tocEnd">目录结束页</label>
-                <input type="number" id="tocEnd" min="1">
-            </div>
-            <div class="input-group">
-                <label for="contentStart">正文偏移量</label>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="number" id="contentStart" min="1" style="flex: 1;" disabled placeholder="自动计算">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="autoOffset" checked> 自动计算
-                    </label>
-                </div>
-            </div>
-            <!-- 已移除 OCR 模型选择器 (#ocrModelContainer) -->
-        </div>
+        <!-- 已删除：目录起始页、结束页和正文偏移量的输入框 -->
 
         <button id="startButton" onclick="startProcess()" disabled>开始执行</button>
         
@@ -562,32 +512,15 @@
             updateStartButton();
         }
 
-        document.getElementById('autoOffset').addEventListener('change', function(e) {
-            const contentStartInput = document.getElementById('contentStart');
-            if (e.target.checked) {
-                contentStartInput.disabled = true;
-                contentStartInput.placeholder = "自动计算";
-                contentStartInput.value = "";
-            } else {
-                contentStartInput.disabled = false;
-                contentStartInput.placeholder = "";
-            }
-            updateStartButton();
-        });
+        // 已删除：autoOffset 相关的 change 事件监听
 
         function updateStartButton() {
-            const tocStart = document.getElementById('tocStart').value;
-            const tocEnd = document.getElementById('tocEnd').value;
-            const contentStart = document.getElementById('contentStart').value;
-            const autoOffset = document.getElementById('autoOffset').checked;
             const startButton = document.getElementById('startButton');
-            
-            startButton.disabled = !selectedFile || !tocStart || !tocEnd || (!autoOffset && !contentStart) || isProcessing;
+            // 仅需检查是否有文件选中，不再检查页码输入
+            startButton.disabled = !selectedFile || isProcessing;
         }
 
-        ['tocStart', 'tocEnd', 'contentStart'].forEach(id => {
-            document.getElementById(id).addEventListener('input', updateStartButton);
-        });
+        // 已删除：tocStart, tocEnd, contentStart 的 input 事件监听
 
         ['extractPrompt', 'adjusterRoutePrompt', 'adjusterPrompt'].forEach(id => {
             document.getElementById(id).addEventListener('input', function() {
@@ -622,10 +555,7 @@
         async function uploadFiles() {
             const formData = new FormData();
             formData.append('pdf', selectedFile);
-            formData.append('tocStart', document.getElementById('tocStart').value);
-            formData.append('tocEnd', document.getElementById('tocEnd').value);
-            formData.append('autoOffset', document.getElementById('autoOffset').checked);
-            formData.append('contentStart', document.getElementById('contentStart').value || 0);
+            // 已删除：tocStart, tocEnd, autoOffset, contentStart 的添加逻辑
 
             try {
                 const response = await fetch('/upload', {
@@ -780,7 +710,7 @@
             document.getElementById('status').textContent = '正在执行...';
             
             try {
-                // 固定使用 qwen 模型，移除了动态获取 ocrModel 的逻辑
+                // 强制使用 qwen 模型
                 const ocrModel = 'qwen';
                 const response = await fetchWithTimeout(
                     `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
