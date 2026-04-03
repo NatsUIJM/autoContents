@@ -1,11 +1,8 @@
 openai
 python-dotenv
 pikepdf
-numpy
-opencv-python
 pdf2image
+Pillow
 flask
-flask[async]
 pypinyin
-pypdf2
-PyMupdf
+PyMuPDF

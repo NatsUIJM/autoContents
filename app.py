@@ -256,17 +256,17 @@ def upload_files():
         base_dir = create_data_folders(session_id)
         
         if 'pdf' not in request.files:
-            return jsonify({'status': 'error', 'message': '未找到PDF文件'})
+            return jsonify({'status': 'error', 'message': '未找到 PDF 文件'})
             
         pdf_file = request.files['pdf']
         if pdf_file.filename == '':
-            return jsonify({'status': 'error', 'message': '未选择PDF文件'})
+            return jsonify({'status': 'error', 'message': '未选择 PDF 文件'})
             
         toc_start = request.form.get('tocStart')
         toc_end = request.form.get('tocEnd')
         content_start = request.form.get('contentStart')
         auto_offset = request.form.get('autoOffset') == 'true'
-        toc_structure = request.form.get('tocStructure', 'original')
+        # 已移除 toc_structure 的读取逻辑，因为该字段已被废弃
         
         if not toc_start or not toc_end or (not auto_offset and not content_start):
             return jsonify({'status': 'error', 'message': '页码信息不完整'})
@@ -287,8 +287,8 @@ def upload_files():
             "toc_start": int(toc_start),
             "toc_end": int(toc_end),
             "content_start": int(content_start) if content_start else 0,
-            "original_filename": original_filename,
-            "toc_structure": toc_structure
+            "original_filename": original_filename
+            # 已移除 "toc_structure": toc_structure 字段
         }
         
         json_filename = pinyin_filename.replace(file_extension, '.json')
