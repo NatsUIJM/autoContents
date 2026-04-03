@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>autoContents目录生成工具</title>
+    <title>autoContents 目录生成工具</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -313,7 +313,6 @@
             height: auto;
             border-radius: 8px;
         }
-        #ocrModelContainer { display: none; }
         .modal {
             display: none;
             position: fixed;
@@ -376,7 +375,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h2>autoContents目录生成工具</h2>
+            <h2>autoContents 目录生成工具</h2>
             <button class="test-btn" onclick="testQwenService()">模型服务测试</button>
         </div>
 
@@ -388,7 +387,7 @@
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                选择PDF文件
+                选择 PDF 文件
             </button>
             <div id="fileName" class="file-name"></div>
         </div>
@@ -411,14 +410,7 @@
                     </label>
                 </div>
             </div>
-            <div id="ocrModelContainer" class="input-group">
-                <label for="ocrModel">识别方案选择</label>
-                <select id="ocrModel" class="form-select">
-                    <option value="aliyun">Aliyun OCR</option>
-                    <option value="azure">Azure OCR</option>
-                    <option value="qwen" selected>通义千问OCR</option>
-                </select>
-            </div>
+            <!-- 已移除 OCR 模型选择器 (#ocrModelContainer) -->
         </div>
 
         <button id="startButton" onclick="startProcess()" disabled>开始执行</button>
@@ -441,11 +433,11 @@
             <div id="llmContent" class="collapsible-content">
                 <div class="llm-config-section">
                     <div class="input-group">
-                        <label for="apiKey">API 密钥（若为环境变量请使用$符号包裹，否则直接输入KEY即可）</label>
+                        <label for="apiKey">API 密钥（若为环境变量请使用$符号包裹，否则直接输入 KEY 即可）</label>
                         <input type="text" id="apiKey" class="llm-config-input" placeholder="请输入 API 密钥...">
                     </div>
                     <div class="input-group">
-                        <label for="baseUrl">Base URL（需以v1结尾）</label>
+                        <label for="baseUrl">Base URL（需以 v1 结尾）</label>
                         <input type="text" id="baseUrl" class="llm-config-input" placeholder="请输入 Base URL...">
                     </div>
                     <div class="input-group">
@@ -559,7 +551,7 @@
                 `;
                 updateStartButton();
             } else {
-                addLog('请选择PDF文件', 'error');
+                addLog('请选择 PDF 文件', 'error');
             }
         });
 
@@ -651,7 +643,7 @@
                     return false;
                 }
             } catch (error) {
-                addLog(`上传失败: ${error.message}`, 'error');
+                addLog(`上传失败：${error.message}`, 'error');
                 return false;
             }
         }
@@ -696,7 +688,7 @@
                     addLog(data.message, 'error');
                 }
             } catch (error) {
-                addLog(`下载失败: ${error.message}`, 'error');
+                addLog(`下载失败：${error.message}`, 'error');
             }
         }
 
@@ -711,7 +703,7 @@
                         <span class="close" onclick="closeReminderModal()">&times;</span>
                         <h3 style="margin-top: 0;">温馨提示</h3>
                         <p>如果你认为这个程序有所帮助，希望可以打赏支持，谢谢！</p>
-                        <p>遇到任何问题，请向uijm2004@outlook.com反馈。</p>
+                        <p>遇到任何问题，请向 uijm2004@outlook.com 反馈。</p>
                         <div id="noReminderOption" style="margin-top: 20px; display: none;">
                             <button onclick="setNoReminder()" style="background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 6px; cursor: pointer; color: #4b5563;">
                                 不再弹出
@@ -788,6 +780,7 @@
             document.getElementById('status').textContent = '正在执行...';
             
             try {
+                // 固定使用 qwen 模型，移除了动态获取 ocrModel 的逻辑
                 const ocrModel = 'qwen';
                 const response = await fetchWithTimeout(
                     `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
@@ -812,7 +805,7 @@
                 if (data.status === 'success') {
                     updateProgress(data.nextIndex, data.totalScripts);
                     document.getElementById('status').textContent = 
-                        `正在执行: ${data.currentScript} (${data.nextIndex}/${data.totalScripts})`;
+                        `正在执行：${data.currentScript} (${data.nextIndex}/${data.totalScripts})`;
                     addLog(data.message, 'success');
                     await sleep(SCRIPT_CHECK_INTERVAL);
                     runScript(data.nextIndex, 0);
@@ -834,7 +827,7 @@
                 isProcessing = false;
                 document.getElementById('status').textContent = `执行失败，已重试${MAX_RETRIES}次`;
                 document.getElementById('startButton').disabled = false;
-                addLog(`执行失败，已达到最大重试次数: ${data.message}`, 'error');
+                addLog(`执行失败，已达到最大重试次数：${data.message}`, 'error');
             }
         }
 
@@ -868,12 +861,12 @@
             try {
                 const configResponse = await fetch('/get_llm_config');
                 if (!configResponse.ok) {
-                    throw new Error('获取LLM配置失败');
+                    throw new Error('获取 LLM 配置失败');
                 }
                 
                 const configData = await configResponse.json();
                 if (configData.status !== 'success') {
-                    throw new Error(configData.message || '获取LLM配置失败');
+                    throw new Error(configData.message || '获取 LLM 配置失败');
                 }
                 
                 const config = configData.config;
@@ -895,21 +888,21 @@
                 if (data.status === 'success') {
                     resultDiv.innerHTML = `
                         <p style="color: #10b981; font-weight: 500;">✓ ${data.message}</p>
-                        <p style="background: #f3f4f6; padding: 10px; border-radius: 6px; font-family: monospace;">响应内容: ${data.response}</p>
-                        <p style="color: #6b7280; font-size: 13px;">使用的模型: ${config.model}</p>
+                        <p style="background: #f3f4f6; padding: 10px; border-radius: 6px; font-family: monospace;">响应内容：${data.response}</p>
+                        <p style="color: #6b7280; font-size: 13px;">使用的模型：${config.model}</p>
                     `;
                 } else {
                     resultDiv.innerHTML = `
                         <p style="color: #ef4444; font-weight: 500;">✗ 测试失败</p>
-                        <p>错误信息: ${data.message}</p>
-                        <p>错误类型: ${data.error_code}</p>
-                        <p style="color: #6b7280; font-size: 13px;">尝试使用的模型: ${config.model}</p>
+                        <p>错误信息：${data.message}</p>
+                        <p>错误类型：${data.error_code}</p>
+                        <p style="color: #6b7280; font-size: 13px;">尝试使用的模型：${config.model}</p>
                     `;
                 }
             } catch (error) {
                 resultDiv.innerHTML = `
                     <p style="color: #ef4444; font-weight: 500;">✗ 请求失败</p>
-                    <p>错误信息: ${error.message}</p>
+                    <p>错误信息：${error.message}</p>
                 `;
             }
         }
@@ -929,7 +922,7 @@
             try {
                 const response = await fetch('/get_llm_config');
                 if (!response.ok) {
-                    throw new Error('获取LLM配置失败');
+                    throw new Error('获取 LLM 配置失败');
                 }
                 
                 const data = await response.json();
@@ -941,11 +934,11 @@
                     llmConfigModified = false;
                     document.getElementById('saveConfigBtn').disabled = true;
                 } else {
-                    throw new Error(data.message || '获取LLM配置失败');
+                    throw new Error(data.message || '获取 LLM 配置失败');
                 }
             } catch (error) {
-                console.error('加载LLM配置失败:', error);
-                addLog('加载LLM配置失败: ' + error.message, 'error');
+                console.error('加载 LLM 配置失败:', error);
+                addLog('加载 LLM 配置失败：' + error.message, 'error');
             }
         }
 
@@ -966,20 +959,20 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error('保存LLM配置失败');
+                    throw new Error('保存 LLM 配置失败');
                 }
 
                 const data = await response.json();
                 if (data.status !== 'success') {
-                    throw new Error(data.message || '保存LLM配置失败');
+                    throw new Error(data.message || '保存 LLM 配置失败');
                 }
 
                 llmConfigModified = false;
                 document.getElementById('saveConfigBtn').disabled = true;
-                addLog('LLM配置保存成功', 'success');
+                addLog('LLM 配置保存成功', 'success');
             } catch (error) {
-                console.error('保存LLM配置失败:', error);
-                addLog('保存LLM配置失败: ' + error.message, 'error');
+                console.error('保存 LLM 配置失败:', error);
+                addLog('保存 LLM 配置失败：' + error.message, 'error');
             }
         }
 
@@ -1007,7 +1000,7 @@
                 document.getElementById('savePromptsBtn').disabled = true;
             } catch (error) {
                 console.error('加载提示词失败:', error);
-                addLog('加载提示词失败: ' + error.message, 'error');
+                addLog('加载提示词失败：' + error.message, 'error');
             }
         }
 
@@ -1058,7 +1051,7 @@
                 addLog('提示词保存成功', 'success');
             } catch (error) {
                 console.error('保存提示词失败:', error);
-                addLog('保存提示词失败: ' + error.message, 'error');
+                addLog('保存提示词失败：' + error.message, 'error');
             }
         }
     </script>
