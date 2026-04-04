@@ -171,17 +171,64 @@ def parse_toc_json(text: str) -> tuple:
         write_log(error_msg)
         return None, None
 
+def merge_continuous_ranges(page_list: list) -> tuple:
+    """
+    将分散的页码列表合并为最大的连续区间。
+    逻辑：排序后，如果相邻页码差值 <= 1，视为连续。
+    返回最大连续区间的 (start, end)。
+    """
+    if not page_list:
+        return None, None
+    
+    sorted_pages = sorted(list(set(page_list)))
+    if len(sorted_pages) == 1:
+        return sorted_pages[0], sorted_pages[0]
+    
+    best_start = sorted_pages[0]
+    best_end = sorted_pages[0]
+    max_len = 1
+    
+    current_start = sorted_pages[0]
+    current_end = sorted_pages[0]
+    
+    for i in range(1, len(sorted_pages)):
+        prev = sorted_pages[i-1]
+        curr = sorted_pages[i]
+        
+        # 允许页码连续或紧邻（差值为 1），防止因单页识别遗漏导致断裂
+        if curr - prev <= 1:
+            current_end = curr
+        else:
+            # 断档，检查当前段是否更长
+            current_len = current_end - current_start + 1
+            if current_len > max_len:
+                max_len = current_len
+                best_start = current_start
+                best_end = current_end
+            # 重置当前段
+            current_start = curr
+            current_end = curr
+            
+    # 检查最后一段
+    current_len = current_end - current_start + 1
+    if current_len > max_len:
+        best_start = current_start
+        best_end = current_end
+        
+    return best_start, best_end
+
 async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initial_data_dir: str) -> tuple:
-    """分批次提取目录起始和结束页"""
+    """分批次提取目录起始和结束页，并合并跨批次的连续目录页"""
     doc = fitz.open(pdf_path)
     total_pages = len(doc)
     
-    global_toc_start = None
-    global_toc_end = None
+    all_toc_pages = []
     
     write_log(f"开始提取目录信息，总页数：{total_pages}")
     
-    for batch_start in range(1, 61, 20):
+    # 调整步长以确保覆盖，每次处理 20 页，内部划分为 4 个 5 页的小块
+    # 这里的逻辑保持原有结构，但收集所有识别到的页码
+    for batch_start in range(1, min(total_pages + 1, 61), 20):
         batch_end = min(batch_start + 19, total_pages)
         if batch_start > total_pages:
             break
@@ -213,35 +260,55 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
             
         results = await asyncio.gather(*tasks)
         
-        batch_toc_pages = []
+        # 收集所有被识别为目录的页码
         for res in results:
             start, end = parse_toc_json(res)
             if isinstance(start, int) and isinstance(end, int):
-                batch_toc_pages.extend([start, end])
-                
-        if batch_toc_pages:
-            current_batch_min = min(batch_toc_pages)
-            current_batch_max = max(batch_toc_pages)
-            
-            if global_toc_start is None:
-                global_toc_start = current_batch_min
-            global_toc_end = current_batch_max
-            
-            if global_toc_end == batch_end and batch_end < 60 and batch_end < total_pages:
+                # 将该范围内的所有页码加入列表，而不仅仅是端点
+                # 这样即使两个响应分别是 15-15 和 16-17，也能得到 [15, 16, 17]
+                for p in range(start, end + 1):
+                    all_toc_pages.append(p)
+        
+        # 优化：如果已经收集到页码，且当前批次已结束，可以提前判断是否继续
+        # 但为了稳健性，我们继续扫描直到达到上限或明显超出目录区域
+        # 原逻辑中的熔断机制保留，但基于收集到的页码判断
+        if all_toc_pages:
+            current_max = max(all_toc_pages)
+            # 如果当前识别到的最大页码等于当前批次的结束页，且未达到硬上限，继续扫描下一批
+            if current_max == batch_end and batch_end < 60 and batch_end < total_pages:
                 continue
             else:
+                # 如果最大页码小于批次结束页，说明目录可能在当前批次内已经结束，无需继续向后扫描
+                # 或者达到了 60 页上限
                 break
         else:
-            if global_toc_start is not None:
+            # 如果当前批次没找到任何目录，且之前也没找到，继续；如果之前找到了，说明目录结束了
+            if all_toc_pages:
                 break
 
     doc.close()
+
+    if not all_toc_pages:
+        warn_msg = "未识别到任何目录页"
+        print(f"[WARNING] {warn_msg}")
+        write_log(warn_msg)
+        return None, None
+
+    # 核心修改：合并所有收集到的页码，处理跨响应拼接
+    global_toc_start, global_toc_end = merge_continuous_ranges(all_toc_pages)
+    
+    if global_toc_start is None:
+        return None, None
 
     if global_toc_end == 60:
         warn_msg = "目录识别达到 60 页上限，触发熔断，强制设置为 1 和 2"
         print(f"[WARNING] {warn_msg}")
         write_log(warn_msg)
         return 1, 2
+
+    info_msg = f"目录页码合并完成：{global_toc_start}-{global_toc_end} (原始识别页码数：{len(all_toc_pages)})"
+    print(f"[INFO] {info_msg}")
+    write_log(info_msg)
 
     return global_toc_start, global_toc_end
 

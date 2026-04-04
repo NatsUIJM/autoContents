@@ -55,28 +55,6 @@ else
     source ~/.zshrc
 fi
 
-echo "[3/8] Checking Poppler..."
-if brew list poppler >/dev/null 2>&1; then
-    echo "Poppler is already installed, checking binary..."
-    if command -v pdftotext >/dev/null 2>&1; then
-        echo "Poppler binary found, skipping..."
-    else
-        echo "Poppler binary not found, reinstalling..."
-        run_as_user "brew reinstall poppler"
-        if [ $? -ne 0 ]; then
-            echo "Poppler reinstallation failed"
-            exit 1
-        fi
-    fi
-else
-    echo "Installing Poppler..."
-    run_as_user "brew install poppler"
-    if [ $? -ne 0 ]; then
-        echo "Poppler installation failed"
-        exit 1
-    fi
-fi
-
 # Now check for sudo rights for remaining operations
 if [ $(id -u) -ne 0 ]; then
     echo "[X] Please run remaining operations with sudo!"
