@@ -1,7 +1,6 @@
 openai
 python-dotenv
 pikepdf
-pdf2image
 Pillow
 flask
 pypinyin

@@ -7,17 +7,30 @@ import re
 import random
 import asyncio
 import logging
+import threading
+import traceback
 from collections import Counter
+from pathlib import Path
 import fitz  # PyMuPDF
 from PIL import Image, ImageDraw, ImageFont
 from openai import AsyncOpenAI
 import dotenv
+
 dotenv.load_dotenv()
 
 # 动态获取项目根目录，确保在 subprocess 中路径解析绝对正确
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.append(PROJECT_ROOT)
+
+def write_log(message):
+    """写入日志到项目根目录的 log.txt (复用 llm_level_adjuster.py 逻辑)"""
+    try:
+        log_file = Path(PROJECT_ROOT) / "log.txt"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"[{threading.current_thread().name}] {message}\n")
+    except Exception as e:
+        print(f"日志写入失败：{e}")
 
 # 配置日志输出到标准输出，确保 subprocess 能完整捕获
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
@@ -88,6 +101,7 @@ def create_concat_image_b64(doc: fitz.Document, start_p: int, end_p: int, save_p
     if save_path:
         combined.save(save_path, format="JPEG", quality=85)
         logger.debug(f"拼接图片已保存至：{save_path}")
+        write_log(f"拼接图片已保存至：{save_path}")
 
     buffered = io.BytesIO()
     combined.save(buffered, format="JPEG", quality=85)
@@ -130,10 +144,13 @@ async def fetch_toc_from_image(client: AsyncOpenAI, model: str, b64_img: str, st
             with open(raw_save_path, 'w', encoding='utf-8') as f:
                 json.dump(response_data, f, ensure_ascii=False, indent=2)
             logger.debug(f"原始响应已保存至：{raw_save_path}")
+            write_log(f"原始响应已保存至：{raw_save_path}")
             
         return raw_content
     except Exception as e:
-        logger.error(f"获取目录范围失败 ({start_p}-{end_p}): {e}")
+        error_msg = f"获取目录范围失败 ({start_p}-{end_p}): {e}"
+        logger.error(error_msg)
+        write_log(error_msg)
         if raw_save_path:
             with open(raw_save_path, 'w', encoding='utf-8') as f:
                 json.dump({"error": str(e), "page_range": f"{start_p}-{end_p}"}, f, ensure_ascii=False, indent=2)
@@ -149,7 +166,9 @@ def parse_toc_json(text: str) -> tuple:
         data = json.loads(clean_text)
         return data.get("toc_start"), data.get("toc_end")
     except Exception as e:
-        logger.error(f"解析目录 JSON 失败：{e}, 原始文本：{text}")
+        error_msg = f"解析目录 JSON 失败：{e}, 原始文本：{text}"
+        logger.error(error_msg)
+        write_log(error_msg)
         return None, None
 
 async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initial_data_dir: str) -> tuple:
@@ -160,12 +179,17 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     global_toc_start = None
     global_toc_end = None
     
+    write_log(f"开始提取目录信息，总页数：{total_pages}")
+    
     for batch_start in range(1, 61, 20):
         batch_end = min(batch_start + 19, total_pages)
         if batch_start > total_pages:
             break
             
-        print(f"[INFO] 正在分析目录范围：第 {batch_start} 到 {batch_end} 页")
+        info_msg = f"正在分析目录范围：第 {batch_start} 到 {batch_end} 页"
+        print(f"[INFO] {info_msg}")
+        write_log(info_msg)
+        
         tasks = []
         
         for i in range(4):
@@ -214,7 +238,9 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     doc.close()
 
     if global_toc_end == 60:
-        print("[WARNING] 目录识别达到 60 页上限，触发熔断，强制设置为 1 和 2")
+        warn_msg = "目录识别达到 60 页上限，触发熔断，强制设置为 1 和 2"
+        print(f"[WARNING] {warn_msg}")
+        write_log(warn_msg)
         return 1, 2
 
     return global_toc_start, global_toc_end
@@ -255,7 +281,9 @@ async def extract_book_name(pdf_path: str, original_filename: str, client: Async
         book_name = re.sub(r'[\\/:*?"<>|]', '_', book_name)
         return book_name
     except Exception as e:
-        logger.error(f"识别书名失败：{str(e)}")
+        error_msg = f"识别书名失败：{str(e)}"
+        logger.error(error_msg)
+        write_log(error_msg)
         return ""
 
 async def fetch_single_offset(client: AsyncOpenAI, model: str, page_num: int, b64_img: str) -> str:
@@ -297,7 +325,9 @@ async def fetch_single_offset(client: AsyncOpenAI, model: str, page_num: int, b6
         )
         return completion.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"获取第 {page_num} 页偏移量失败：{e}")
+        error_msg = f"获取第 {page_num} 页偏移量失败：{e}"
+        logger.error(error_msg)
+        write_log(error_msg)
         return "Error"
 
 async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str) -> int:
@@ -337,35 +367,49 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str) -> in
                 
         if offsets:
             most_common_offset = Counter(offsets).most_common(1)[0][0]
-            print(f"[INFO] 自动计算偏移量成功：{most_common_offset}")
+            info_msg = f"自动计算偏移量成功：{most_common_offset}"
+            print(f"[INFO] {info_msg}")
+            write_log(info_msg)
             return most_common_offset
         else:
-            print("[WARNING] 未能自动计算出有效的偏移量")
+            warn_msg = "未能自动计算出有效的偏移量"
+            print(f"[WARNING] {warn_msg}")
+            write_log(warn_msg)
             return None
             
     except Exception as e:
-        logger.error(f"自动计算偏移量过程发生异常：{str(e)}")
+        error_msg = f"自动计算偏移量过程发生异常：{str(e)}"
+        logger.error(error_msg)
+        write_log(error_msg)
         return None
 
 async def main():
+    write_log("=== pdf_metadata_extractor.py 开始执行 ===")
+    
     # 移除 load_dotenv()，完全依赖 Flask 注入的环境变量，避免冲突
     input_dir = os.getenv("PDF_METADATA_EXTRACTOR_INPUT")
     output_dir = os.getenv("PDF_METADATA_EXTRACTOR_OUTPUT")
     
     if not input_dir or not output_dir:
-        print("错误：环境变量 PDF_METADATA_EXTRACTOR_INPUT 或 PDF_METADATA_EXTRACTOR_OUTPUT 未设置")
+        error_msg = "环境变量 PDF_METADATA_EXTRACTOR_INPUT 或 PDF_METADATA_EXTRACTOR_OUTPUT 未设置"
+        print(f"错误：{error_msg}")
+        write_log(error_msg)
         sys.exit(1)
 
     input_dir = os.path.abspath(input_dir)
     output_dir = os.path.abspath(output_dir)
 
     if not os.path.exists(input_dir):
-        print(f"错误：输入目录未找到，当前查找目录：{input_dir}")
+        error_msg = f"输入目录未找到，当前查找目录：{input_dir}"
+        print(f"错误：{error_msg}")
+        write_log(error_msg)
         sys.exit(1)
         
     pdf_files = [f for f in os.listdir(input_dir) if f.lower().endswith('.pdf')]
     if len(pdf_files) != 1:
-        print(f"错误：输入目录中必须仅包含 1 个 PDF 文件，当前找到 {len(pdf_files)} 个。查找目录：{input_dir}")
+        error_msg = f"输入目录中必须仅包含 1 个 PDF 文件，当前找到 {len(pdf_files)} 个。查找目录：{input_dir}"
+        print(f"错误：{error_msg}")
+        write_log(error_msg)
         sys.exit(1)
     
     pdf_filename = pdf_files[0]
@@ -374,17 +418,23 @@ async def main():
     json_filename = os.path.splitext(pdf_filename)[0] + ".json"
     json_path = os.path.join(output_dir, json_filename)
     if not os.path.exists(json_path):
-        print(f"错误：目标 JSON 文件未找到，当前查找目录：{json_path}")
+        error_msg = f"目标 JSON 文件未找到，当前查找目录：{json_path}"
+        print(f"错误：{error_msg}")
+        write_log(error_msg)
         sys.exit(1)
 
     initial_data_dir = os.path.join(output_dir, "initial_data")
     os.makedirs(initial_data_dir, exist_ok=True)
-    print(f"[INFO] 中间数据将保存至：{initial_data_dir}")
+    info_msg = f"中间数据将保存至：{initial_data_dir}"
+    print(f"[INFO] {info_msg}")
+    write_log(info_msg)
 
     # 修复：使用动态计算的 PROJECT_ROOT 解析配置文件路径
     config_path = os.path.join(PROJECT_ROOT, "static", "llm_config.json")
     if not os.path.exists(config_path):
-        print(f"错误：LLM 配置文件未找到，当前查找目录：{config_path}")
+        error_msg = f"LLM 配置文件未找到，当前查找目录：{config_path}"
+        print(f"错误：{error_msg}")
+        write_log(error_msg)
         sys.exit(1)
         
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -395,12 +445,16 @@ async def main():
     model = config.get("model", "qwen-vl-max")
     
     if not api_key:
-        print("错误：API Key 解析失败或为空，请检查 llm_config.json 或环境变量配置。")
+        error_msg = "API Key 解析失败或为空，请检查 llm_config.json 或环境变量配置。"
+        print(f"错误：{error_msg}")
+        write_log(error_msg)
         sys.exit(1)
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-    print(f"[INFO] 开始处理 PDF: {pdf_filename}")
+    info_msg = f"开始处理 PDF: {pdf_filename}"
+    print(f"[INFO] {info_msg}")
+    write_log(info_msg)
     
     book_name_task = extract_book_name(pdf_path, pdf_filename, client, model)
     offset_task = calculate_offset(pdf_path, client, model)
@@ -429,21 +483,34 @@ async def main():
         if updated:
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(json_data, f, ensure_ascii=False, indent=4)
-            print(f"[SUCCESS] 成功更新 JSON 文件：{json_path}")
-            print(f"[RESULT] 提取结果 -> 书名：{book_name}, 偏移量：{content_start}, 目录：{toc_start}-{toc_end}")
+            success_msg = f"成功更新 JSON 文件：{json_path}"
+            result_msg = f"提取结果 -> 书名：{book_name}, 偏移量：{content_start}, 目录：{toc_start}-{toc_end}"
+            print(f"[SUCCESS] {success_msg}")
+            print(f"[RESULT] {result_msg}")
+            write_log(success_msg)
+            write_log(result_msg)
         else:
-            print("[WARNING] 未提取到有效数据，JSON 文件未更新。")
+            warn_msg = "未提取到有效数据，JSON 文件未更新。"
+            print(f"[WARNING] {warn_msg}")
+            write_log(warn_msg)
             
     except Exception as e:
-        print(f"[ERROR] 读写 JSON 文件时发生错误：{str(e)}")
+        error_msg = f"读写 JSON 文件时发生错误：{str(e)}"
+        print(f"[ERROR] {error_msg}")
+        write_log(error_msg)
+        write_log("完整错误追踪:\n" + traceback.format_exc())
         sys.exit(1)
+    
+    write_log("=== pdf_metadata_extractor.py 执行完成 ===")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
         print("\n[INFO] pdf_metadata_extractor 执行完成!")
     except Exception as e:
-        print(f"\n[ERROR] 程序执行出错：{e}")
-        import traceback
+        error_msg = f"程序执行出错：{e}"
+        print(f"\n[ERROR] {error_msg}")
+        write_log(f"主程序未捕获的异常：{error_msg}")
+        write_log("完整错误追踪:\n" + traceback.format_exc())
         traceback.print_exc()
         sys.exit(1)
