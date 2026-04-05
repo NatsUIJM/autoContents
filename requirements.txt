@@ -5,3 +5,4 @@ Pillow
 flask
 pypinyin
 PyMuPDF
+aiohttp

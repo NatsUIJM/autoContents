@@ -29,7 +29,6 @@
             margin: 0;
             color: #111827;
         }
-        /* 输入框通用样式 */
         .form-select, input[type="number"], input[type="text"], .prompt-input {
             padding: 10px 12px;
             border: 1px solid #d1d5db;
@@ -50,7 +49,6 @@
             resize: vertical;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         }
-        /* 按钮通用样式 */
         button {
             transition: all 0.2s ease;
         }
@@ -172,7 +170,6 @@
         }
         .hidden { display: none; }
         
-        /* 折叠面板样式 */
         .collapsible-wrapper {
             margin-top: 20px;
             border: 1px solid #e5e7eb;
@@ -245,7 +242,6 @@
             cursor: not-allowed;
         }
 
-        /* 模态框与赞助 */
         .sponsor-container {
             max-width: 800px;
             margin: 30px auto;
@@ -313,7 +309,6 @@
         }
         .close:hover { color: #374151; }
         
-        /* 底部链接 */
         .footer-links {
             text-align: center;
             margin-top: 30px;
@@ -361,8 +356,6 @@
             <div id="fileName" class="file-name"></div>
         </div>
 
-        <!-- 已删除：目录起始页、结束页和正文偏移量的输入框 -->
-
         <button id="startButton" onclick="startProcess()" disabled>开始执行</button>
         
         <div class="progress-container">
@@ -374,7 +367,6 @@
         
         <div id="log" class="log"></div>
         
-        <!-- LLM 配置折叠面板 -->
         <div class="collapsible-wrapper">
             <div class="collapsible-header" onclick="toggleCollapsible('llmContent', 'llmChevron')">
                 <h3>LLM 配置管理</h3>
@@ -399,7 +391,6 @@
             </div>
         </div>
         
-        <!-- 提示词管理折叠面板 -->
         <div class="collapsible-wrapper">
             <div class="collapsible-header" onclick="toggleCollapsible('promptContent', 'promptChevron')">
                 <h3>提示词管理</h3>
@@ -421,6 +412,16 @@
                     </div>
                     <button id="savePromptsBtn" class="save-btn" style="background-color: #10b981;" onclick="savePrompts()" disabled>保存提示词</button>
                 </div>
+            </div>
+        </div>
+
+        <div class="collapsible-wrapper">
+            <div class="collapsible-header" onclick="toggleCollapsible('sysLogContent', 'sysLogChevron')">
+                <h3>系统日志 (log.txt)</h3>
+                <svg id="sysLogChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div id="sysLogContent" class="collapsible-content">
+                <div id="sysLogContainer" class="log" style="background-color: #1e1e1e; color: #d4d4d4; max-height: 300px; margin-top: 0;"></div>
             </div>
         </div>
     </div>
@@ -465,13 +466,42 @@
         let currentSessionId = null;
         let promptsModified = false;
         let llmConfigModified = false;
+        let logEventSource = null;
+
+        function initSysLogStream() {
+            if (logEventSource) {
+                logEventSource.close();
+            }
+            logEventSource = new EventSource('/stream_log');
+            const sysLogContainer = document.getElementById('sysLogContainer');
+            
+            logEventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                const div = document.createElement('div');
+                div.textContent = data.text;
+                div.style.whiteSpace = 'pre-wrap';
+                div.style.wordBreak = 'break-all';
+                
+                sysLogContainer.appendChild(div);
+                
+                while (sysLogContainer.childNodes.length > 500) {
+                    sysLogContainer.removeChild(sysLogContainer.firstChild);
+                }
+                
+                sysLogContainer.scrollTop = sysLogContainer.scrollHeight;
+            };
+            
+            logEventSource.onerror = function(err) {
+                console.error("日志流连接断开，浏览器将自动尝试重连...");
+            };
+        }
 
         window.addEventListener('DOMContentLoaded', function() {
             loadPrompts();
             loadLLMConfig();
+            initSysLogStream();
         });
 
-        // 折叠面板控制逻辑
         function toggleCollapsible(contentId, chevronId) {
             const content = document.getElementById(contentId);
             const chevron = document.getElementById(chevronId);
@@ -512,15 +542,10 @@
             updateStartButton();
         }
 
-        // 已删除：autoOffset 相关的 change 事件监听
-
         function updateStartButton() {
             const startButton = document.getElementById('startButton');
-            // 仅需检查是否有文件选中，不再检查页码输入
             startButton.disabled = !selectedFile || isProcessing;
         }
-
-        // 已删除：tocStart, tocEnd, contentStart 的 input 事件监听
 
         ['extractPrompt', 'adjusterRoutePrompt', 'adjusterPrompt'].forEach(id => {
             document.getElementById(id).addEventListener('input', function() {
@@ -555,7 +580,6 @@
         async function uploadFiles() {
             const formData = new FormData();
             formData.append('pdf', selectedFile);
-            // 已删除：tocStart, tocEnd, autoOffset, contentStart 的添加逻辑
 
             try {
                 const response = await fetch('/upload', {
@@ -710,7 +734,6 @@
             document.getElementById('status').textContent = '正在执行...';
             
             try {
-                // 强制使用 qwen 模型
                 const ocrModel = 'qwen';
                 const response = await fetchWithTimeout(
                     `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,

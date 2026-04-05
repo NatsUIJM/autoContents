@@ -14,3 +14,6 @@ contents_editor/*.csv
 mainprogress/\[editing\]llm_level_adjuster.py
 log.txt
 debug.py
+PDFTest
+testscript.py
+batch_*

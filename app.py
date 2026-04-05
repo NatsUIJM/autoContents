@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, send_file, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_file, send_from_directory, Response
 import subprocess
 import os
 import logging
@@ -313,6 +313,31 @@ def run_script(session_id, script_index, retry_count):
             'session_id': session_id
         })
 
+@app.route('/stream_log')
+def stream_log():
+    def generate():
+        log_file = 'log.txt'
+        # 如果文件不存在，先创建一个空文件防止报错
+        if not os.path.exists(log_file):
+            open(log_file, 'w', encoding='utf-8').close()
+            
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            # 初次连接时，读取最后 100 行，避免加载历史数据过多导致卡顿
+            lines = f.readlines()
+            for line in lines[-5:]:
+                yield f"data: {json.dumps({'text': line.strip()})}\n\n"
+            
+            # 持续监听文件末尾的新内容 (类似 tail -f)
+            while True:
+                line = f.readline()
+                if line:
+                    yield f"data: {json.dumps({'text': line.strip()})}\n\n"
+                else:
+                    # 如果没有新内容，休眠 0.5 秒后继续检查
+                    time.sleep(0.5)
+                    
+    return Response(generate(), mimetype='text/event-stream')
+
 @app.route('/save_prompt/<filename>', methods=['POST'])
 def save_prompt(filename):
     try:
@@ -501,3 +526,4 @@ if __name__ == '__main__':
         
         print(f"Starting server on port {port}")
         app.run(debug=True, port=port, use_reloader=False)
+
