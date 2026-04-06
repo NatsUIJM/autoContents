@@ -1,36 +1,10 @@
 import os
-import sys
 import json
 import fitz  # PyMuPDF
 import dotenv
 
 # 加载环境变量
 dotenv.load_dotenv()
-
-def save_and_resize_image(pixmap, output_path, max_dimension=2000):
-    """
-    将 pixmap 保存为图片，并在必要时调整长边尺寸。
-    """
-    # 1. 先保存原始渲染结果
-    pixmap.save(output_path)
-    
-    # 2. 检查尺寸是否需要调整
-    if max(pixmap.width, pixmap.height) > max_dimension:
-        if pixmap.width > pixmap.height:
-            scale = max_dimension / pixmap.width
-        else:
-            scale = max_dimension / pixmap.height
-            
-        new_width = int(pixmap.width * scale)
-        new_height = int(pixmap.height * scale)
-        
-        try:
-            # PyMuPDF 新版支持直接 resize
-            resized_pixmap = pixmap.resize((new_width, new_height))
-            resized_pixmap.save(output_path, jpg=True, jpg_quality=95)
-            print(f"  [缩放] {os.path.basename(output_path)} -> {new_width}x{new_height}")
-        except AttributeError:
-            print(f"  [警告] 当前 PyMuPDF 版本不支持直接 resize，保留原尺寸。")
 
 def convert_pdf_to_jpg():
     output_dir = os.getenv('PDF2JPG_OUTPUT')
@@ -57,10 +31,8 @@ def convert_pdf_to_jpg():
 
     print(f"发现 {len(pdf_files)} 个 PDF 文件待处理。")
 
-    target_dpi = 300
-    zoom = target_dpi / 72.0
-    mat = fitz.Matrix(zoom, zoom)
-
+    TARGET_LONG_EDGE = 1500  # 目标长边像素
+    
     processed_count = 0
 
     for pdf_file in pdf_files:
@@ -124,6 +96,29 @@ def convert_pdf_to_jpg():
                     continue
 
                 page = doc[page_index]
+                
+                # 1. 获取页面原始尺寸 (基于 1.0 倍率，即 72 DPI)
+                rect = page.rect
+                original_width = rect.width
+                original_height = rect.height
+                
+                # 2. 计算长边并确定缩放比例
+                current_long_edge = max(original_width, original_height)
+                
+                if current_long_edge == 0:
+                    print(f"  [警告] 第 {page_num} 页尺寸为 0，跳过。")
+                    continue
+                
+                # 计算需要的缩放因子
+                if current_long_edge > TARGET_LONG_EDGE:
+                    zoom = TARGET_LONG_EDGE / current_long_edge
+                else:
+                    zoom = 1.0
+                
+                # 构建渲染矩阵
+                mat = fitz.Matrix(zoom, zoom)
+                
+                # 3. 执行渲染 (直接生成目标尺寸的图片)
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 
                 output_path = os.path.join(
@@ -131,16 +126,20 @@ def convert_pdf_to_jpg():
                     f"{pdf_name}_page_{page_num}.jpg"
                 )
                 
-                save_and_resize_image(pix, output_path, max_dimension=2000)
+                # 4. 保存图片 (移除不支持的 kwargs，PyMuPDF 会自动根据后缀名保存为 JPG)
+                pix.save(output_path)
+                
+                print(f"  [完成] 第 {page_num} 页 -> {pix.width}x{pix.height} (Zoom: {zoom:.2f})")
+                
                 saved_images.append(output_path)
                 
                 # 显式释放资源
                 del pix
                 del page
                 
-                # 每处理 10 页打印一次进度，避免刷屏，但如果总数少则每页都打
+                # 进度反馈
                 if range_count <= 10 or page_num % 10 == 0:
-                    print(f"  [进度] 已处理第 {page_num} 页")
+                    print(f"  [进度] 批次内已处理 {page_num - toc_start + 1}/{range_count} 页")
 
             doc.close()
             print(f"  [完成] 本文件共保存 {len(saved_images)} 张图片。")

@@ -242,42 +242,6 @@
             cursor: not-allowed;
         }
 
-        .sponsor-container {
-            max-width: 800px;
-            margin: 30px auto;
-            text-align: center;
-        }
-        .sponsor-button {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 24px;
-            background-color: #ffffff;
-            border: 1px solid #d1d5db;
-            border-radius: 20px;
-            color: #4b5563;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        }
-        .sponsor-button:hover {
-            background-color: #f9fafb;
-            border-color: #9ca3af;
-        }
-        .sponsor-content {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            background-color: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-        .sponsor-qr {
-            max-width: 300px;
-            height: auto;
-            border-radius: 8px;
-        }
         .modal {
             display: none;
             position: fixed;
@@ -333,6 +297,86 @@
             font-size: 13px;
             color: #6b7280;
             margin-bottom: 30px;
+        }
+
+        /* 鉴权区域样式 */
+        .auth-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .auth-btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .auth-btn:disabled {
+            background-color: #d1d5db;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .trial-btn {
+            background-color: #f59e0b;
+            color: white;
+        }
+        .trial-btn:hover:not(:disabled) {
+            background-color: #d97706;
+        }
+        .activate-btn {
+            background-color: #10b981;
+            color: white;
+        }
+        .activate-btn:hover:not(:disabled) {
+            background-color: #059669;
+        }
+        .deactivate-btn {
+            background-color: #ef4444;
+            color: white;
+        }
+        .deactivate-btn:hover:not(:disabled) {
+            background-color: #dc2626;
+        }
+        .auth-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .auth-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .auth-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .auth-status.trial {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        .auth-status.activated {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        .auth-status.none {
+            background-color: #f3f4f6;
+            color: #6b7280;
+        }
+        .machine-code-display {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6b7280;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         }
     </style>
 </head>
@@ -392,36 +436,32 @@
         </div>
         
         <div class="collapsible-wrapper">
-            <div class="collapsible-header" onclick="toggleCollapsible('promptContent', 'promptChevron')">
-                <h3>提示词管理</h3>
-                <svg id="promptChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </div>
-            <div id="promptContent" class="collapsible-content">
-                <div class="prompt-section">
-                    <div class="input-group">
-                        <label for="extractPrompt">目录提取提示词</label>
-                        <textarea id="extractPrompt" class="prompt-input" placeholder="请输入目录提取提示词..."></textarea>
-                    </div>
-                    <div class="input-group">
-                        <label for="adjusterRoutePrompt">层级识别路由提示词</label>
-                        <textarea id="adjusterRoutePrompt" class="prompt-input" placeholder="请输入层级识别路由提示词..."></textarea>
-                    </div>
-                    <div class="input-group">
-                        <label for="adjusterPrompt">层级识别提示词</label>
-                        <textarea id="adjusterPrompt" class="prompt-input" placeholder="请输入层级识别提示词..."></textarea>
-                    </div>
-                    <button id="savePromptsBtn" class="save-btn" style="background-color: #10b981;" onclick="savePrompts()" disabled>保存提示词</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="collapsible-wrapper">
             <div class="collapsible-header" onclick="toggleCollapsible('sysLogContent', 'sysLogChevron')">
                 <h3>系统日志 (log.txt)</h3>
                 <svg id="sysLogChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <div id="sysLogContent" class="collapsible-content">
                 <div id="sysLogContainer" class="log" style="background-color: #1e1e1e; color: #d4d4d4; max-height: 300px; margin-top: 0;"></div>
+            </div>
+        </div>
+
+        <!-- 鉴权区域 - 放在最下方，默认折叠 -->
+        <div class="collapsible-wrapper">
+            <div class="collapsible-header" onclick="toggleCollapsible('authContent', 'authChevron')">
+                <h3>软件授权</h3>
+                <svg id="authChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div id="authContent" class="collapsible-content">
+                <div class="llm-config-section">
+                    <div class="auth-controls">
+                        <button id="trialBtn" class="auth-btn trial-btn" onclick="startTrial()">开始试用</button>
+                        <input type="text" id="activationInput" class="auth-input" placeholder="输入 32 位激活码" maxlength="32">
+                        <button id="activateBtn" class="auth-btn activate-btn" onclick="activate()" disabled>激活</button>
+                        <button id="deactivateBtn" class="auth-btn deactivate-btn" onclick="deactivate()" disabled>反激活</button>
+                    </div>
+                    <div id="authStatus" class="auth-status none">未授权</div>
+                    <div id="machineCodeDisplay" class="machine-code-display"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -434,26 +474,11 @@
         </div>
     </div>
 
-    <div class="sponsor-container">
-        <button id="sponsorButton" class="sponsor-button" onclick="toggleSponsor()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/>
-            </svg>
-            赞助支持
-        </button>
-        <div id="sponsorContent" class="sponsor-content">
-            <img src="/static/qrcode.jpg" alt="赞助二维码" class="sponsor-qr">
-        </div>
-    </div>
-
     <div class="footer-links">
         <a href="https://github.com/NatsUIJM/autoContents" target="_blank">GitHub</a>
         <a href="https://bbs.marginnote.com.cn/t/topic/59344/2" target="_blank">MarginNote</a>
         <a href="https://www.bilibili.com/video/BV14wKGeQEvr/" target="_blank">Bilibili</a>
         <a href="https://www.zhihu.com/question/392666875/answer/100357892412" target="_blank">知乎</a>
-    </div>
-    <div class="footer-text">
-        本项目完全开源免费，任何个人或组织不得将此工具进行商业销售。
     </div>
 
     <script>
@@ -464,9 +489,14 @@
         const FETCH_TIMEOUT = 360000;
         const SCRIPT_CHECK_INTERVAL = 1000;
         let currentSessionId = null;
-        let promptsModified = false;
         let llmConfigModified = false;
         let logEventSource = null;
+        let currentMachineCode = null;
+        let authStatus = {
+            hasKey: false,
+            isTrial: false,
+            isActivated: false
+        };
 
         function initSysLogStream() {
             if (logEventSource) {
@@ -497,10 +527,193 @@
         }
 
         window.addEventListener('DOMContentLoaded', function() {
-            loadPrompts();
             loadLLMConfig();
             initSysLogStream();
+            loadAuthStatus();
+            loadMachineCode();
         });
+
+        // ==================== 鉴权相关函数 ====================
+
+        async function loadAuthStatus() {
+            try {
+                const response = await fetch('/api/auth_status');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    authStatus = {
+                        hasKey: data.has_key,
+                        isTrial: data.is_trial,
+                        isActivated: data.is_activated
+                    };
+                    updateAuthUI();
+                }
+            } catch (error) {
+                console.error('加载授权状态失败:', error);
+            }
+        }
+
+        async function loadMachineCode() {
+            try {
+                const response = await fetch('/api/machine_code');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    currentMachineCode = data.machine_code;
+                    document.getElementById('machineCodeDisplay').textContent = 
+                        `机器码：${currentMachineCode}`;
+                }
+            } catch (error) {
+                console.error('加载机器码失败:', error);
+            }
+        }
+
+        function updateAuthUI() {
+            const trialBtn = document.getElementById('trialBtn');
+            const activateBtn = document.getElementById('activateBtn');
+            const deactivateBtn = document.getElementById('deactivateBtn');
+            const activationInput = document.getElementById('activationInput');
+            const authStatusDiv = document.getElementById('authStatus');
+
+            // 更新状态显示
+            if (authStatus.isTrial) {
+                authStatusDiv.textContent = '试用模式';
+                authStatusDiv.className = 'auth-status trial';
+            } else if (authStatus.isActivated) {
+                authStatusDiv.textContent = '已激活';
+                authStatusDiv.className = 'auth-status activated';
+            } else {
+                authStatusDiv.textContent = '未授权';
+                authStatusDiv.className = 'auth-status none';
+            }
+
+            // 试用按钮：只有没有.key 文件时才能点击
+            trialBtn.disabled = authStatus.hasKey;
+
+            // 激活/反激活按钮：只有输入 32 字符后才可点击
+            const inputLength = activationInput.value.length;
+            activateBtn.disabled = inputLength !== 32 || authStatus.isActivated;
+            deactivateBtn.disabled = inputLength !== 32 || !authStatus.isActivated;
+
+            // 如果已授权，启用开始执行按钮（如果有文件）
+            updateStartButton();
+        }
+
+        async function startTrial() {
+            if (!currentMachineCode) {
+                addLog('无法获取机器码，请稍后重试', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/trail', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        machine_code: currentMachineCode
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    addLog('试用已激活', 'success');
+                    authStatus.hasKey = true;
+                    authStatus.isTrial = true;
+                    authStatus.isActivated = false;
+                    updateAuthUI();
+                } else {
+                    addLog(data.message, 'error');
+                }
+            } catch (error) {
+                addLog(`试用激活失败：${error.message}`, 'error');
+            }
+        }
+
+        async function activate() {
+            const activationCode = document.getElementById('activationInput').value;
+            
+            if (activationCode.length !== 32) {
+                addLog('激活码必须为 32 个字符', 'error');
+                return;
+            }
+
+            if (!currentMachineCode) {
+                addLog('无法获取机器码，请稍后重试', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/activate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        machine_code: currentMachineCode,
+                        activation_code: activationCode
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    addLog('激活成功', 'success');
+                    authStatus.hasKey = true;
+                    authStatus.isTrial = false;
+                    authStatus.isActivated = true;
+                    updateAuthUI();
+                } else {
+                    addLog(data.message, 'error');
+                }
+            } catch (error) {
+                addLog(`激活失败：${error.message}`, 'error');
+            }
+        }
+
+        async function deactivate() {
+            const activationCode = document.getElementById('activationInput').value;
+            
+            if (activationCode.length !== 32) {
+                addLog('激活码必须为 32 个字符', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/deactivate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        activation_code: activationCode
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    addLog('反激活成功', 'success');
+                    authStatus.hasKey = false;
+                    authStatus.isTrial = false;
+                    authStatus.isActivated = false;
+                    updateAuthUI();
+                } else {
+                    addLog(data.message, 'error');
+                }
+            } catch (error) {
+                addLog(`反激活失败：${error.message}`, 'error');
+            }
+        }
+
+        // 监听激活码输入
+        document.getElementById('activationInput').addEventListener('input', function() {
+            updateAuthUI();
+        });
+
+        // ==================== 原有功能函数 ====================
 
         function toggleCollapsible(contentId, chevronId) {
             const content = document.getElementById(contentId);
@@ -544,15 +757,16 @@
 
         function updateStartButton() {
             const startButton = document.getElementById('startButton');
-            startButton.disabled = !selectedFile || isProcessing;
+            // 需要同时满足：有文件、未处理中、已授权
+            const isAuthorized = authStatus.isTrial || authStatus.isActivated;
+            startButton.disabled = !selectedFile || isProcessing || !isAuthorized;
+            
+            if (!isAuthorized && selectedFile) {
+                startButton.title = '请先试用或激活后才能使用';
+            } else {
+                startButton.title = '';
+            }
         }
-
-        ['extractPrompt', 'adjusterRoutePrompt', 'adjusterPrompt'].forEach(id => {
-            document.getElementById(id).addEventListener('input', function() {
-                promptsModified = true;
-                document.getElementById('savePromptsBtn').disabled = false;
-            });
-        });
 
         ['apiKey', 'baseUrl', 'model'].forEach(id => {
             document.getElementById(id).addEventListener('input', function() {
@@ -606,9 +820,6 @@
             try {
                 const response = await fetch(`/download_result/${currentSessionId}`);
                 if (response.ok) {
-                    const showReminder = response.headers.get('X-Show-Reminder');
-                    const showNoReminderOption = response.headers.get('X-No-Reminder-Option');
-                    
                     let filename = '处理结果.pdf';
                     const disposition = response.headers.get('Content-Disposition');
                     if (disposition && disposition.indexOf('attachment') !== -1) {
@@ -633,75 +844,12 @@
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
                     addLog('文件下载成功', 'success');
-                    
-                    if (showReminder === 'true') {
-                        showReminderModal(showNoReminderOption === 'true');
-                    }
                 } else {
                     const data = await response.json();
                     addLog(data.message, 'error');
                 }
             } catch (error) {
                 addLog(`下载失败：${error.message}`, 'error');
-            }
-        }
-
-        function showReminderModal(showNoReminderOption) {
-            let reminderModal = document.getElementById('reminderModal');
-            if (!reminderModal) {
-                reminderModal = document.createElement('div');
-                reminderModal.id = 'reminderModal';
-                reminderModal.className = 'modal';
-                reminderModal.innerHTML = `
-                    <div class="modal-content">
-                        <span class="close" onclick="closeReminderModal()">&times;</span>
-                        <h3 style="margin-top: 0;">温馨提示</h3>
-                        <p>如果你认为这个程序有所帮助，希望可以打赏支持，谢谢！</p>
-                        <p>遇到任何问题，请向 uijm2004@outlook.com 反馈。</p>
-                        <div id="noReminderOption" style="margin-top: 20px; display: none;">
-                            <button onclick="setNoReminder()" style="background-color: #f3f4f6; border: 1px solid #d1d5db; padding: 8px 16px; border-radius: 6px; cursor: pointer; color: #4b5563;">
-                                不再弹出
-                            </button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(reminderModal);
-            }
-            
-            const noReminderOption = document.getElementById('noReminderOption');
-            if (noReminderOption) {
-                noReminderOption.style.display = showNoReminderOption ? 'block' : 'none';
-            }
-            
-            reminderModal.style.display = 'block';
-        }
-
-        function setNoReminder() {
-            fetch('/set_no_reminder', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    console.log('已设置不再提醒');
-                } else {
-                    console.error('设置失败:', data.message);
-                }
-                closeReminderModal();
-            })
-            .catch(error => {
-                console.error('请求失败:', error);
-                closeReminderModal();
-            });
-        }
-
-        function closeReminderModal() {
-            const reminderModal = document.getElementById('reminderModal');
-            if (reminderModal) {
-                reminderModal.style.display = 'none';
             }
         }
 
@@ -787,6 +935,33 @@
         async function startProcess() {
             if (isProcessing) return;
             
+            // 鉴权检查
+            if (!authStatus.isTrial && !authStatus.isActivated) {
+                addLog('请先试用或激活后才能使用', 'error');
+                return;
+            }
+
+            // 执行前调用鉴权 API
+            try {
+                const activationCode = authStatus.isActivated ? 
+                    document.getElementById('activationInput').value : '';
+                
+                const authResponse = await fetch(
+                    `/api/auth?machine_code=${encodeURIComponent(currentMachineCode)}&activation_code=${encodeURIComponent(activationCode)}`
+                );
+                const authData = await authResponse.json();
+                
+                if (!authData.auth_passed) {
+                    addLog(`鉴权失败：${authData.message}`, 'error');
+                    return;
+                }
+                
+                addLog('鉴权通过，开始执行', 'success');
+            } catch (error) {
+                addLog(`鉴权验证失败：${error.message}`, 'error');
+                return;
+            }
+            
             const uploadSuccess = await uploadFiles();
             if (!uploadSuccess) return;
 
@@ -796,12 +971,6 @@
             document.getElementById('log').innerHTML = '';
             addLog('开始执行脚本序列');
             runScript(0, 0);
-        }
-
-        function toggleSponsor() {
-            const content = document.getElementById('sponsorContent');
-            const currentDisplay = window.getComputedStyle(content).display;
-            content.style.display = currentDisplay === 'none' ? 'block' : 'none';
         }
 
         async function testQwenService() {
@@ -926,85 +1095,6 @@
             } catch (error) {
                 console.error('保存 LLM 配置失败:', error);
                 addLog('保存 LLM 配置失败：' + error.message, 'error');
-            }
-        }
-
-        async function loadPrompts() {
-            try {
-                const extractResponse = await fetch('/static/extract_prompt.md');
-                if (extractResponse.ok) {
-                    const extractContent = await extractResponse.text();
-                    document.getElementById('extractPrompt').value = extractContent;
-                }
-
-                const routeResponse = await fetch('/static/adjuster_prompt_route.md');
-                if (routeResponse.ok) {
-                    const routeContent = await routeResponse.text();
-                    document.getElementById('adjusterRoutePrompt').value = routeContent;
-                }
-
-                const adjusterResponse = await fetch('/static/adjuster_prompt.md');
-                if (adjusterResponse.ok) {
-                    const adjusterContent = await adjusterResponse.text();
-                    document.getElementById('adjusterPrompt').value = adjusterContent;
-                }
-
-                promptsModified = false;
-                document.getElementById('savePromptsBtn').disabled = true;
-            } catch (error) {
-                console.error('加载提示词失败:', error);
-                addLog('加载提示词失败：' + error.message, 'error');
-            }
-        }
-
-        async function savePrompts() {
-            try {
-                const extractContent = document.getElementById('extractPrompt').value;
-                const routeContent = document.getElementById('adjusterRoutePrompt').value;
-                const adjusterContent = document.getElementById('adjusterPrompt').value;
-
-                const extractResponse = await fetch('/save_prompt/extract_prompt.md', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    },
-                    body: extractContent
-                });
-
-                if (!extractResponse.ok) {
-                    throw new Error('保存目录提取提示词失败');
-                }
-
-                const routeResponse = await fetch('/save_prompt/adjuster_prompt_route.md', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    },
-                    body: routeContent
-                });
-
-                if (!routeResponse.ok) {
-                    throw new Error('保存层级识别路由提示词失败');
-                }
-
-                const adjusterResponse = await fetch('/save_prompt/adjuster_prompt.md', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    },
-                    body: adjusterContent
-                });
-
-                if (!adjusterResponse.ok) {
-                    throw new Error('保存层级识别提示词失败');
-                }
-
-                promptsModified = false;
-                document.getElementById('savePromptsBtn').disabled = true;
-                addLog('提示词保存成功', 'success');
-            } catch (error) {
-                console.error('保存提示词失败:', error);
-                addLog('保存提示词失败：' + error.message, 'error');
             }
         }
     </script>

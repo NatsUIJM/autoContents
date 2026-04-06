@@ -17,3 +17,4 @@ debug.py
 PDFTest
 testscript.py
 batch_*
+auth.key

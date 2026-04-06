@@ -1,420 +1,479 @@
 import os
-import json
 import asyncio
-import aiohttp
 import base64
 import traceback
 import sys
 import re
+import csv
+import json
 from pathlib import Path
-from io import BytesIO
-from dotenv import load_dotenv
-
-# 图像处理库
+from io import BytesIO, StringIO
 from PIL import Image
+from dotenv import load_dotenv
+from openai import AsyncOpenAI, APIError
 
 # 配置常量
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
-MAX_IMAGE_DIMENSION = 1500  # 最长边限制
-CONCURRENT_LIMIT = 15       # 最大并发数
-MAX_RETRIES = 5             # 单任务最大重试次数
+MAX_IMAGE_DIMENSION = 1500
+CONCURRENT_LIMIT = 15
+MAX_RETRIES = 5  # API 请求最大重试次数
+POST_PROCESS_RETRIES = 2  # 后处理失败后的额外重试次数
 
-# 全局变量用于存储提示词和配置
-PROMPT_TEXT = ""
+# 全局提示词
+PROMPT_TEXT = """# 任务目标
+分析提供的图片并提取目录信息。提取目标为每个目录项的标题和页码。
+
+# 输出格式要求
+1. 数据格式：仅输出CSV格式数据，禁止包含任何其他文本、代码解释或说明。
+2. 表头设置：必须包含表头 title,page_number。第一列为标题，第二列为页码。
+3. 分隔符：严格使用半角逗号 `,` 作为列分隔符，禁止使用全角逗号 `，`。
+
+# 内容提取规则
+1. 完整性与筛选：提取所有目录项目，不遗漏任何带有页码的条目。
+2. 无页码条目判定：针对无页码条目需依据语义判断。若为篇、章级别的大标题，需推算并填补实际页码；若存在大量无页码的节、子节等次级标题，则直接忽略。
+3. 所见即所得：提取页面真实存在的信息，禁止自行推测或补充未显示的层级标题。例如页面以 4.5.1 开头，绝对禁止自行补充第四章及4.5节的标题，仅提取当前可见的内容。
+4. 忠于原文：严格保留原始标题的文字、数字形式及前缀，禁止增添、删减或修改。
+   * 示例：图上为 `第7章 总结`，则提取为 `第7章 总结`。
+   * 示例：图上为 `7章 不良案例`，则提取为 `7章 不良案例`，禁止修改为 `第7章 不良案例` 或 `7 不良案例`。
+   * 示例：图上为 `01 花草篇`，则提取为 `01 花草篇`，禁止修改为 `花草篇`。
+
+5. 语言保留：严格保留原始文字（包括繁体中文、英文等），禁止进行翻译。
+6. 符号替换：将带圈数字替换为常规阿拉伯数字。例如将 ① 替换为 1。
+7. 标题页码分割：准确区分紧跟在标题后的页码，避免将页码提取为标题的一部分。
+   * 示例：`1 绪论` 和 `第一章 绪论` 为合理标题。若出现 `第一章 绪论 / 1` 或 `第一章 绪论 1`，末尾的 `1` 应当作为页码提取，标题仅为 `第一章 绪论`。
+8. 标点符号规范：包含中文的标题统一使用全角标点符号（如 `：` 和 `，`）。纯英文标题使用半角标点。
+9. 剔除连接符：去除标题与页码之间或标题内部用于排版的引导点 `·` 或类似连接符。仅保留语义上确实作为省略号存在的符号。
+   * 正确示例：`Part25 写给想成为动画作者的人,122`
+   * 错误示例：`Part 25……写给想成为动画作者的人,122`
+10. 标题完整性：保持章节编号与标题内容的完整关联，禁止因排版结构将其拆分为独立的两行。
+    * 正确示例：`第1章 基本知识,1`
+    * 错误示例：`第1章,null` 换行 `基本知识,1`
+11. 排除页眉页脚：忽略分布在页面边缘的书籍名称、页眉或章节导航等非目录主体内容。
+12. 页面上出现xx篇、xx章时，尽管它们没有页码，但仍然应提取，它们必然是目录的一部分。
+
+# 页码处理规则
+1. 缺失页码推算：若篇、章等高级别条目缺失页码，需根据其下级首个条目的页码或相邻条目进行合理推算并填补。禁止出现null的结果。
+   * 示例：第1篇的页码丢失，但第1篇第1章的页码为2，则推测第1篇的页码为2。
+
+# 空格与排版规则
+1. 纯中文目录：章节编号与具体标题之间仅保留1个半角空格。禁止在中文词组内部、数字与中文字符之间添加多余空格。
+   * 正确示例：`第1章 自动控制概述`；`第2章 超前滞后校正与PID校正`
+   * 错误示例：`第 1章 自动控制概述`；`第1 章自动控制概述`；`第2章 超前滞后校正与 PID校正`；`第2章 超前滞后校正与PID 校正`；`第 1 章 自动控制概述`
+2. 纯英文目录：遵循标准英语语法，单词、数字与符号之间保留常规空格。
+3. 混合目录：中文部分执行中文空格规则，英文部分执行英文空格规则。"""
+
+IMPORTANT_NOTE = """
+1. 忠于原文。图上为 `01 花草篇`，则提取为 `01 花草篇`，禁止修改为 `花草篇`。
+2. 页面上出现xx篇、xx章时，尽管它们没有页码，但仍然应提取，它们必然是目录的一部分。
+"""
+
 LLM_CONFIG = {}
+IMAGE_CACHE = {}
+client = None
 
 def write_log(message):
-    """写入日志到项目根目录的 log.txt"""
     try:
         project_root = Path(__file__).parent.parent
         log_file = project_root / "log.txt"
-    
-        # 异步环境下同步写文件通常是安全的，因为操作很快
-        # 如果需要极高频率写入，可考虑异步文件操作，但此处同步足够
         with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"[AsyncIO] {message}\n")
+            f.write(f"[Extract CSV] {message}\n")
     except Exception as e:
         print(f"日志写入失败：{e}")
 
 def load_llm_config() -> dict:
-    """从 static 文件夹加载 LLM 配置，并解析环境变量"""
+    import json
     project_root = Path(__file__).parent.parent
     config_path = project_root / "static" / "llm_config.json"
     if not config_path.exists():
         raise FileNotFoundError(f"LLM 配置文件不存在：{config_path}")
-    
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
-        
+    
     def resolve_value(val):
         if isinstance(val, str) and val.startswith('$') and val.endswith('$'):
-            env_var_name = val[1:-1]
-            return os.getenv(env_var_name)
+            return os.getenv(val[1:-1])
         return val
 
+    api_key = resolve_value(config.get("api_key"))
+    base_url = resolve_value(config.get("base_url"))
+    model = resolve_value(config.get("model"))
+
+    if not api_key:
+        raise ValueError("API Key 不能为空")
+    
     return {
-        "api_key": resolve_value(config.get("api_key")),
-        "base_url": resolve_value(config.get("base_url")),
-        "model": resolve_value(config.get("model"))
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model
     }
 
-def load_prompt():
-    """从 static/extract_prompt.md 加载提示词"""
-    try:
-        prompt_path = Path(__file__).parent.parent / "static" / "extract_prompt.md"
-        if not prompt_path.exists():
-            write_log(f"提示词文件不存在：{prompt_path}")
-            raise FileNotFoundError(f"提示词文件不存在：{prompt_path}")
-        
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            prompt_text = f.read()
-        
-        write_log("成功加载提示词")
-        return prompt_text
-    except Exception as e:
-        write_log(f"加载提示词时发生异常：{str(e)}")
-        write_log(traceback.format_exc())
-        raise
+def natural_sort_key(s):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]
 
 def resize_and_encode_image(image_path: Path) -> str:
-    """
-    读取图片，如果最长边超过 MAX_IMAGE_DIMENSION 则缩放，然后转换为 base64 JPEG 格式。
-    """
     with Image.open(image_path) as img:
-        # 转换模式以确保兼容性 (处理 RGBA 等)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        
         width, height = img.size
         max_dim = max(width, height)
-        
         if max_dim > MAX_IMAGE_DIMENSION:
             ratio = MAX_IMAGE_DIMENSION / max_dim
-            new_width = int(width * ratio)
-            new_height = int(height * ratio)
-            img = img.resize((new_width, new_height), Image.LANCZOS)
-            write_log(f"图片 {image_path.name} 已缩放：{width}x{height} -> {new_width}x{new_height}")
-        else:
-            write_log(f"图片 {image_path.name} 尺寸符合要求：{width}x{height}")
-        
-        # 保存到内存缓冲区
+            img = img.resize((int(width * ratio), int(height * ratio)), Image.LANCZOS)
         buffer = BytesIO()
-        # 即使原图是 PNG，也统一压缩为 JPEG 以减小体积发送给模型，除非原图格式必须保留透明通道（但 VL 模型通常不需要）
-        # 这里为了通用性和体积优化，强制输出 JPEG
         img.save(buffer, format="JPEG", quality=85, optimize=True)
-        
-        base64_image = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        return f"data:image/jpeg;base64,{base64_image}"
+        return f"data:image/jpeg;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
 
-async def process_image_async(session: aiohttp.ClientSession, semaphore: asyncio.Semaphore, image_path: Path, output_path: Path):
+def get_encoded_image(image_path: Path) -> str:
+    if image_path not in IMAGE_CACHE:
+        IMAGE_CACHE[image_path] = resize_and_encode_image(image_path)
+    return IMAGE_CACHE[image_path]
+
+def validate_and_fix_csv_content(content: str):
     """
-    异步处理单个图像文件
+    验证 CSV 内容是否合法（2 列）。
+    若不合法，尝试修复：
+    1. 将每行最后一个全角逗号替换为半角逗号。
+    2. 若解析为 3 列以上，说明半角逗号没有被恰当处理，将前 n-1 列合并并用双引号包裹。
+    返回：(is_valid, fixed_content)
+    """
+    lines = content.splitlines()
+    fixed_lines = []
+    
+    for line in lines:
+        if not line.strip():
+            continue
+            
+        # 尝试解析当前行
+        try:
+            reader = csv.reader(StringIO(line))
+            row = next(reader)
+        except Exception:
+            row = []
+            
+        # 1. 如果列数少于2，尝试将最后一个全角逗号替换为半角逗号
+        if len(row) < 2:
+            last_fullwidth_idx = line.rfind('，')
+            if last_fullwidth_idx != -1:
+                line_fixed = line[:last_fullwidth_idx] + ',' + line[last_fullwidth_idx+1:]
+                try:
+                    row = next(csv.reader(StringIO(line_fixed)))
+                except Exception:
+                    pass
+                    
+        # 2. 根据最终的 row 长度进行处理并重新生成标准 CSV 行
+        if len(row) > 2:
+            # 超过2列：合并前 n-1 列
+            title = ",".join(row[:-1])
+            page = row[-1]
+            buffer = StringIO()
+            writer = csv.writer(buffer)
+            writer.writerow([title, page])
+            fixed_lines.append(buffer.getvalue().strip())
+        elif len(row) == 2:
+            # 正常2列（或经过全角修复后变为2列）：使用 csv.writer 重新写入，确保格式绝对标准
+            buffer = StringIO()
+            writer = csv.writer(buffer)
+            writer.writerow(row)
+            fixed_lines.append(buffer.getvalue().strip())
+        else:
+            # 仍然无法修复为至少2列，原样保留，后续校验会失败
+            fixed_lines.append(line)
+            
+    fixed_content = '\n'.join(fixed_lines)
+    
+    # 最终检查所有行是否都严格为 2 列
+    try:
+        reader = csv.reader(StringIO(fixed_content))
+        rows = list(reader)
+        if not rows:
+            return False, content
+        for row in rows:
+            if len(row) != 2:
+                return False, content
+        return True, fixed_content
+    except Exception:
+        return False, content
+
+def fix_null_page_numbers(csv_content: str) -> str:
+    """
+    处理页码为 null 的情况：
+    1. 若某标题页码为 null，则向下寻找第一个非 null 项填充。
+    2. 若下方全是 null，则向上寻找最近的非 null 项填充。
+    """
+    lines = csv_content.strip().splitlines()
+    if not lines:
+        return csv_content
+    
+    # 解析为列表以便修改
+    # 假设第一行是 header，不参与逻辑判断，但需要保留
+    header = lines[0]
+    data_lines = lines[1:]
+    
+    parsed_data = []
+    for line in data_lines:
+        # 简单分割，假设标题内不包含逗号（根据 prompt 要求已去除干扰）
+        # 为了安全起见，使用 csv 模块解析单行
+        try:
+            reader = csv.reader(StringIO(line))
+            row = next(reader)
+            if len(row) >= 2:
+                title = row[0]
+                page = row[1].strip()
+                parsed_data.append({'title': title, 'page': page, 'original_line': line})
+            else:
+                # 格式错误的行，原样保留
+                parsed_data.append({'title': '', 'page': '', 'original_line': line, 'invalid': True})
+        except Exception:
+            parsed_data.append({'title': '', 'page': '', 'original_line': line, 'invalid': True})
+
+    n = len(parsed_data)
+    
+    # 辅助函数：判断页码是否有效
+    def is_valid_page(p):
+        if p is None:
+            return False
+        p_str = str(p).strip().lower()
+        return p_str != '' and p_str != 'null' and p_str != 'none'
+
+    # 第一遍：向下查找填充
+    for i in range(n):
+        if parsed_data[i].get('invalid'):
+            continue
+            
+        current_page = parsed_data[i]['page']
+        if not is_valid_page(current_page):
+            # 向下找
+            found = False
+            for j in range(i + 1, n):
+                if parsed_data[j].get('invalid'):
+                    continue
+                if is_valid_page(parsed_data[j]['page']):
+                    parsed_data[i]['page'] = parsed_data[j]['page']
+                    found = True
+                    break
+            # 如果向下没找到，标记需要向上找（稍后处理或立即处理）
+            # 这里采用立即向上查找的策略，因为向下已经确定没有了
+            if not found:
+                # 向上找
+                for k in range(i - 1, -1, -1):
+                    if parsed_data[k].get('invalid'):
+                        continue
+                    if is_valid_page(parsed_data[k]['page']):
+                        parsed_data[i]['page'] = parsed_data[k]['page']
+                        break
+                # 如果上下都没找到，保持原样（可能是整个文件都没页码）
+
+    # 重建 CSV 内容
+    output_lines = [header]
+    for item in parsed_data:
+        if item.get('invalid'):
+            output_lines.append(item['original_line'])
+        else:
+            # 重新组合，确保格式正确
+            # 注意：如果原标题包含逗号，这里可能需要更复杂的转义，但根据 prompt 规则标题应较干净
+            # 使用 csv 模块写入以确保安全
+            buffer = StringIO()
+            writer = csv.writer(buffer)
+            writer.writerow([item['title'], item['page']])
+            output_lines.append(buffer.getvalue().strip())
+            
+    return '\n'.join(output_lines)
+
+async def process_image_async(semaphore: asyncio.Semaphore, img_file: Path, output_path: Path):
+    """
+    使用 OpenAI SDK 发送请求，并包含后处理逻辑
+    修改点：增加对解析错误的详细日志记录，包含原始响应
     """
     async with semaphore:
-        # 断点续传检查：如果输出文件已存在，直接跳过
-        output_file = output_path / (image_path.stem + '_merged.json')
+        output_file = output_path / f"{img_file.stem}.csv"
         if output_file.exists():
-            write_log(f"跳过已处理文件：{image_path.name}")
+            write_log(f"跳过已处理文件：{img_file.name}")
             return None
 
-        write_log(f"开始处理图像：{image_path}")
+        write_log(f"开始处理图像：{img_file.name}")
+        
+        last_raw_response = None
+        last_error_msg = None
         
         try:
-            # 1. 图片预处理（缩放 + 编码）
-            try:
-                image_data_url = resize_and_encode_image(image_path)
-            except Exception as img_err:
-                write_log(f"图片预处理失败 {image_path}: {str(img_err)}")
-                return None
-
-            # 2. 构建请求 Payload
-            payload = {
-                "model": LLM_CONFIG["model"],
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": image_data_url}},
-                            {"type": "text", "text": PROMPT_TEXT}
-                        ]
-                    }
-                ],
-                "response_format": {"type": "json_object"},
-                "extra_body": {"enable_thinking": False}
-            }
-
-            headers = {
-                "Authorization": f"Bearer {LLM_CONFIG['api_key']}",
-                "Content-Type": "application/json"
-            }
-
-            result_data = None
+            image_data_url = get_encoded_image(img_file)
             
-            # 3. 重试循环
-            for attempt in range(MAX_RETRIES):
+            # 构建消息内容
+            content_list = [
+                {"type": "text", "text": "当前页图片（需处理）："},
+                {"type": "text", "text": PROMPT_TEXT},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+                {"type": "text", "text": PROMPT_TEXT},
+                {"type": "text", "text": IMPORTANT_NOTE}
+            ]
+
+            # 外层循环控制总重试次数 (初始 1 次 + 后处理失败后的额外重试)
+            total_attempts = 1 + POST_PROCESS_RETRIES
+            
+            final_content = None
+            
+            for attempt in range(total_attempts):
                 try:
-                    write_log(f"第 {attempt+1} 次尝试调用模型：{image_path.name}")
+                    # 调用 SDK
+                    response = await client.chat.completions.create(
+                        model=LLM_CONFIG["model"],
+                        messages=[{"role": "user", "content": content_list}],
+                        temperature=0,
+                        extra_body={"enable_thinking": False}
+                    )
                     
-                    async with session.post(LLM_CONFIG["base_url"] + "/chat/completions", json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=120)) as response:
-                        if response.status != 200:
-                            error_text = await response.text()
-                            raise Exception(f"API 返回错误状态码 {response.status}: {error_text}")
-                        
-                        resp_json = await response.json()
-                        
-                        # 解析响应内容
-                        content = resp_json["choices"][0]["message"]["content"].strip()
-                        
-                        if not content:
-                            write_log(f"模型返回空内容，重试...")
-                            continue
+                    # 保存原始响应内容用于潜在的错误日志
+                    last_raw_response = response.choices[0].message.content
+                    
+                    content = last_raw_response.strip()
+                    
+                    # 清理 Markdown 代码块标记
+                    if content.startswith("```csv"): 
+                        content = content[6:]
+                    elif content.startswith("```"): 
+                        content = content[3:]
+                    if content.endswith("```"): 
+                        content = content[:-3]
+                    content = content.strip()
 
-                        # 调试输出
-                        print(f"[DEBUG] {image_path.name} 模型响应长度：{len(content)}")
+                    if not content:
+                        write_log(f"模型返回空内容 (尝试 {attempt+1}/{total_attempts})")
+                        if attempt == total_attempts - 1:
+                            raise Exception("模型持续返回空内容")
+                        continue
 
-                        # 解析 JSON
-                        try:
-                            directory_data = json.loads(content)
-                        except json.JSONDecodeError:
-                            write_log(f"JSON 解析失败，原始内容片段：{content[:200]}...")
-                            # 保存错误响应
-                            error_dir = output_path / "error"
-                            error_dir.mkdir(exist_ok=True)
-                            error_file = error_dir / (image_path.stem + '_error_response.json')
-                            with open(error_file, 'w', encoding='utf-8') as f:
-                                json.dump({"raw_response": content}, f, ensure_ascii=False, indent=2)
-                            continue # 进入下一次重试
-
-                        # 数据重构逻辑 (保持与原代码一致)
-                        flattened_data = []
-                        if isinstance(directory_data, dict):
-                            for level_key, items in directory_data.items():
-                                if level_key.startswith("level_") and isinstance(items, list):
-                                    try:
-                                        level = int(level_key.split("_")[1])
-                                        for item in items:
-                                            if isinstance(item, dict) and 't' in item:
-                                                text = item["t"]
-                                                flattened_item = {
-                                                    "text": text,
-                                                    "number": item.get("n", None),
-                                                    "level": level
-                                                }
-                                                flattened_data.append(flattened_item)
-                                    except (ValueError, IndexError):
-                                        continue
+                    # 后处理验证与修复
+                    is_valid, processed_content = validate_and_fix_csv_content(content)
+                    
+                    if is_valid:
+                        final_content = processed_content
+                        if attempt > 0:
+                            write_log(f"第 {attempt+1} 次尝试成功 (经过后处理修复)")
+                        break
+                    else:
+                        # 记录验证失败的原始内容
+                        last_error_msg = f"CSV 格式验证失败：行数或列数不符合 2 列要求。原始内容片段：{content[:200]}..."
+                        write_log(f"CSV 解析失败且修复无效 (尝试 {attempt+1}/{total_attempts})")
+                        if attempt == total_attempts - 1:
+                            raise Exception(last_error_msg)
+                        # 继续下一次重试循环，重新请求 LLM
                         
-                        # 过滤和排序
-                        filtered_data = [item for item in flattened_data if isinstance(item["number"], int)]
-                        sorted_data = sorted(filtered_data, key=lambda x: x['number'])
-                        
-                        if sorted_data:
-                            # 立即保存结果 (断点续传关键)
-                            with open(output_file, 'w', encoding='utf-8') as f:
-                                json.dump(sorted_data, f, ensure_ascii=False, indent=2)
-                            
-                            write_log(f"结果保存成功：{output_file}")
-                            print(f"已处理：{image_path.name}")
-                            result_data = sorted_data
-                            break # 成功，跳出重试循环
-                        else:
-                            write_log(f"解析后无有效数据，重试...")
-                            # 保存原始响应以便调试
-                            error_dir = output_path / "error"
-                            error_dir.mkdir(exist_ok=True)
-                            error_file = error_dir / (image_path.stem + '_empty_result.json')
-                            with open(error_file, 'w', encoding='utf-8') as f:
-                                json.dump(directory_data, f, ensure_ascii=False, indent=2)
-                            continue
-
+                except APIError as e:
+                    # 捕获 API 错误，尝试提取响应体
+                    error_body = getattr(e, 'body', None) or str(e)
+                    last_raw_response = f"API Error Body: {error_body}"
+                    last_error_msg = f"API 错误：{str(e)}"
+                    write_log(f"API 错误 (尝试 {attempt+1}/{total_attempts}): {last_error_msg}")
+                    if attempt == total_attempts - 1:
+                        raise e
+                    # 短暂等待后重试
+                    await asyncio.sleep(2 ** attempt) 
                 except Exception as e:
-                    write_log(f"第 {attempt+1} 次尝试失败：{str(e)}")
-                    if attempt == MAX_RETRIES - 1:
-                        print(f"处理 {image_path.name} 失败，已达到最大重试次数")
-                        write_log(f"处理 {image_path.name} 最终失败")
+                    last_error_msg = f"处理逻辑错误：{str(e)}"
+                    write_log(f"处理逻辑错误 (尝试 {attempt+1}/{total_attempts}): {last_error_msg}")
+                    if attempt == total_attempts - 1:
+                        raise e
             
-            return result_data
-
+            if final_content:
+                # === 新增逻辑：页码 Null 填充 ===
+                try:
+                    fixed_content = fix_null_page_numbers(final_content)
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        f.write(fixed_content)
+                    write_log(f"结果保存并修正页码成功：{output_file.name}")
+                except Exception as post_err:
+                    write_log(f"页码修正过程出错，保存原始内容：{str(post_err)}")
+                    # 如果修正失败，至少保存原始验证通过的内容
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        f.write(final_content)
+                
+                print(f"已提取 CSV：{img_file.name}")
+                return True
+            else:
+                # 理论上不会到达这里，因为上面已经抛出异常或 break
+                print(f"处理 {img_file.name} 失败，未达到有效内容标准")
+                return False
+            
         except Exception as e:
-            write_log(f"处理图像时发生未捕获异常：{image_path}")
-            write_log(f"错误信息：{str(e)}")
-            write_log(traceback.format_exc())
-            return None
+            # === 核心修改：记录详细错误日志和原始响应 ===
+            error_details = {
+                "file": img_file.name,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "raw_response": last_raw_response if last_raw_response else "No response received",
+                "last_error_context": last_error_msg if last_error_msg else "Unknown context"
+            }
+            
+            log_entry = (
+                f"=== CSV 解析失败报告 ===\n"
+                f"文件：{error_details['file']}\n"
+                f"错误类型：{error_details['error_type']}\n"
+                f"错误信息：{error_details['error_message']}\n"
+                f"上下文：{error_details['last_error_context']}\n"
+                f"原始响应内容:\n{error_details['raw_response']}\n"
+                f"========================\n"
+            )
+            
+            write_log(log_entry)
+            traceback.print_exc()
+            return False
 
 async def run_batch_processing(image_files: list, output_path: Path):
-    """
-    主异步入口：创建会话并并发执行任务
-    """
+    write_log("正在预处理并缓存图片...")
+    # 预加载图片到内存，避免在处理时频繁读取磁盘
+    for img in image_files:
+        get_encoded_image(img)
+    
     semaphore = asyncio.Semaphore(CONCURRENT_LIMIT)
     
-    # 配置 aiohttp Connector 以支持高并发
-    connector = aiohttp.TCPConnector(limit=CONCURRENT_LIMIT, limit_per_host=CONCURRENT_LIMIT)
-    
-    async with aiohttp.ClientSession(connector=connector) as session:
-        tasks = [
-            process_image_async(session, semaphore, img_file, output_path)
-            for img_file in image_files
-        ]
-        
-        # 使用 gather 并发执行，返回结果列表
-        # return_exceptions=True 防止单个任务崩溃导致整个程序退出
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        success_count = sum(1 for r in results if r is not None and not isinstance(r, Exception))
-        write_log(f"批量处理完成，成功：{success_count}, 总数：{len(image_files)}")
-        print(f"处理完成，共成功处理 {success_count} 个文件")
+    tasks = []
+    for img_file in image_files:
+        tasks.append(process_image_async(semaphore, img_file, output_path))
 
-def post_process_levels(output_path: Path):
-    """后处理逻辑：调整各页的 level 值 (保持原有同步逻辑，因不涉及网络 IO)"""
-    write_log("开始执行后处理逻辑")
-  
-    try:
-        merged_files = list(output_path.glob("*_merged.json"))
-        if not merged_files:
-            write_log("未找到任何 merged.json 文件，跳过后处理")
-            return
-          
-        page_info = []
-        for file in merged_files:
-            match = re.search(r"page_(\d+)_merged\.json$", file.name)
-            if match:
-                page_num = int(match.group(1))
-                page_info.append((page_num, file))
-      
-        page_info.sort(key=lambda x: x[0])
-      
-        if not page_info:
-            write_log("未找到符合命名规则的页面文件，跳过后处理")
-            return
-          
-        first_page_file = page_info[0][1]
-        write_log(f"首页文件：{first_page_file.name}")
-      
-        first_page_max_level = 0
-        if first_page_file.exists():
-            with open(first_page_file, 'r', encoding='utf-8') as f:
-                first_page_data = json.load(f)
-                if first_page_data:
-                    first_page_max_level = max(item.get("level", 0) for item in first_page_data)
-        write_log(f"首页最大 level 值：{first_page_max_level}")
-      
-        for page_num, file in page_info[1:]:
-            write_log(f"处理页面：{file.name}")
-          
-            if not file.exists():
-                continue
-              
-            with open(file, 'r', encoding='utf-8') as f:
-                page_data = json.load(f)
-              
-            if not page_data:
-                continue
-              
-            current_max_level = max(item.get("level", 0) for item in page_data)
-            write_log(f"页面 {file.name} 最大 level 值：{current_max_level}")
-          
-            if current_max_level < first_page_max_level:
-                level_diff = first_page_max_level - current_max_level
-                write_log(f"页面 {file.name} 需要调整，level 差值：{level_diff}")
-              
-                for item in page_data:
-                    item["level"] += level_diff
-                  
-                with open(file, 'w', encoding='utf-8') as f:
-                    json.dump(page_data, f, ensure_ascii=False, indent=2)
-                  
-                write_log(f"页面 {file.name} level 值调整完成")
-            else:
-                write_log(f"页面 {file.name} 无需调整")
-              
-        write_log("后处理逻辑执行完成")
-      
-    except Exception as e:
-        write_log(f"后处理逻辑执行时发生异常：{str(e)}")
-        write_log(traceback.format_exc())
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    success_count = sum(1 for r in results if r is True)
+    print(f"CSV 提取完成，成功：{success_count}/{len(image_files)}")
 
 async def main_async():
-    write_log("=== qwen_vl_extract.py (Async Version) 开始执行 ===")
-
-    try:
-        # 1. 加载配置
-        global LLM_CONFIG, PROMPT_TEXT
-        try:
-            LLM_CONFIG = load_llm_config()
-            if not LLM_CONFIG.get("api_key"):
-                raise ValueError("API Key 不能为空")
-            write_log("LLM 配置加载成功")
-        except Exception as e:
-            write_log(f"配置加载失败：{str(e)}")
-            print(f"配置加载失败：{e}")
-            sys.exit(1)
-
-        try:
-            PROMPT_TEXT = load_prompt()
-        except Exception as e:
-            write_log(f"无法加载提示词，程序退出：{str(e)}")
-            sys.exit(1)
-
-        # 2. 确定路径
-        base_dir = os.getenv("BASE_DIR")
-        if base_dir:
-            input_path = Path(base_dir) / "mark" / "input_image"
-            output_path = Path(base_dir) / "raw_content"
-            write_log(f"使用会话目录路径：{base_dir}")
-        else:
-            input_path_str = os.getenv("QWEN_VL_EXTRACT_INPUT")
-            output_path_str = os.getenv("QWEN_VL_EXTRACT_OUTPUT")
-            
-            if not input_path_str or not output_path_str:
-                write_log("错误：未设置必要的环境变量")
-                print("错误：未设置必要的环境变量")
-                sys.exit(1)
-            
-            input_path = Path(input_path_str)
-            output_path = Path(output_path_str)
+    global client, LLM_CONFIG
     
-        write_log(f"输入路径：{input_path}")
-        write_log(f"输出路径：{output_path}")
+    load_dotenv()
+    LLM_CONFIG = load_llm_config()
     
-        # 3. 准备文件列表
-        if not input_path.exists():
-            write_log(f"输入路径不存在：{input_path}")
-            print(f"输入路径不存在：{input_path}")
-            sys.exit(1)
+    # 初始化 OpenAI 客户端 (兼容模式)
+    client = AsyncOpenAI(
+        api_key=LLM_CONFIG["api_key"],
+        base_url=LLM_CONFIG["base_url"]
+    )
+    
+    base_dir = os.getenv("BASE_DIR")
+    if base_dir:
+        input_path = Path(base_dir) / "mark" / "input_image"
+        output_path = Path(base_dir) / "raw_content"
+    else:
+        input_path_str = os.getenv("QWEN_VL_EXTRACT_INPUT")
+        output_path_str = os.getenv("QWEN_VL_EXTRACT_OUTPUT")
         
-        image_files = [f for f in input_path.iterdir() 
-                       if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS]
+        if not input_path_str or not output_path_str:
+            print("错误：未设置必要的环境变量 QWEN_VL_EXTRACT_INPUT 或 QWEN_VL_EXTRACT_OUTPUT")
+            sys.exit(1)
+            
+        input_path = Path(input_path_str)
+        output_path = Path(output_path_str)
     
-        write_log(f"找到 {len(image_files)} 个图像文件")
-        print(f"找到 {len(image_files)} 个图像文件，开始异步处理...")
-    
-        if not image_files:
-            print("没有发现需要处理的图片文件。")
-            return
-
-        # 4. 确保输出目录存在
-        output_path.mkdir(parents=True, exist_ok=True)
-    
-        # 5. 运行异步批处理
-        await run_batch_processing(image_files, output_path)
-      
-        # 6. 执行后处理
-        post_process_levels(output_path)
-    
-    except Exception as e:
-        write_log(f"主函数执行时发生异常：{str(e)}")
-        write_log(traceback.format_exc())
-        print(f"主函数执行时发生异常：{e}")
-        traceback.print_exc()
+    if not input_path.exists():
+        print(f"错误：输入路径不存在 {input_path}")
         sys.exit(1)
-
-def main():
-    """入口函数，启动 asyncio 事件循环"""
-    # 兼容不同平台的启动策略
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        
+    output_path.mkdir(parents=True, exist_ok=True)
+    image_files = sorted([f for f in input_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS], key=lambda x: natural_sort_key(x.name))
     
-    asyncio.run(main_async())
+    if image_files:
+        await run_batch_processing(image_files, output_path)
+    else:
+        print("未找到需要处理的图片。")
 
 if __name__ == "__main__":
-    main()
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    asyncio.run(main_async())

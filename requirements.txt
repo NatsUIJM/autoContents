@@ -6,3 +6,4 @@ flask
 pypinyin
 PyMuPDF
 aiohttp
+requests

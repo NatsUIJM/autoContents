@@ -81,7 +81,7 @@ def create_concat_image_b64(doc: fitz.Document, start_p: int, end_p: int, save_p
     current_x = 0
     for img, p_num in zip(images, page_nums):
         combined.paste(img, (current_x, 0))
-        text = f"Page {p_num}"
+        text = f"PDFNumber {p_num}"
         
         if hasattr(font, 'getbbox'):
             bbox = font.getbbox(text)
@@ -109,10 +109,12 @@ def create_concat_image_b64(doc: fitz.Document, start_p: int, end_p: int, save_p
 
 async def fetch_toc_from_image(client: AsyncOpenAI, model: str, b64_img: str, start_p: int, end_p: int, raw_save_path: str = None) -> str:
     """调用 LLM 识别拼接图片中的目录范围，并保存原始响应"""
-    prompt = f"""这是一张由 5 个连续的 PDF 页面横向拼接而成的图片。每张图片下方标注了它的物理页码（例如 Page {start_p}）。
+    prompt = f"""这是一张由几个连续的 PDF 页面横向拼接而成的图片。每张图片下方标注了它的物理页码（例如 PDFNumber {start_p}）。
 请找出这几页中，属于目录的起始页码和结束页码。
 
-【目录的严格定义】：一页中必须存在多个“标题 - 页码”对。如果某一页没有这个特征（例如纯文本正文、封面、版权页、序言），则它绝对不是目录。
+【目录的严格定义】：一页中必须存在多个“标题 - 页码”对。如果某一页没有这个特征（例如纯文本正文、封面、版权页、序言），则它绝对不是目录。只要不存在页码，那这页绝对不是目录。相对应地，如果一页有这个特征，那么它必然是目录。
+
+【注意】：应以下方的PDFNumber作为页码。例如PDFNumber为2-3的图片是目录，那么起始页码就是2，结束页码就是3。
 
 【输出要求】：
 1. 仅输出 JSON 格式，不要包含任何 markdown 标记（如 ```json ）、解释或额外文本。
@@ -126,12 +128,14 @@ async def fetch_toc_from_image(client: AsyncOpenAI, model: str, b64_img: str, st
                 {
                     "role": "user",
                     "content": [
+                        {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
-                        {"type": "text", "text": prompt}
+                        {"type": "text", "text": prompt},
                     ]
                 }
             ],
-            extra_body={"enable_thinking": False}
+            extra_body={"enable_thinking": False},
+            temperature=0,
         )
         raw_content = completion.choices[0].message.content.strip()
         
@@ -195,21 +199,17 @@ def merge_continuous_ranges(page_list: list) -> tuple:
         prev = sorted_pages[i-1]
         curr = sorted_pages[i]
         
-        # 允许页码连续或紧邻（差值为 1），防止因单页识别遗漏导致断裂
         if curr - prev <= 1:
             current_end = curr
         else:
-            # 断档，检查当前段是否更长
             current_len = current_end - current_start + 1
             if current_len > max_len:
                 max_len = current_len
                 best_start = current_start
                 best_end = current_end
-            # 重置当前段
             current_start = curr
             current_end = curr
             
-    # 检查最后一段
     current_len = current_end - current_start + 1
     if current_len > max_len:
         best_start = current_start
@@ -218,95 +218,175 @@ def merge_continuous_ranges(page_list: list) -> tuple:
     return best_start, best_end
 
 async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initial_data_dir: str) -> tuple:
-    """分批次提取目录起始和结束页，并合并跨批次的连续目录页"""
+    """使用滑动窗口提取目录，并对冲突页进行单页投票"""
     doc = fitz.open(pdf_path)
     total_pages = len(doc)
     
-    all_toc_pages = []
-    
     write_log(f"开始提取目录信息，总页数：{total_pages}")
     
-    # 调整步长以确保覆盖，每次处理 20 页，内部划分为 4 个 5 页的小块
-    # 这里的逻辑保持原有结构，但收集所有识别到的页码
-    for batch_start in range(1, min(total_pages + 1, 61), 20):
-        batch_end = min(batch_start + 19, total_pages)
-        if batch_start > total_pages:
+    # 控制并发度为 8
+    semaphore = asyncio.Semaphore(8)
+    # 记录每一页被判定为目录和非目录的次数
+    page_votes = {i: {"is_toc": 0, "not_toc": 0} for i in range(1, total_pages + 1)}
+    
+    async def process_window(start_p, end_p):
+        async with semaphore:
+            img_filename = f"concat_pages_{start_p}_{end_p}.jpg"
+            img_save_path = os.path.join(initial_data_dir, img_filename)
+            raw_filename = f"toc_response_{start_p}_{end_p}.json"
+            raw_save_path = os.path.join(initial_data_dir, raw_filename)
+            
+            b64_img = create_concat_image_b64(doc, start_p, end_p, save_path=img_save_path)
+            if not b64_img:
+                return start_p, end_p, None, None
+                
+            raw_res = await fetch_toc_from_image(client, model, b64_img, start_p, end_p, raw_save_path)
+            toc_start, toc_end = parse_toc_json(raw_res)
+            return start_p, end_p, toc_start, toc_end
+
+    async def run_batch(start_page, end_page_limit):
+        """执行一个批次的滑动窗口扫描"""
+        windows = []
+        # 步长为 2，窗口大小为 4
+        for i in range(start_page, end_page_limit, 2):
+            if i > total_pages:
+                break
+            windows.append((i, min(i + 3, total_pages)))
+            
+        if not windows:
+            return
+            
+        tasks = [process_window(s, e) for s, e in windows]
+        results = await asyncio.gather(*tasks)
+        
+        for s, e, t_start, t_end in results:
+            for p in range(s, e + 1):
+                if t_start is not None and t_end is not None and t_start <= p <= t_end:
+                    page_votes[p]["is_toc"] += 1
+                else:
+                    page_votes[p]["not_toc"] += 1
+
+    # 第一阶段：初始扫描 1-20 页
+    current_limit = min(20, total_pages)
+    info_msg = f"正在分析目录范围：第 1 到 {current_limit} 页 (滑动窗口)"
+    print(f"[INFO] {info_msg}")
+    write_log(info_msg)
+    await run_batch(1, current_limit + 1)
+    
+    # 第二阶段：动态拓展逻辑
+    # 规则：检查当前范围末尾两页（如19-20）是否为目录。若是，则拓展10页，直到60页或文件末尾。
+    while current_limit < 60 and current_limit < total_pages:
+        p1 = current_limit - 1
+        p2 = current_limit
+        
+        # 安全获取投票结果
+        is_p1_toc = page_votes.get(p1, {}).get("is_toc", 0) > 0
+        is_p2_toc = page_votes.get(p2, {}).get("is_toc", 0) > 0
+        
+        if not (is_p1_toc and is_p2_toc):
             break
             
-        info_msg = f"正在分析目录范围：第 {batch_start} 到 {batch_end} 页"
+        # 拓展范围 10 页
+        current_limit = min(current_limit + 10, 60)
+        if current_limit > total_pages:
+            current_limit = total_pages
+            
+        info_msg = f"第 {p1}-{p2} 页确认为目录，拓展扫描范围至第 {current_limit} 页"
         print(f"[INFO] {info_msg}")
         write_log(info_msg)
         
-        tasks = []
+        # 扫描新增的页面区间
+        await run_batch(current_limit - 9, current_limit + 1)
+
+    # 冲突检测与单页投票
+    conflict_pages = []
+    final_toc_pages = []
+    
+    for p, votes in page_votes.items():
+        if votes["is_toc"] > 0 and votes["not_toc"] > 0:
+            conflict_pages.append(p)
+        elif votes["is_toc"] > 0:
+            final_toc_pages.append(p)
+            
+    if conflict_pages:
+        info_msg = f"发现冲突页，进行单页投票：{conflict_pages}"
+        print(f"[INFO] {info_msg}")
+        write_log(info_msg)
         
-        for i in range(4):
-            sub_start = batch_start + i * 5
-            sub_end = min(sub_start + 4, batch_end)
-            if sub_start > batch_end:
-                break
+        async def resolve_conflict(p):
+            async with semaphore:
+                img_filename = f"single_page_{p}.jpg"
+                img_save_path = os.path.join(initial_data_dir, img_filename)
+                raw_filename = f"single_toc_response_{p}.json"
+                raw_save_path = os.path.join(initial_data_dir, raw_filename)
                 
-            img_filename = f"concat_pages_{sub_start}_{sub_end}.jpg"
-            img_save_path = os.path.join(initial_data_dir, img_filename)
-            
-            raw_filename = f"toc_response_{sub_start}_{sub_end}.json"
-            raw_save_path = os.path.join(initial_data_dir, raw_filename)
-            
-            b64_img = create_concat_image_b64(doc, sub_start, sub_end, save_path=img_save_path)
-            if b64_img:
-                tasks.append(fetch_toc_from_image(client, model, b64_img, sub_start, sub_end, raw_save_path=raw_save_path))
-                
-        if not tasks:
-            break
-            
-        results = await asyncio.gather(*tasks)
+                b64_img = create_concat_image_b64(doc, p, p, save_path=img_save_path)
+                if not b64_img:
+                    return p, False
+                    
+                prompt = f"""这是一张 PDF 页面的图片，物理页码为 {p}。
+请判断这一页是否是目录。目录的严格定义为：这张图中是否能提取出多个标题-页码对。
+【输出要求】：
+1. 仅输出 JSON 格式，不要包含任何 markdown 标记。
+2. 如果是目录，输出：{{"is_toc": true}}
+3. 如果不是目录，输出：{{"is_toc": false}}"""
+
+                try:
+                    completion = await client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
+                                ]
+                            }
+                        ],
+                        extra_body={"enable_thinking": False},
+                        temperature=0,
+                    )
+                    raw_content = completion.choices[0].message.content.strip()
+                    
+                    with open(raw_save_path, 'w', encoding='utf-8') as f:
+                        json.dump({"page": p, "raw_response": raw_content}, f, ensure_ascii=False, indent=2)
+                        
+                    clean_text = re.sub(r'^```(?:json)?\s*', '', raw_content, flags=re.MULTILINE)
+                    clean_text = re.sub(r'\s*```$', '', clean_text, flags=re.MULTILINE)
+                    data = json.loads(clean_text)
+                    return p, data.get("is_toc", False)
+                except Exception as e:
+                    logger.error(f"单页投票失败 (页码 {p}): {e}")
+                    return p, False
+
+        conflict_tasks = [resolve_conflict(p) for p in conflict_pages]
+        conflict_results = await asyncio.gather(*conflict_tasks)
         
-        # 收集所有被识别为目录的页码
-        for res in results:
-            start, end = parse_toc_json(res)
-            if isinstance(start, int) and isinstance(end, int):
-                # 将该范围内的所有页码加入列表，而不仅仅是端点
-                # 这样即使两个响应分别是 15-15 和 16-17，也能得到 [15, 16, 17]
-                for p in range(start, end + 1):
-                    all_toc_pages.append(p)
-        
-        # 优化：如果已经收集到页码，且当前批次已结束，可以提前判断是否继续
-        # 但为了稳健性，我们继续扫描直到达到上限或明显超出目录区域
-        # 原逻辑中的熔断机制保留，但基于收集到的页码判断
-        if all_toc_pages:
-            current_max = max(all_toc_pages)
-            # 如果当前识别到的最大页码等于当前批次的结束页，且未达到硬上限，继续扫描下一批
-            if current_max == batch_end and batch_end < 60 and batch_end < total_pages:
-                continue
-            else:
-                # 如果最大页码小于批次结束页，说明目录可能在当前批次内已经结束，无需继续向后扫描
-                # 或者达到了 60 页上限
-                break
-        else:
-            # 如果当前批次没找到任何目录，且之前也没找到，继续；如果之前找到了，说明目录结束了
-            if all_toc_pages:
-                break
+        for p, is_toc in conflict_results:
+            if is_toc:
+                final_toc_pages.append(p)
 
     doc.close()
 
-    if not all_toc_pages:
+    if not final_toc_pages:
         warn_msg = "未识别到任何目录页"
         print(f"[WARNING] {warn_msg}")
         write_log(warn_msg)
         return None, None
 
-    # 核心修改：合并所有收集到的页码，处理跨响应拼接
-    global_toc_start, global_toc_end = merge_continuous_ranges(all_toc_pages)
+    # 合并最终确认的目录页码
+    global_toc_start, global_toc_end = merge_continuous_ranges(final_toc_pages)
     
     if global_toc_start is None:
         return None, None
 
-    if global_toc_end == 60:
-        warn_msg = "目录识别达到 60 页上限，触发熔断，强制设置为 1 和 2"
+    if global_toc_end >= 60:
+        warn_msg = "目录识别达到或超过 60 页上限，触发熔断，强制设置为 1 和 2"
         print(f"[WARNING] {warn_msg}")
         write_log(warn_msg)
         return 1, 2
 
-    info_msg = f"目录页码合并完成：{global_toc_start}-{global_toc_end} (原始识别页码数：{len(all_toc_pages)})"
+    info_msg = f"目录页码合并完成：{global_toc_start}-{global_toc_end} (最终识别页码数：{len(final_toc_pages)})"
     print(f"[INFO] {info_msg}")
     write_log(info_msg)
 
@@ -336,12 +416,13 @@ async def extract_book_name(pdf_path: str, original_filename: str, client: Async
                 {
                     "role": "user",
                     "content": [
+                        {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": image_data_url}},
-                        {"type": "text", "text": prompt}
                     ]
                 }
             ],
-            extra_body={"enable_thinking": False}
+            extra_body={"enable_thinking": False},
+            temperature=0,
         )
         
         book_name = completion.choices[0].message.content.strip()
@@ -383,12 +464,13 @@ async def fetch_single_offset(client: AsyncOpenAI, model: str, page_num: int, b6
                 {
                     "role": "user",
                     "content": [
+                        {"type": "text", "text": prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
-                        {"type": "text", "text": prompt}
                     ]
                 }
             ],
-            extra_body={"enable_thinking": False}
+            extra_body={"enable_thinking": False},
+            temperature=0,
         )
         return completion.choices[0].message.content.strip()
     except Exception as e:
@@ -453,7 +535,6 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str) -> in
 async def main():
     write_log("=== pdf_metadata_extractor.py 开始执行 ===")
     
-    # 移除 load_dotenv()，完全依赖 Flask 注入的环境变量，避免冲突
     input_dir = os.getenv("PDF_METADATA_EXTRACTOR_INPUT")
     output_dir = os.getenv("PDF_METADATA_EXTRACTOR_OUTPUT")
     
@@ -496,7 +577,6 @@ async def main():
     print(f"[INFO] {info_msg}")
     write_log(info_msg)
 
-    # 修复：使用动态计算的 PROJECT_ROOT 解析配置文件路径
     config_path = os.path.join(PROJECT_ROOT, "static", "llm_config.json")
     if not os.path.exists(config_path):
         error_msg = f"LLM 配置文件未找到，当前查找目录：{config_path}"
