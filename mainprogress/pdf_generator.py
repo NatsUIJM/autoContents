@@ -194,13 +194,13 @@ def process_pdf_with_bookmarks():
         # 添加元数据
         with pdf.open_metadata() as meta:
             meta['xmp:CreatorTool'] = 'autoContents'
-            meta['pdf:Producer'] = 'autoContents v2.0'
+            meta['pdf:Producer'] = 'autoContents'
             meta['xmp:CreateDate'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             
         # 添加文档信息
         pdf.docinfo = pdf.make_indirect(pikepdf.Dictionary({
             '/Creator': 'autoContents',
-            '/Producer': 'autoContents v2.0',
+            '/Producer': 'autoContents',
             '/CreationDate': datetime.now().strftime("D:%Y%m%d%H%M%S"),
             '/URL': 'https://github.com/NatsUijm/autoContents',
             '/Comments': '本 PDF 书签由 autoContents 程序生成，感谢您使用本程序！'
