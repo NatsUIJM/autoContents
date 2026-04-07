@@ -148,42 +148,40 @@ def api_trail():
         if not machine_code:
             return jsonify({'status': 'error', 'message': '机器码不能为空'}), 400
         
-        # 调用外部 API 进行校验
         try:
             response = requests.post(
                 f"{AUTH_API_BASE_URL}/trial",
                 json={'machine_code': machine_code},
                 timeout=30
             )
+            # 记录原始响应，便于排查服务端真实错误
+            logger.info(f"外部鉴权服务响应 - 状态码：{response.status_code}, 原始内容：{response.text}")
             external_data = response.json()
+        except requests.exceptions.JSONDecodeError as e:
+            logger.error(f"外部鉴权服务返回非 JSON 内容：{response.text}")
+            return jsonify({'status': 'error', 'message': f'鉴权服务返回异常内容：{response.text[:200]}'}), 502
         except requests.exceptions.RequestException as e:
             logger.error(f"连接外部鉴权服务失败：{str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': f'连接鉴权服务器失败：{str(e)}'
-            }), 503
+            return jsonify({'status': 'error', 'message': f'连接鉴权服务器失败：{str(e)}'}), 503
         
-        # 检查外部 API 响应
         if response.status_code == 200 and external_data.get('status') == 'success':
-            # 校验成功，写入试用标识
             write_auth_key('Trail')
             logger.info(f"试用激活成功 - 机器码：{machine_code}")
             return jsonify({
                 'status': 'success',
-                'message': external_data.get('message', '试用已激活')
+                'message': external_data.get('message', '试用已激活'),
+                'expire_date': external_data.get('expire_date'),
+                'expire_date_str': external_data.get('expire_date_str')
             })
         else:
-            # 校验失败，返回外部 API 的错误信息
-            error_message = external_data.get('message', '试用激活失败')
-            logger.warning(f"试用激活失败 - 机器码：{machine_code}, 原因：{error_message}")
-            return jsonify({
-                'status': 'error',
-                'message': error_message
-            }), 400
+            error_message = external_data.get('message') or f'服务端返回状态码 {response.status_code}'
+            logger.warning(f"试用激活失败 - 机器码：{machine_code}, 原因：{error_message}, 完整响应：{external_data}")
+            return jsonify({'status': 'error', 'message': error_message}), 400
             
     except Exception as e:
         logger.error(f"试用激活失败：{str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/activate', methods=['POST'])
 def api_activate():
@@ -199,45 +197,39 @@ def api_activate():
         if not activation_code or len(activation_code) != 32:
             return jsonify({'status': 'error', 'message': '激活码必须为 32 个字符'}), 400
         
-        # 调用外部 API 进行校验
         try:
             response = requests.post(
                 f"{AUTH_API_BASE_URL}/activate",
-                json={
-                    'machine_code': machine_code,
-                    'activation_code': activation_code
-                },
+                json={'machine_code': machine_code, 'activation_code': activation_code},
                 timeout=30
             )
+            logger.info(f"外部鉴权服务响应 - 状态码：{response.status_code}, 原始内容：{response.text}")
             external_data = response.json()
+        except requests.exceptions.JSONDecodeError:
+            logger.error(f"外部鉴权服务返回非 JSON 内容：{response.text}")
+            return jsonify({'status': 'error', 'message': f'鉴权服务返回异常内容：{response.text[:200]}'}), 502
         except requests.exceptions.RequestException as e:
             logger.error(f"连接外部鉴权服务失败：{str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': f'连接鉴权服务器失败：{str(e)}'
-            }), 503
+            return jsonify({'status': 'error', 'message': f'连接鉴权服务器失败：{str(e)}'}), 503
         
-        # 检查外部 API 响应
         if response.status_code == 200 and external_data.get('status') == 'success':
-            # 校验成功，写入激活码
             write_auth_key(activation_code)
             logger.info(f"正式激活成功 - 机器码：{machine_code}")
             return jsonify({
                 'status': 'success',
-                'message': external_data.get('message', '激活成功')
+                'message': external_data.get('message', '激活成功'),
+                'expire_date': external_data.get('expire_date'),
+                'expire_date_str': external_data.get('expire_date_str')
             })
         else:
-            # 校验失败，返回外部 API 的错误信息
-            error_message = external_data.get('message', '激活失败')
-            logger.warning(f"正式激活失败 - 机器码：{machine_code}, 原因：{error_message}")
-            return jsonify({
-                'status': 'error',
-                'message': error_message
-            }), 400
+            error_message = external_data.get('message') or f'服务端返回状态码 {response.status_code}'
+            logger.warning(f"正式激活失败 - 机器码：{machine_code}, 原因：{error_message}, 完整响应：{external_data}")
+            return jsonify({'status': 'error', 'message': error_message}), 400
             
     except Exception as e:
         logger.error(f"激活失败：{str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/deactivate', methods=['POST'])
 def api_deactivate():
@@ -249,54 +241,44 @@ def api_deactivate():
         if not activation_code or len(activation_code) != 32:
             return jsonify({'status': 'error', 'message': '激活码必须为 32 个字符'}), 400
         
-        # 调用外部 API 进行校验
         try:
             response = requests.post(
                 f"{AUTH_API_BASE_URL}/deactivate",
                 json={'activation_code': activation_code},
                 timeout=30
             )
+            logger.info(f"外部鉴权服务响应 - 状态码：{response.status_code}, 原始内容：{response.text}")
             external_data = response.json()
+        except requests.exceptions.JSONDecodeError:
+            logger.error(f"外部鉴权服务返回非 JSON 内容：{response.text}")
+            return jsonify({'status': 'error', 'message': f'鉴权服务返回异常内容：{response.text[:200]}'}), 502
         except requests.exceptions.RequestException as e:
             logger.error(f"连接外部鉴权服务失败：{str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': f'连接鉴权服务器失败：{str(e)}'
-            }), 503
+            return jsonify({'status': 'error', 'message': f'连接鉴权服务器失败：{str(e)}'}), 503
         
-        # 检查外部 API 响应
         if response.status_code == 200 and external_data.get('status') == 'success':
-            # 校验成功，删除 auth.key 文件
             delete_auth_key()
             logger.info(f"反激活成功")
-            return jsonify({
-                'status': 'success',
-                'message': external_data.get('message', '反激活成功')
-            })
+            return jsonify({'status': 'success', 'message': external_data.get('message', '反激活成功')})
         else:
-            # 校验失败，返回外部 API 的错误信息
-            error_message = external_data.get('message', '反激活失败')
-            logger.warning(f"反激活失败 - 原因：{error_message}")
-            return jsonify({
-                'status': 'error',
-                'message': error_message
-            }), 400
+            error_message = external_data.get('message') or f'服务端返回状态码 {response.status_code}'
+            logger.warning(f"反激活失败 - 原因：{error_message}, 完整响应：{external_data}")
+            return jsonify({'status': 'error', 'message': error_message}), 400
             
     except Exception as e:
         logger.error(f"反激活失败：{str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/auth', methods=['GET'])
 def api_auth():
     """鉴权验证（执行脚本前调用）- 联网校验"""
     try:
         machine_code = request.args.get('machine_code', '')
-        activation_code = request.args.get('activation_code', '')
         
         if not machine_code:
             return jsonify({'status': 'error', 'message': '机器码不能为空'}), 400
         
-        # 获取本地存储的激活码（优先使用本地的）
         local_auth_code = read_auth_key()
         if local_auth_code is None:
             return jsonify({
@@ -305,26 +287,21 @@ def api_auth():
                 'auth_passed': False
             }), 403
         
-        # 调用外部 API 进行校验
         try:
             response = requests.get(
                 f"{AUTH_API_BASE_URL}/auth",
-                params={
-                    'machine_code': machine_code,
-                    'activation_code': local_auth_code
-                },
+                params={'machine_code': machine_code, 'activation_code': local_auth_code},
                 timeout=30
             )
+            logger.info(f"外部鉴权服务响应 - 状态码：{response.status_code}, 原始内容：{response.text}")
             external_data = response.json()
+        except requests.exceptions.JSONDecodeError:
+            logger.error(f"外部鉴权服务返回非 JSON 内容：{response.text}")
+            return jsonify({'status': 'error', 'message': f'鉴权服务返回异常内容：{response.text[:200]}', 'auth_passed': False}), 502
         except requests.exceptions.RequestException as e:
             logger.error(f"连接外部鉴权服务失败：{str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': f'连接鉴权服务器失败：{str(e)}',
-                'auth_passed': False
-            }), 503
+            return jsonify({'status': 'error', 'message': f'连接鉴权服务器失败：{str(e)}', 'auth_passed': False}), 503
         
-        # 检查外部 API 响应
         if response.status_code == 200 and external_data.get('status') == 'success':
             logger.info(f"鉴权通过 - 机器码：{machine_code}")
             return jsonify({
@@ -334,18 +311,14 @@ def api_auth():
                 'is_trial': local_auth_code == 'Trail'
             })
         else:
-            # 校验失败，返回外部 API 的错误信息
-            error_message = external_data.get('message', '鉴权失败')
-            logger.warning(f"鉴权失败 - 机器码：{machine_code}, 原因：{error_message}")
-            return jsonify({
-                'status': 'error',
-                'message': error_message,
-                'auth_passed': False
-            }), 403
+            error_message = external_data.get('message') or f'服务端返回状态码 {response.status_code}'
+            logger.warning(f"鉴权失败 - 机器码：{machine_code}, 原因：{error_message}, 完整响应：{external_data}")
+            return jsonify({'status': 'error', 'message': error_message, 'auth_passed': False}), 403
             
     except Exception as e:
         logger.error(f"鉴权验证失败：{str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/api/expire_date', methods=['GET'])
 def api_expire_date():
@@ -357,35 +330,27 @@ def api_expire_date():
         if not machine_code:
             return jsonify({'status': 'error', 'message': '机器码不能为空'}), 400
         
-        # 如果未提供激活码，使用本地存储的
         if not activation_code:
             local_auth_code = read_auth_key()
             if local_auth_code is None:
-                return jsonify({
-                    'status': 'error',
-                    'message': '未找到授权文件，请先试用或激活'
-                }), 403
+                return jsonify({'status': 'error', 'message': '未找到授权文件，请先试用或激活'}), 403
             activation_code = local_auth_code
         
-        # 调用外部 API 进行查询
         try:
             response = requests.get(
                 f"{AUTH_API_BASE_URL}/expire_date",
-                params={
-                    'machine_code': machine_code,
-                    'activation_code': activation_code
-                },
+                params={'machine_code': machine_code, 'activation_code': activation_code},
                 timeout=30
             )
+            logger.info(f"外部鉴权服务响应 - 状态码：{response.status_code}, 原始内容：{response.text}")
             external_data = response.json()
+        except requests.exceptions.JSONDecodeError:
+            logger.error(f"外部鉴权服务返回非 JSON 内容：{response.text}")
+            return jsonify({'status': 'error', 'message': f'鉴权服务返回异常内容：{response.text[:200]}'}), 502
         except requests.exceptions.RequestException as e:
             logger.error(f"连接外部鉴权服务失败：{str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': f'连接鉴权服务器失败：{str(e)}'
-            }), 503
+            return jsonify({'status': 'error', 'message': f'连接鉴权服务器失败：{str(e)}'}), 503
         
-        # 检查外部 API 响应
         if response.status_code == 200 and external_data.get('status') == 'success':
             return jsonify({
                 'status': 'success',
@@ -394,11 +359,9 @@ def api_expire_date():
                 'message': external_data.get('message', '查询成功')
             })
         else:
-            error_message = external_data.get('message', '查询失败')
-            return jsonify({
-                'status': 'error',
-                'message': error_message
-            }), 400
+            error_message = external_data.get('message') or f'服务端返回状态码 {response.status_code}'
+            logger.warning(f"查询到期时间失败 - 原因：{error_message}, 完整响应：{external_data}")
+            return jsonify({'status': 'error', 'message': error_message}), 400
             
     except Exception as e:
         logger.error(f"查询到期时间失败：{str(e)}")
