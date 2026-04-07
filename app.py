@@ -25,7 +25,7 @@ app = Flask(__name__)
 # ==================== 配置 ====================
 
 # 外部鉴权 API 基础 URL
-AUTH_API_BASE_URL = "https://autocontents.uijm2004.workers.dev/api"
+AUTH_API_BASE_URL = "https://autocontents-cplxwtfafi.cn-hangzhou.fcapp.run/api"
 
 # ==================== 鉴权相关函数 ====================
 
@@ -347,6 +347,62 @@ def api_auth():
         logger.error(f"鉴权验证失败：{str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/expire_date', methods=['GET'])
+def api_expire_date():
+    """查询授权到期时间 - 联网校验"""
+    try:
+        machine_code = request.args.get('machine_code', '')
+        activation_code = request.args.get('activation_code', '')
+        
+        if not machine_code:
+            return jsonify({'status': 'error', 'message': '机器码不能为空'}), 400
+        
+        # 如果未提供激活码，使用本地存储的
+        if not activation_code:
+            local_auth_code = read_auth_key()
+            if local_auth_code is None:
+                return jsonify({
+                    'status': 'error',
+                    'message': '未找到授权文件，请先试用或激活'
+                }), 403
+            activation_code = local_auth_code
+        
+        # 调用外部 API 进行查询
+        try:
+            response = requests.get(
+                f"{AUTH_API_BASE_URL}/expire_date",
+                params={
+                    'machine_code': machine_code,
+                    'activation_code': activation_code
+                },
+                timeout=30
+            )
+            external_data = response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"连接外部鉴权服务失败：{str(e)}")
+            return jsonify({
+                'status': 'error',
+                'message': f'连接鉴权服务器失败：{str(e)}'
+            }), 503
+        
+        # 检查外部 API 响应
+        if response.status_code == 200 and external_data.get('status') == 'success':
+            return jsonify({
+                'status': 'success',
+                'expire_date': external_data.get('expire_date'),
+                'expire_date_str': external_data.get('expire_date_str'),
+                'message': external_data.get('message', '查询成功')
+            })
+        else:
+            error_message = external_data.get('message', '查询失败')
+            return jsonify({
+                'status': 'error',
+                'message': error_message
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"查询到期时间失败：{str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 @app.route('/api/auth_status', methods=['GET'])
 def api_auth_status():
     """获取当前鉴权状态（前端初始化时调用）- 仅本地检查"""

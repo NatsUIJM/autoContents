@@ -378,6 +378,26 @@
             color: #6b7280;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         }
+        .expire-date-display {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            background-color: #f3f4f6;
+            color: #4b5563;
+        }
+        .expire-date-display.expired {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .expire-date-display.expiring-soon {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        .expire-date-display.valid {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
     </style>
 </head>
 <body>
@@ -460,6 +480,7 @@
                         <button id="deactivateBtn" class="auth-btn deactivate-btn" onclick="deactivate()" disabled>反激活</button>
                     </div>
                     <div id="authStatus" class="auth-status none">未授权</div>
+                    <div id="expireDateDisplay" class="expire-date-display hidden">到期时间：--</div>
                     <div id="machineCodeDisplay" class="machine-code-display"></div>
                 </div>
             </div>
@@ -497,6 +518,7 @@
             isTrial: false,
             isActivated: false
         };
+        let expireDateInfo = null;
 
         function initSysLogStream() {
             if (logEventSource) {
@@ -547,6 +569,10 @@
                         isActivated: data.is_activated
                     };
                     updateAuthUI();
+                    
+                    if (authStatus.hasKey) {
+                        await loadExpireDate();
+                    }
                 }
             } catch (error) {
                 console.error('加载授权状态失败:', error);
@@ -568,6 +594,66 @@
             }
         }
 
+        async function loadExpireDate() {
+            try {
+                let activationCode = '';
+                if (authStatus.isActivated) {
+                    activationCode = document.getElementById('activationInput').value;
+                } else if (authStatus.isTrial) {
+                    activationCode = 'Trail';
+                }
+                
+                if (!activationCode) {
+                    return;
+                }
+
+                const response = await fetch(
+                    `/api/expire_date?machine_code=${encodeURIComponent(currentMachineCode)}&activation_code=${encodeURIComponent(activationCode)}`
+                );
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    expireDateInfo = {
+                        expire_date: data.expire_date,
+                        expire_date_str: data.expire_date_str
+                    };
+                    updateExpireDateUI();
+                } else {
+                    console.warn('加载到期时间失败:', data.message);
+                }
+            } catch (error) {
+                console.error('加载到期时间失败:', error);
+            }
+        }
+
+        function updateExpireDateUI() {
+            const expireDateDiv = document.getElementById('expireDateDisplay');
+            
+            if (!expireDateInfo || !expireDateInfo.expire_date_str) {
+                expireDateDiv.classList.add('hidden');
+                return;
+            }
+            
+            expireDateDiv.classList.remove('hidden');
+            expireDateDiv.textContent = `到期时间：${expireDateInfo.expire_date_str}`;
+            
+            const now = Date.now();
+            const expireTime = expireDateInfo.expire_date;
+            const daysLeft = (expireTime - now) / (1000 * 60 * 60 * 24);
+            
+            expireDateDiv.classList.remove('expired', 'expiring-soon', 'valid');
+            
+            if (daysLeft <= 0) {
+                expireDateDiv.classList.add('expired');
+                expireDateDiv.textContent = `已过期：${expireDateInfo.expire_date_str}`;
+            } else if (daysLeft <= 7) {
+                expireDateDiv.classList.add('expiring-soon');
+                expireDateDiv.textContent = `即将过期（剩余${Math.ceil(daysLeft)}天）：${expireDateInfo.expire_date_str}`;
+            } else {
+                expireDateDiv.classList.add('valid');
+            }
+        }
+
         function updateAuthUI() {
             const trialBtn = document.getElementById('trialBtn');
             const activateBtn = document.getElementById('activateBtn');
@@ -575,7 +661,6 @@
             const activationInput = document.getElementById('activationInput');
             const authStatusDiv = document.getElementById('authStatus');
 
-            // 更新状态显示
             if (authStatus.isTrial) {
                 authStatusDiv.textContent = '试用模式';
                 authStatusDiv.className = 'auth-status trial';
@@ -587,15 +672,12 @@
                 authStatusDiv.className = 'auth-status none';
             }
 
-            // 试用按钮：只有没有.key 文件时才能点击
             trialBtn.disabled = authStatus.hasKey;
 
-            // 激活/反激活按钮：只有输入 32 字符后才可点击
             const inputLength = activationInput.value.length;
             activateBtn.disabled = inputLength !== 32 || authStatus.isActivated;
             deactivateBtn.disabled = inputLength !== 32 || !authStatus.isActivated;
 
-            // 如果已授权，启用开始执行按钮（如果有文件）
             updateStartButton();
         }
 
@@ -624,6 +706,7 @@
                     authStatus.isTrial = true;
                     authStatus.isActivated = false;
                     updateAuthUI();
+                    await loadExpireDate();
                 } else {
                     addLog(data.message, 'error');
                 }
@@ -665,6 +748,7 @@
                     authStatus.isTrial = false;
                     authStatus.isActivated = true;
                     updateAuthUI();
+                    await loadExpireDate();
                 } else {
                     addLog(data.message, 'error');
                 }
@@ -699,7 +783,9 @@
                     authStatus.hasKey = false;
                     authStatus.isTrial = false;
                     authStatus.isActivated = false;
+                    expireDateInfo = null;
                     updateAuthUI();
+                    updateExpireDateUI();
                 } else {
                     addLog(data.message, 'error');
                 }
@@ -708,7 +794,6 @@
             }
         }
 
-        // 监听激活码输入
         document.getElementById('activationInput').addEventListener('input', function() {
             updateAuthUI();
         });
@@ -757,7 +842,6 @@
 
         function updateStartButton() {
             const startButton = document.getElementById('startButton');
-            // 需要同时满足：有文件、未处理中、已授权
             const isAuthorized = authStatus.isTrial || authStatus.isActivated;
             startButton.disabled = !selectedFile || isProcessing || !isAuthorized;
             
@@ -935,13 +1019,11 @@
         async function startProcess() {
             if (isProcessing) return;
             
-            // 鉴权检查
             if (!authStatus.isTrial && !authStatus.isActivated) {
                 addLog('请先试用或激活后才能使用', 'error');
                 return;
             }
 
-            // 执行前调用鉴权 API
             try {
                 const activationCode = authStatus.isActivated ? 
                     document.getElementById('activationInput').value : '';
