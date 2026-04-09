@@ -24,7 +24,7 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.append(PROJECT_ROOT)
 
 def write_log(message):
-    """写入日志到项目根目录的 log.txt (复用 llm_level_adjuster.py 逻辑)"""
+    """写入日志到项目根目录的 log.txt"""
     try:
         log_file = Path(PROJECT_ROOT) / "log.txt"
         with open(log_file, "a", encoding="utf-8") as f:
@@ -32,7 +32,7 @@ def write_log(message):
     except Exception as e:
         print(f"日志写入失败：{e}")
 
-# 配置日志输出到标准输出，确保 subprocess 能完整捕获
+# 配置日志输出到标准输出
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ async def fetch_toc_from_image(client: AsyncOpenAI, model: str, b64_img: str, st
 
 【目录的严格定义】：一页中必须存在多个“标题 - 页码”对。如果某一页没有这个特征（例如纯文本正文、封面、版权页、序言），则它绝对不是目录。只要不存在页码，那这页绝对不是目录。相对应地，如果一页有这个特征，那么它必然是目录。
 
-【注意】：应以下方的PDFNumber作为页码。例如PDFNumber为2-3的图片是目录，那么起始页码就是2，结束页码就是3。
+【注意】：应以下方的 PDFNumber 作为页码。例如 PDFNumber 为 2-3 的图片是目录，那么起始页码就是 2，结束页码就是 3。
 
 【输出要求】：
 1. 仅输出 JSON 格式，不要包含任何 markdown 标记（如 ```json ）、解释或额外文本。
@@ -238,11 +238,25 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
             
             b64_img = create_concat_image_b64(doc, start_p, end_p, save_path=img_save_path)
             if not b64_img:
-                return start_p, end_p, None, None
+                return start_p, end_p, None, None, None
                 
             raw_res = await fetch_toc_from_image(client, model, b64_img, start_p, end_p, raw_save_path)
             toc_start, toc_end = parse_toc_json(raw_res)
-            return start_p, end_p, toc_start, toc_end
+            
+            # 需求 1: 将图片和原始结果也输出到 initial_data 中的详细记录文件
+            detail_filename = f"toc_detail_{start_p}_{end_p}.json"
+            detail_save_path = os.path.join(initial_data_dir, detail_filename)
+            detail_data = {
+                "page_range": f"{start_p}-{end_p}",
+                "parsed_result": {"toc_start": toc_start, "toc_end": toc_end},
+                "raw_response": raw_res,
+                "image_saved_as": img_filename
+                # 注意：b64_img 数据量大，不直接存入 JSON，而是引用保存的图片文件
+            }
+            with open(detail_save_path, 'w', encoding='utf-8') as f:
+                json.dump(detail_data, f, ensure_ascii=False, indent=2)
+                
+            return start_p, end_p, toc_start, toc_end, raw_res
 
     async def run_batch(start_page, end_page_limit):
         """执行一个批次的滑动窗口扫描"""
@@ -259,9 +273,10 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
         tasks = [process_window(s, e) for s, e in windows]
         results = await asyncio.gather(*tasks)
         
-        for s, e, t_start, t_end in results:
+        for s, e, t_start, t_end, _ in results:
+            if t_start is None: continue
             for p in range(s, e + 1):
-                if t_start is not None and t_end is not None and t_start <= p <= t_end:
+                if t_start <= p <= t_end:
                     page_votes[p]["is_toc"] += 1
                 else:
                     page_votes[p]["not_toc"] += 1
@@ -274,19 +289,16 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     await run_batch(1, current_limit + 1)
     
     # 第二阶段：动态拓展逻辑
-    # 规则：检查当前范围末尾两页（如19-20）是否为目录。若是，则拓展10页，直到60页或文件末尾。
     while current_limit < 60 and current_limit < total_pages:
         p1 = current_limit - 1
         p2 = current_limit
         
-        # 安全获取投票结果
         is_p1_toc = page_votes.get(p1, {}).get("is_toc", 0) > 0
         is_p2_toc = page_votes.get(p2, {}).get("is_toc", 0) > 0
         
         if not (is_p1_toc and is_p2_toc):
             break
             
-        # 拓展范围 10 页
         current_limit = min(current_limit + 10, 60)
         if current_limit > total_pages:
             current_limit = total_pages
@@ -295,7 +307,6 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
         print(f"[INFO] {info_msg}")
         write_log(info_msg)
         
-        # 扫描新增的页面区间
         await run_batch(current_limit - 9, current_limit + 1)
 
     # 冲突检测与单页投票
@@ -322,10 +333,10 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                 
                 b64_img = create_concat_image_b64(doc, p, p, save_path=img_save_path)
                 if not b64_img:
-                    return p, False
+                    return p, False, None
                     
                 prompt = f"""这是一张 PDF 页面的图片，物理页码为 {p}。
-请判断这一页是否是目录。目录的严格定义为：这张图中是否能提取出多个标题-页码对。
+请判断这一页是否是目录。目录的严格定义为：这张图中是否能提取出多个标题 - 页码对。
 【输出要求】：
 1. 仅输出 JSON 格式，不要包含任何 markdown 标记。
 2. 如果是目录，输出：{{"is_toc": true}}
@@ -348,21 +359,36 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                     )
                     raw_content = completion.choices[0].message.content.strip()
                     
+                    # 保存原始响应
                     with open(raw_save_path, 'w', encoding='utf-8') as f:
                         json.dump({"page": p, "raw_response": raw_content}, f, ensure_ascii=False, indent=2)
                         
                     clean_text = re.sub(r'^```(?:json)?\s*', '', raw_content, flags=re.MULTILINE)
                     clean_text = re.sub(r'\s*```$', '', clean_text, flags=re.MULTILINE)
                     data = json.loads(clean_text)
-                    return p, data.get("is_toc", False)
+                    is_toc = data.get("is_toc", False)
+                    
+                    # 需求 1: 保存单页投票的详细记录
+                    detail_filename = f"single_vote_detail_{p}.json"
+                    detail_save_path = os.path.join(initial_data_dir, detail_filename)
+                    detail_data = {
+                        "page": p,
+                        "parsed_result": {"is_toc": is_toc},
+                        "raw_response": raw_content,
+                        "image_saved_as": img_filename
+                    }
+                    with open(detail_save_path, 'w', encoding='utf-8') as f:
+                        json.dump(detail_data, f, ensure_ascii=False, indent=2)
+                        
+                    return p, is_toc, raw_content
                 except Exception as e:
                     logger.error(f"单页投票失败 (页码 {p}): {e}")
-                    return p, False
+                    return p, False, None
 
         conflict_tasks = [resolve_conflict(p) for p in conflict_pages]
         conflict_results = await asyncio.gather(*conflict_tasks)
         
-        for p, is_toc in conflict_results:
+        for p, is_toc, _ in conflict_results:
             if is_toc:
                 final_toc_pages.append(p)
 
@@ -374,7 +400,6 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
         write_log(warn_msg)
         return None, None
 
-    # 合并最终确认的目录页码
     global_toc_start, global_toc_end = merge_continuous_ranges(final_toc_pages)
     
     if global_toc_start is None:
@@ -444,17 +469,25 @@ async def fetch_single_offset(client: AsyncOpenAI, model: str, page_num: int, b6
 【示例 1】
 物理页码：25
 图片中底部写着："10"
+计算：25 - 10 = 15
 输出：15
 
 【示例 2】
 物理页码：12
 图片中顶部写着："- 2 -"
+计算：12 - 2 = 10
 输出：10
 
 【示例 3】
 物理页码：100
 图片中没有明确的阿拉伯数字页码
 输出：Error
+
+【错误示例】
+物理页码：25
+图片中顶部写着："20"
+计算：25 - 20 = -5
+输出：-5
 
 请仔细观察图片，找到印刷页码，并严格按照上述格式，仅输出计算后的正文偏移量数字。不要输出任何解释。"""
     try:
@@ -479,8 +512,15 @@ async def fetch_single_offset(client: AsyncOpenAI, model: str, page_num: int, b6
         write_log(error_msg)
         return "Error"
 
-async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str) -> int:
-    """自动计算正文偏移量"""
+async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str, initial_data_dir: str) -> int:
+    """
+    自动计算正文偏移量。
+    逻辑优化：
+    1. 先随机取 5 页。
+    2. 统计众数，若众数数量 < 4，则再随机取 5 页（不重复），共 10 页一起统计。
+    3. 将所有过程的图片、原始响应、解析结果保存到 initial_data/offset_log.json。
+    """
+    log_entries = []
     try:
         doc = fitz.open(pdf_path)
         total_pages = len(doc)
@@ -491,10 +531,23 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str) -> in
             start_idx = 0
             
         pool = list(range(start_idx, end_idx + 1))
-        selected_pages = random.sample(pool, min(5, len(pool)))
+        if len(pool) < 5:
+            doc.close()
+            return None
+
+        # 第一轮：取 5 页
+        selected_pages_1 = random.sample(pool, 5)
+        remaining_pool = [p for p in pool if p not in selected_pages_1]
         
-        images_data = []
-        for p in selected_pages:
+        all_selected_indices = selected_pages_1[:]
+        
+        # 如果需要第二轮
+        need_second_round = False
+        
+        # 临时存储第一轮结果用于判断
+        first_round_results = []
+        
+        for p in selected_pages_1:
             page = doc[p]
             rect = page.rect
             max_dim = max(rect.width, rect.height)
@@ -503,20 +556,85 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str) -> in
             pix = page.get_pixmap(matrix=mat)
             img_data = pix.tobytes("jpeg")
             base64_image = base64.b64encode(img_data).decode('utf-8')
-            images_data.append((p + 1, base64_image))
+            
+            raw_res = await fetch_single_offset(client, model, p + 1, base64_image)
+            
+            # 记录日志数据
+            entry = {
+                "physical_page": p + 1,
+                "raw_response": raw_res,
+                "parsed_offset": None,
+                "image_base64_preview": base64_image[:100] + "..." # 仅存预览，避免 JSON 过大，实际图片可单独存如需
+            }
+            
+            if raw_res.isdigit() or (raw_res.startswith('-') and raw_res[1:].isdigit()):
+                val = int(raw_res)
+                entry["parsed_offset"] = val
+                first_round_results.append(val)
+            else:
+                entry["parsed_offset"] = "Error"
+            
+            log_entries.append(entry)
+
+        # 检查众数逻辑
+        if first_round_results:
+            counter = Counter(first_round_results)
+            most_common_val, count = counter.most_common(1)[0]
+            if count < 4 and len(remaining_pool) >= 5:
+                need_second_round = True
+                write_log(f"第一轮众数数量为 {count} (<4)，启动第二轮采样。")
+        
+        if need_second_round:
+            selected_pages_2 = random.sample(remaining_pool, 5)
+            all_selected_indices.extend(selected_pages_2)
+            
+            for p in selected_pages_2:
+                page = doc[p]
+                rect = page.rect
+                max_dim = max(rect.width, rect.height)
+                zoom = 1500.0 / max_dim if max_dim > 1500 else 2.0
+                mat = fitz.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=mat)
+                img_data = pix.tobytes("jpeg")
+                base64_image = base64.b64encode(img_data).decode('utf-8')
+                
+                raw_res = await fetch_single_offset(client, model, p + 1, base64_image)
+                
+                entry = {
+                    "physical_page": p + 1,
+                    "raw_response": raw_res,
+                    "parsed_offset": None,
+                    "round": 2
+                }
+                
+                if raw_res.isdigit() or (raw_res.startswith('-') and raw_res[1:].isdigit()):
+                    val = int(raw_res)
+                    entry["parsed_offset"] = val
+                    # 加入总结果列表用于最终计算（这里不需要显式列表，直接用 log_entries 过滤即可）
+                else:
+                    entry["parsed_offset"] = "Error"
+                
+                log_entries.append(entry)
+
         doc.close()
         
-        tasks = [fetch_single_offset(client, model, p_num, b64) for p_num, b64 in images_data]
-        results = await asyncio.gather(*tasks)
+        # 收集所有有效偏移量
+        all_offsets = [entry["parsed_offset"] for entry in log_entries if isinstance(entry["parsed_offset"], int)]
         
-        offsets = []
-        for res in results:
-            if res.isdigit() or (res.startswith('-') and res[1:].isdigit()):
-                offsets.append(int(res))
-                
-        if offsets:
-            most_common_offset = Counter(offsets).most_common(1)[0][0]
-            info_msg = f"自动计算偏移量成功：{most_common_offset}"
+        # 保存详细日志到 initial_data
+        offset_log_path = os.path.join(initial_data_dir, "offset_calculation_log.json")
+        summary = {
+            "total_samples": len(log_entries),
+            "valid_samples": len(all_offsets),
+            "details": log_entries
+        }
+        with open(offset_log_path, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+        write_log(f"偏移量计算详细日志已保存至：{offset_log_path}")
+
+        if all_offsets:
+            most_common_offset = Counter(all_offsets).most_common(1)[0][0]
+            info_msg = f"自动计算偏移量成功：{most_common_offset} (基于 {len(all_offsets)} 个有效样本)"
             print(f"[INFO] {info_msg}")
             write_log(info_msg)
             return most_common_offset
@@ -603,8 +721,9 @@ async def main():
     print(f"[INFO] {info_msg}")
     write_log(info_msg)
     
+    # 传递 initial_data_dir 给 calculate_offset
     book_name_task = extract_book_name(pdf_path, pdf_filename, client, model)
-    offset_task = calculate_offset(pdf_path, client, model)
+    offset_task = calculate_offset(pdf_path, client, model, initial_data_dir)
     toc_task = extract_toc_info(pdf_path, client, model, initial_data_dir)
     
     book_name, content_start, (toc_start, toc_end) = await asyncio.gather(

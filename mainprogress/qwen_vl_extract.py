@@ -5,7 +5,6 @@ import traceback
 import sys
 import re
 import csv
-import json
 from pathlib import Path
 from io import BytesIO, StringIO
 from PIL import Image

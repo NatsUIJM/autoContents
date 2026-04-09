@@ -52,12 +52,44 @@ def find_min_page_file(json_files: list) -> str:
         # 匹配_page_x_merged.json 模式
         match = re.search(r'_page_(\d+)_merged\.json', filename)
         if match:
+            # 修复：直接使用 match.group(1)，去掉多余的 .group
             page_num = int(match.group(1))
             if page_num < min_page:
                 min_page = page_num
                 min_file = filename
     
     return min_file
+
+
+def normalize_levels(data: list) -> list:
+    """
+    检查数据中 level 字段的最小值。
+    如果最小值不是 1，则将所有 level 减去 (min_level - 1)，使最小值为 1。
+    """
+    if not data:
+        return data
+
+    # 收集所有存在的 level 值
+    levels = []
+    for item in data:
+        if isinstance(item, dict) and "level" in item:
+            val = item["level"]
+            if isinstance(val, (int, float)):
+                levels.append(int(val))
+
+    if not levels:
+        return data
+
+    min_level = min(levels)
+
+    if min_level != 1:
+        offset = min_level - 1
+        for item in data:
+            if isinstance(item, dict) and "level" in item:
+                if isinstance(item["level"], (int, float)):
+                    item["level"] = int(item["level"]) - offset
+    
+    return data
 
 
 def main():
@@ -96,6 +128,9 @@ def main():
             data = read_json_file(file_path)
             if data:
                 combined_data.extend(data)
+
+    # 【新增功能】归一化标题层级
+    combined_data = normalize_levels(combined_data)
 
     # 直接保存最终结果到输出目录
     final_output_file = output_dir / f"{book_title}_final.json"
