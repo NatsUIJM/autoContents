@@ -325,16 +325,25 @@ def api_expire_date():
     """查询授权到期时间 - 联网校验"""
     try:
         machine_code = request.args.get('machine_code', '')
+        # 获取前端传来的激活码，可能为空
         activation_code = request.args.get('activation_code', '')
         
         if not machine_code:
             return jsonify({'status': 'error', 'message': '机器码不能为空'}), 400
         
-        if not activation_code:
+        source = "local_file" # 默认来源
+        
+        # 逻辑：如果前端有传激活码（非空），则优先使用前端的；否则读取本地文件
+        if activation_code:
+            source = "frontend"
+            # 前端传入的可能是 'Trail' 或者 32 位码，直接使用即可
+            pass
+        else:
             local_auth_code = read_auth_key()
             if local_auth_code is None:
                 return jsonify({'status': 'error', 'message': '未找到授权文件，请先试用或激活'}), 403
             activation_code = local_auth_code
+            source = "local_file"
         
         try:
             response = requests.get(
@@ -356,7 +365,8 @@ def api_expire_date():
                 'status': 'success',
                 'expire_date': external_data.get('expire_date'),
                 'expire_date_str': external_data.get('expire_date_str'),
-                'message': external_data.get('message', '查询成功')
+                'message': external_data.get('message', '查询成功'),
+                'source': source  # 返回数据来源标识
             })
         else:
             error_message = external_data.get('message') or f'服务端返回状态码 {response.status_code}'

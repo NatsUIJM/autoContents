@@ -598,19 +598,30 @@
                 console.error('加载机器码失败:', error);
             }
         }
-
         async function loadExpireDate() {
             try {
                 let activationCode = '';
-                if (authStatus.isActivated) {
-                    activationCode = document.getElementById('activationInput').value;
+                
+                // 新逻辑：优先尝试获取前端输入框的值
+                const inputVal = document.getElementById('activationInput').value.trim();
+                
+                if (inputVal) {
+                    // 如果前端输入框有值，直接使用（无论是 Trail 还是 32 位码）
+                    activationCode = inputVal;
                 } else if (authStatus.isTrial) {
+                    // 如果前端没值，但是是试用状态，默认查 Trail
                     activationCode = 'Trail';
+                } else if (authStatus.isActivated) {
+                    // 如果是激活状态但前端没值（理论上不应该发生，除非用户清空了输入框），
+                    // 此时不传 activation_code 参数，让后端去读本地文件
+                    activationCode = ''; 
                 }
                 
-                if (!activationCode) {
-                    updateExpireDateUI(null, '无法获取激活码');
-                    return;
+                // 如果最终还是没有激活码（既没输入也不是试用），则无法查询
+                if (!activationCode && !authStatus.isTrial) {
+                     // 这里做一个兜底，如果用户是激活状态但清空了输入框，我们依然希望后端能读到本地文件
+                     // 所以传空字符串给后端，让后端逻辑去读 auth.key
+                     activationCode = '';
                 }
 
                 const response = await fetch(
@@ -621,7 +632,8 @@
                 if (data.status === 'success') {
                     expireDateInfo = {
                         expire_date: data.expire_date,
-                        expire_date_str: data.expire_date_str
+                        expire_date_str: data.expire_date_str,
+                        source: data.source // 获取数据来源
                     };
                     updateExpireDateUI(expireDateInfo, null);
                 } else {
@@ -643,12 +655,15 @@
                 authStatusDiv.textContent = `查询失败：${errorMsg}`;
                 authStatusDiv.style.backgroundColor = '#fee2e2';
                 authStatusDiv.style.color = '#991b1b';
+                // 清除可能的来源显示
+                clearSourceDisplay();
                 return;
             }
 
             if (!info || !info.expire_date_str) {
                 authStatusDiv.textContent = '未查询到到期时间';
                 authStatusDiv.classList.add('none');
+                clearSourceDisplay();
                 return;
             }
             
@@ -665,6 +680,42 @@
             } else {
                 authStatusDiv.classList.add('valid');
                 authStatusDiv.textContent = `有效至：${info.expire_date_str}`;
+            }
+
+            // 显示数据来源
+            showSourceDisplay(info.source);
+        }
+
+        function showSourceDisplay(source) {
+            let machineCodeDiv = document.getElementById('machineCodeDisplay');
+            let sourceText = '';
+            
+            if (source === 'frontend') {
+                sourceText = '数据来源：前端输入激活码';
+            } else if (source === 'local_file') {
+                sourceText = '数据来源：本地 auth.key 文件';
+            } else {
+                sourceText = '数据来源：未知';
+            }
+
+            // 在机器码下方或旁边显示来源，如果不存在则创建
+            let sourceElement = document.getElementById('authDataSource');
+            if (!sourceElement) {
+                sourceElement = document.createElement('div');
+                sourceElement.id = 'authDataSource';
+                sourceElement.style.fontSize = '12px';
+                sourceElement.style.color = '#6b7280';
+                sourceElement.style.marginTop = '4px';
+                sourceElement.style.fontStyle = 'italic';
+                machineCodeDiv.parentNode.insertBefore(sourceElement, machineCodeDiv.nextSibling);
+            }
+            sourceElement.textContent = sourceText;
+        }
+
+        function clearSourceDisplay() {
+            const sourceElement = document.getElementById('authDataSource');
+            if (sourceElement) {
+                sourceElement.textContent = '';
             }
         }
 
