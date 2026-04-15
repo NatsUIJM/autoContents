@@ -564,8 +564,17 @@ def download_result(session_id):
     except Exception as e:
         logger.error(f"读取 JSON 时出错：{e}")
 
-    time_str = datetime.now().strftime("%y%m%d%H%M%S")
-    download_filename = f"{book_name}-{time_str}-TOC.pdf"
+    # 清理文件名中的非法字符，仅保留字母、数字、中文、下划线、连字符和空格
+    # Windows/Linux/macOS 通用安全字符集
+    safe_book_name = re.sub(r'[<>:"/\\|?*]', '', book_name)
+    # 去除首尾空格
+    safe_book_name = safe_book_name.strip()
+    
+    if not safe_book_name:
+        safe_book_name = "处理结果"
+
+    # 直接使用书名作为文件名，去掉时间和 TOC 标注
+    download_filename = f"{safe_book_name}.pdf"
 
     response = send_file(file_path, as_attachment=True, download_name=download_filename)
     
