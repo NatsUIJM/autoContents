@@ -48,13 +48,22 @@ def create_concat_image_b64(doc: fitz.Document, start_p: int, end_p: int, save_p
     images = []
     page_nums = []
     
+    # 定义目标长边像素，确保小页面也能被放大到清晰程度
+    TARGET_LONG_EDGE = 1500
+    
     for p in range(start_p - 1, end_p):
         if p >= len(doc): 
             break
         page = doc[p]
         rect = page.rect
         max_dim = max(rect.width, rect.height)
-        zoom = 1500.0 / max_dim if max_dim > 1500 else 1.0
+        
+        # 修正逻辑：始终计算缩放比例，不再判断是否大于目标值
+        # 如果 max_dim 为 0，跳过该页以防出错
+        if max_dim == 0:
+            continue
+            
+        zoom = TARGET_LONG_EDGE / max_dim
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
         
@@ -424,7 +433,14 @@ async def extract_book_name(pdf_path: str, original_filename: str, client: Async
         page = doc[0]
         rect = page.rect
         max_dim = max(rect.width, rect.height)
-        zoom = 1000.0 / max_dim if max_dim > 1000 else 1.0
+        
+        # 修正逻辑：始终计算缩放比例，确保小封面也能清晰识别
+        TARGET_LONG_EDGE = 1000
+        if max_dim == 0:
+            doc.close()
+            return ""
+            
+        zoom = TARGET_LONG_EDGE / max_dim
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
         img_data = pix.tobytes("jpeg")
@@ -547,11 +563,19 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str, initi
         # 临时存储第一轮结果用于判断
         first_round_results = []
         
+        # 定义目标长边像素
+        TARGET_LONG_EDGE = 1500
+
         for p in selected_pages_1:
             page = doc[p]
             rect = page.rect
             max_dim = max(rect.width, rect.height)
-            zoom = 1500.0 / max_dim if max_dim > 1500 else 2.0
+            
+            # 修正逻辑：始终计算缩放比例
+            if max_dim == 0:
+                continue
+            zoom = TARGET_LONG_EDGE / max_dim
+            
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
             img_data = pix.tobytes("jpeg")
@@ -592,7 +616,12 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str, initi
                 page = doc[p]
                 rect = page.rect
                 max_dim = max(rect.width, rect.height)
-                zoom = 1500.0 / max_dim if max_dim > 1500 else 2.0
+                
+                # 修正逻辑：始终计算缩放比例
+                if max_dim == 0:
+                    continue
+                zoom = TARGET_LONG_EDGE / max_dim
+                
                 mat = fitz.Matrix(zoom, zoom)
                 pix = page.get_pixmap(matrix=mat)
                 img_data = pix.tobytes("jpeg")
