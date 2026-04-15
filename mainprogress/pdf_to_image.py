@@ -31,7 +31,10 @@ def convert_pdf_to_jpg():
 
     print(f"发现 {len(pdf_files)} 个 PDF 文件待处理。")
 
+    # 配置项
     TARGET_LONG_EDGE = 1500  # 目标长边像素
+    # 建议：对于小尺寸PDF，1500像素可能仍然不够清晰，通常建议至少 200-300 DPI
+    # 72 DPI -> 1500px 意味着放大倍数约为 1500/355 ≈ 4.2倍
     
     processed_count = 0
 
@@ -97,28 +100,30 @@ def convert_pdf_to_jpg():
 
                 page = doc[page_index]
                 
-                # 1. 获取页面原始尺寸 (基于 1.0 倍率，即 72 DPI)
+                # 1. 获取页面原始尺寸 (Points, 1/72 inch)
                 rect = page.rect
                 original_width = rect.width
                 original_height = rect.height
                 
-                # 2. 计算长边并确定缩放比例
-                current_long_edge = max(original_width, original_height)
-                
-                if current_long_edge == 0:
+                if original_width == 0 or original_height == 0:
                     print(f"  [警告] 第 {page_num} 页尺寸为 0，跳过。")
                     continue
                 
-                # 计算需要的缩放因子
-                if current_long_edge > TARGET_LONG_EDGE:
-                    zoom = TARGET_LONG_EDGE / current_long_edge
-                else:
-                    zoom = 1.0
+                # 2. 计算缩放比例 (修正逻辑)
+                # 目标：让长边等于 TARGET_LONG_EDGE
+                current_long_edge = max(original_width, original_height)
+                
+                # 始终计算缩放因子，即使原图很小也要放大
+                zoom = TARGET_LONG_EDGE / current_long_edge
+                
+                # 可选：设置最小缩放倍数，防止极度微小的页面被放大到失真
+                # if zoom < 1.0: zoom = 1.0  # 如果希望只放大不缩小，取消注释此行
                 
                 # 构建渲染矩阵
                 mat = fitz.Matrix(zoom, zoom)
                 
-                # 3. 执行渲染 (直接生成目标尺寸的图片)
+                # 3. 执行渲染
+                # alpha=False 生成 JPG 所需的不透明图像
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 
                 output_path = os.path.join(
@@ -126,10 +131,15 @@ def convert_pdf_to_jpg():
                     f"{pdf_name}_page_{page_num}.jpg"
                 )
                 
-                # 4. 保存图片 (移除不支持的 kwargs，PyMuPDF 会自动根据后缀名保存为 JPG)
+                # 4. 保存图片
+                # dpi 参数仅用于元数据，不影响实际像素大小，实际大小由 matrix 决定
                 pix.save(output_path)
                 
-                print(f"  [完成] 第 {page_num} 页 -> {pix.width}x{pix.height} (Zoom: {zoom:.2f})")
+                # 计算等效 DPI 用于日志展示，方便调试
+                # 原始尺寸是 72 DPI，放大 zoom 倍后，等效 DPI = 72 * zoom
+                effective_dpi = 72 * zoom
+                
+                print(f"  [完成] 第 {page_num} 页 -> {pix.width}x{pix.height} | Zoom: {zoom:.2f}x | Eff. DPI: {effective_dpi:.0f}")
                 
                 saved_images.append(output_path)
                 
@@ -138,7 +148,7 @@ def convert_pdf_to_jpg():
                 del page
                 
                 # 进度反馈
-                if range_count <= 10 or page_num % 10 == 0:
+                if range_count <= 10 or (page_num - toc_start + 1) % 10 == 0:
                     print(f"  [进度] 批次内已处理 {page_num - toc_start + 1}/{range_count} 页")
 
             doc.close()
