@@ -17,6 +17,7 @@ import traceback
 import platform
 import requests
 import uuid
+import re
 
 logger = logging.getLogger('gunicorn.error')
 
