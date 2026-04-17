@@ -252,7 +252,6 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
             raw_res = await fetch_toc_from_image(client, model, b64_img, start_p, end_p, raw_save_path)
             toc_start, toc_end = parse_toc_json(raw_res)
             
-            # 需求 1: 将图片和原始结果也输出到 initial_data 中的详细记录文件
             detail_filename = f"toc_detail_{start_p}_{end_p}.json"
             detail_save_path = os.path.join(initial_data_dir, detail_filename)
             detail_data = {
@@ -260,7 +259,6 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                 "parsed_result": {"toc_start": toc_start, "toc_end": toc_end},
                 "raw_response": raw_res,
                 "image_saved_as": img_filename
-                # 注意：b64_img 数据量大，不直接存入 JSON，而是引用保存的图片文件
             }
             with open(detail_save_path, 'w', encoding='utf-8') as f:
                 json.dump(detail_data, f, ensure_ascii=False, indent=2)
@@ -270,7 +268,6 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     async def run_batch(start_page, end_page_limit):
         """执行一个批次的滑动窗口扫描"""
         windows = []
-        # 步长为 2，窗口大小为 4
         for i in range(start_page, end_page_limit, 2):
             if i > total_pages:
                 break
@@ -290,33 +287,64 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                 else:
                     page_votes[p]["not_toc"] += 1
 
-    # 第一阶段：初始扫描 1-20 页
+    def has_toc_in_range(votes_dict, start_p, end_p):
+        """检查指定范围内是否有被投票为目录的页"""
+        for p in range(start_p, end_p + 1):
+            if votes_dict.get(p, {}).get("is_toc", 0) > 0:
+                return True
+        return False
+
+    # 动态扫描与拓展逻辑
     current_limit = min(20, total_pages)
+    last_scanned = 0
+    retry_count = 0
+    max_retries = 2
+    toc_found = False
+
     info_msg = f"正在分析目录范围：第 1 到 {current_limit} 页 (滑动窗口)"
     print(f"[INFO] {info_msg}")
     write_log(info_msg)
-    await run_batch(1, current_limit + 1)
-    
-    # 第二阶段：动态拓展逻辑
+
     while current_limit < 60 and current_limit < total_pages:
-        p1 = current_limit - 1
-        p2 = current_limit
-        
-        is_p1_toc = page_votes.get(p1, {}).get("is_toc", 0) > 0
-        is_p2_toc = page_votes.get(p2, {}).get("is_toc", 0) > 0
-        
-        if not (is_p1_toc and is_p2_toc):
-            break
-            
-        current_limit = min(current_limit + 10, 60)
-        if current_limit > total_pages:
-            current_limit = total_pages
-            
-        info_msg = f"第 {p1}-{p2} 页确认为目录，拓展扫描范围至第 {current_limit} 页"
-        print(f"[INFO] {info_msg}")
-        write_log(info_msg)
-        
-        await run_batch(current_limit - 9, current_limit + 1)
+        # 执行当前批次的扫描
+        await run_batch(last_scanned + 1, current_limit + 1)
+        last_scanned = current_limit
+
+        if not toc_found:
+            # 尚未发现目录，检查当前已扫描范围
+            if has_toc_in_range(page_votes, 1, current_limit):
+                toc_found = True
+                info_msg = f"在第 1-{current_limit} 页范围内发现目录，开始边界拓展检测"
+                print(f"[INFO] {info_msg}")
+                write_log(info_msg)
+            else:
+                # 未发现目录，触发向后搜索机制
+                if retry_count < max_retries:
+                    retry_count += 1
+                    next_limit = min(current_limit + 10, 60)
+                    info_msg = f"前 {current_limit} 页未找到目录，尝试向后搜索至第 {next_limit} 页 (尝试 {retry_count}/{max_retries})"
+                    print(f"[INFO] {info_msg}")
+                    write_log(info_msg)
+                    current_limit = next_limit
+                    continue
+                else:
+                    break # 重试耗尽，停止搜索
+
+        # 已发现目录，检查当前边界页是否仍为目录
+        if toc_found:
+            if page_votes.get(current_limit, {}).get("is_toc", 0) > 0:
+                # 边界页是目录，继续向后拓展
+                next_limit = min(current_limit + 10, 60)
+                if next_limit <= current_limit:
+                    break
+                info_msg = f"第 {current_limit} 页确认为目录，拓展扫描范围至第 {next_limit} 页"
+                print(f"[INFO] {info_msg}")
+                write_log(info_msg)
+                current_limit = next_limit
+                continue
+            else:
+                # 边界页不是目录，说明目录已结束
+                break
 
     # 冲突检测与单页投票
     conflict_pages = []
@@ -368,7 +396,6 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                     )
                     raw_content = completion.choices[0].message.content.strip()
                     
-                    # 保存原始响应
                     with open(raw_save_path, 'w', encoding='utf-8') as f:
                         json.dump({"page": p, "raw_response": raw_content}, f, ensure_ascii=False, indent=2)
                         
@@ -377,7 +404,6 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                     data = json.loads(clean_text)
                     is_toc = data.get("is_toc", False)
                     
-                    # 需求 1: 保存单页投票的详细记录
                     detail_filename = f"single_vote_detail_{p}.json"
                     detail_save_path = os.path.join(initial_data_dir, detail_filename)
                     detail_data = {

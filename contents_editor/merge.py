@@ -4,6 +4,44 @@ import fitz  # PyMuPDF
 import codecs
 from pathlib import Path
 
+def normalize_toc_levels(toc_entries):
+    """
+    规范化 TOC 层级，确保：
+    1. 第一个条目 level 为 1
+    2. 层级跳跃不超过 1 (例如不能从 1 直接到 3)
+    """
+    if not toc_entries:
+        return []
+    
+    # 先按页码排序
+    toc_entries.sort(key=lambda x: x[2])
+    
+    normalized = []
+    # 栈用于跟踪当前的层级路径，这里简化处理，只确保相对层级合法
+    # 更简单的策略：如果当前 level 比上一个 level 大超过 1，则调整为 prev_level + 1
+    # 如果第一个 level 不是 1，强制为 1
+    
+    for i, entry in enumerate(toc_entries):
+        level, title, page = entry
+        
+        if i == 0:
+            if level != 1:
+                print(f"警告: 第一条目录项 '{title}' (页码 {page}) 层级为 {level}，已强制调整为 1")
+                level = 1
+        else:
+            prev_level = normalized[-1][0]
+            # 如果当前层级比上一层级大超过 1，说明中间缺了父级，强制调整为 prev_level + 1
+            if level > prev_level + 1:
+                print(f"警告: 目录项 '{title}' (页码 {page}) 层级 {level} 跳跃过大 (前一项层级 {prev_level})，已调整为 {prev_level + 1}")
+                level = prev_level + 1
+            # 如果层级小于 1，强制为 1
+            if level < 1:
+                level = 1
+                
+        normalized.append([level, title, page])
+        
+    return normalized
+
 def main():
     # 获取脚本所在目录
     target_dir = os.path.dirname(os.path.abspath(__file__))
@@ -68,25 +106,25 @@ def main():
                             level = 1
                         
                         toc_entries.append([level, title, page])
-                        print(f"读取条目: 层级={level}, 标题='{title}', 页码={page}")
+                        # 减少输出，避免刷屏，只在出错时详细看
+                        # print(f"读取条目: 层级={level}, 标题='{title}', 页码={page}")
                     except ValueError as e:
                         print(f"警告: 第{row_num}行数据格式错误，跳过该行: {row} 错误: {e}")
                 else:
-                    print(f"警告: 第{row_num}行列数不足，跳过该行: {row}")
+                    # 忽略空行或列数不足的行
+                    pass 
         
         if not toc_entries:
             print(f"CSV文件 '{selected_csv}' 中没有找到有效的目录条目。")
             return
         
-        # 按页码从小到大排序
-        print("\n排序前的目录条目:")
-        for i, entry in enumerate(toc_entries):
-            print(f"{i+1}. 层级={entry[0]}, 标题='{entry[1]}', 页码={entry[2]}")
+        print(f"\n共读取 {len(toc_entries)} 条目录条目。")
         
-        toc_entries.sort(key=lambda x: x[2])
+        # 规范化层级
+        toc_entries = normalize_toc_levels(toc_entries)
         
-        print("\n排序后的目录条目:")
-        for i, entry in enumerate(toc_entries):
+        print("\n规范化后的前5条目录条目:")
+        for i, entry in enumerate(toc_entries[:5]):
             print(f"{i+1}. 层级={entry[0]}, 标题='{entry[1]}', 页码={entry[2]}")
         
         # 修改PDF文件
@@ -100,9 +138,12 @@ def main():
                 level, title, page = entry
                 if page < 1 or page > doc.page_count:
                     invalid_entries.append((i, entry))
-                    print(f"警告: 条目'{title}'的页码({page})超出有效范围(1-{doc.page_count})")
+                    # 只打印前几个无效条目，避免刷屏
+                    if len(invalid_entries) <= 5:
+                        print(f"警告: 条目'{title}'的页码({page})超出有效范围(1-{doc.page_count})")
             
             if invalid_entries:
+                print(f"... 共 {len(invalid_entries)} 个无效页码条目。")
                 print("发现无效页码条目，是否继续处理？(y/n): ", end="")
                 if input().lower() != 'y':
                     doc.close()
@@ -112,6 +153,7 @@ def main():
             doc.set_toc([])
             
             # 添加新目录
+            # 此时 toc_entries 已经过规范化，应该符合 fitz 要求
             doc.set_toc(toc_entries)
             
             # 保存为新文件
