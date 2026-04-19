@@ -21,3 +21,6 @@ pip install --timeout 300 -r requirements.txt
 
 # 6. 给予运行权限
 chmod +x macos_start.command
+
+echo "Setup complete."
+read -r
