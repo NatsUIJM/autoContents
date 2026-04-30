@@ -305,7 +305,7 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     print(f"[INFO] {info_msg}")
     write_log(info_msg)
 
-    while current_limit < 60 and current_limit < total_pages:
+    while current_limit < 100 and current_limit < total_pages:
         # 执行当前批次的扫描
         await run_batch(last_scanned + 1, current_limit + 1)
         last_scanned = current_limit
