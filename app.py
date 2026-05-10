@@ -597,7 +597,8 @@ def run_script(session_id, script_index, retry_count):
     if script_index >= total_scripts:
         return jsonify({
             'status': 'completed',
-            'message': '所有脚本执行完成'
+            'message': '所有脚本执行完成',
+            'totalScripts': total_scripts
         })
     
     script_name, script_desc = script_sequence[script_index]
@@ -881,4 +882,4 @@ if __name__ == '__main__':
         threading.Thread(target=open_browser).start()
         
         print(f"Starting server on port {port}")
-        app.run(debug=True, port=port, use_reloader=False)
+        app.run(debug=True, port=port, use_reloader=False, threaded=True)

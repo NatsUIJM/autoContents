@@ -401,6 +401,33 @@
             color: #6b7280;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         }
+
+        /* 多任务卡片样式 */
+        .task-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .task-filename {
+            font-weight: 500;
+            color: #374151;
+            word-break: break-all;
+            flex: 1;
+            margin-right: 10px;
+        }
+        .task-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
     </style>
 </head>
 <body>
@@ -411,28 +438,23 @@
         </div>
 
         <div class="file-input-container">
-            <input type="file" id="pdfFile" accept=".pdf" class="hidden">
-            <button onclick="document.getElementById('pdfFile').click()">
+            <input type="file" id="pdfFiles" accept=".pdf" multiple class="hidden">
+            <button onclick="document.getElementById('pdfFiles').click()">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                选择 PDF 文件
+                选择 PDF 文件（支持多选）
             </button>
-            <div id="fileName" class="file-name"></div>
+            <div id="fileList" class="file-name" style="flex-direction: column; align-items: flex-start; gap: 5px;"></div>
         </div>
 
         <button id="startButton" onclick="startProcess()" disabled>开始执行</button>
-        
-        <div class="progress-container">
-            <div class="progress-bar">
-                <div id="progress" class="progress"></div>
-            </div>
-            <div id="status" class="status">准备就绪</div>
-        </div>
-        
-        <div id="log" class="log"></div>
+
+        <div id="tasksContainer" style="margin-top: 20px; display: flex; flex-direction: column; gap: 20px;"></div>
+
+        <div id="log" class="log" style="margin-top: 20px;"></div>
         
         <div class="collapsible-wrapper">
             <div class="collapsible-header" onclick="toggleCollapsible('llmContent', 'llmChevron')">
@@ -506,8 +528,8 @@
     </div>
 
     <script>
-        let isProcessing = false;
-        let selectedFile = null;
+        let selectedFiles = [];
+        const tasks = new Map();
         const MAX_RETRIES = 3;
         const RETRY_DELAY = 1000;
         const FETCH_TIMEOUT = 360000;
@@ -914,39 +936,32 @@
             }
         }
 
-        document.getElementById('pdfFile').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file && file.type === 'application/pdf') {
-                selectedFile = file;
-                const fileNameDiv = document.getElementById('fileName');
-                fileNameDiv.innerHTML = `
-                    <span>${file.name}</span>
-                    <button class="remove-file" onclick="removeFile()" title="移除文件">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                `;
+        document.getElementById('pdfFiles').addEventListener('change', function(e) {
+            selectedFiles = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
+            const fileListDiv = document.getElementById('fileList');
+            fileListDiv.innerHTML = '';
+            if (selectedFiles.length === 0) {
+                addLog('请选择有效的 PDF 文件', 'error');
                 updateStartButton();
-            } else {
-                addLog('请选择 PDF 文件', 'error');
+                return;
             }
-        });
-
-        function removeFile() {
-            selectedFile = null;
-            document.getElementById('pdfFile').value = '';
-            document.getElementById('fileName').innerHTML = '';
+            selectedFiles.forEach((file, idx) => {
+                const item = document.createElement('div');
+                item.textContent = `${idx + 1}. ${file.name}`;
+                fileListDiv.appendChild(item);
+            });
             updateStartButton();
-        }
+        });
 
         function updateStartButton() {
             const startButton = document.getElementById('startButton');
             const isAuthorized = authStatus.isTrial || authStatus.isActivated;
-            startButton.disabled = !selectedFile || isProcessing || !isAuthorized;
-            
-            if (!isAuthorized && selectedFile) {
+            const hasFiles = selectedFiles.length > 0;
+            const isRunning = Array.from(tasks.values()).some(t => t.isProcessing);
+            startButton.disabled = !hasFiles || isRunning || !isAuthorized;
+            startButton.textContent = isRunning ? '处理中...' : '开始执行';
+
+            if (!isAuthorized && hasFiles) {
                 startButton.title = '请先试用或激活后才能使用';
             } else {
                 startButton.title = '';
@@ -961,8 +976,7 @@
         });
 
         function updateProgress(current, total) {
-            const percentage = (current / total) * 100;
-            document.getElementById('progress').style.width = percentage + '%';
+            // 保留兼容，实际已改为按任务更新
         }
 
         function addLog(message, type = 'normal') {
@@ -976,34 +990,102 @@
             log.scrollTop = log.scrollHeight;
         }
 
-        async function uploadFiles() {
-            const formData = new FormData();
-            formData.append('pdf', selectedFile);
+        function addTaskLog(sessionId, message, type = 'normal') {
+            const log = document.getElementById(`log-${sessionId}`);
+            if (!log) return;
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            if (type === 'error') entry.className = 'error';
+            if (type === 'warning') entry.className = 'warning';
+            if (type === 'success') entry.className = 'success';
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
 
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                if (data.status === 'success') {
-                    currentSessionId = data.session_id;
-                    addLog('文件上传成功', 'success');
-                    return true;
-                } else {
-                    addLog(data.message, 'error');
-                    return false;
-                }
-            } catch (error) {
-                addLog(`上传失败：${error.message}`, 'error');
-                return false;
+        function updateTaskProgress(sessionId, current, total) {
+            const bar = document.getElementById(`progress-${sessionId}`);
+            if (bar) bar.style.width = ((current / total) * 100) + '%';
+        }
+
+        function updateTaskStatus(sessionId, text) {
+            const status = document.getElementById(`status-${sessionId}`);
+            if (status) status.textContent = text;
+        }
+
+        function createTaskUI(tempId, filename) {
+            const container = document.getElementById('tasksContainer');
+            const card = document.createElement('div');
+            card.className = 'task-card';
+            card.id = `task-${tempId}`;
+            card.innerHTML = `
+                <div class="task-header">
+                    <span class="task-filename">${filename}</span>
+                    <div class="task-actions">
+                        <button class="remove-file" onclick="removeTask('${tempId}')" title="移除">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar"><div class="progress" id="progress-${tempId}"></div></div>
+                    <div class="status" id="status-${tempId}">准备上传</div>
+                </div>
+                <div class="log" id="log-${tempId}"></div>
+            `;
+            container.prepend(card);
+        }
+
+        function updateTaskSessionId(tempId, realId) {
+            const card = document.getElementById(`task-${tempId}`);
+            if (card) {
+                card.id = `task-${realId}`;
+                card.querySelector('.progress').id = `progress-${realId}`;
+                card.querySelector('.status').id = `status-${realId}`;
+                card.querySelector('.log').id = `log-${realId}`;
+                card.querySelector('.remove-file').setAttribute('onclick', `removeTask('${realId}')`);
             }
         }
 
-        async function downloadResult() {
+        function removeTask(sessionId) {
+            const card = document.getElementById(`task-${sessionId}`);
+            if (card) card.remove();
+            tasks.delete(sessionId);
+            updateStartButton();
+        }
+
+        async function uploadAndStartTask(file) {
+            const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            createTaskUI(tempId, file.name);
+            tasks.set(tempId, { isProcessing: true, file: file });
+
+            const formData = new FormData();
+            formData.append('pdf', file);
+
             try {
-                const response = await fetch(`/download_result/${currentSessionId}`);
+                const response = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    const realSessionId = data.session_id;
+                    updateTaskSessionId(tempId, realSessionId);
+                    tasks.delete(tempId);
+                    tasks.set(realSessionId, { isProcessing: true, file: file });
+                    addTaskLog(realSessionId, '文件上传成功，开始处理...', 'success');
+                    runScriptForTask(realSessionId, 0, 0);
+                } else {
+                    addTaskLog(tempId, `上传失败：${data.message}`, 'error');
+                    tasks.get(tempId).isProcessing = false;
+                    updateStartButton();
+                }
+            } catch (error) {
+                addTaskLog(tempId, `上传失败：${error.message}`, 'error');
+                tasks.get(tempId).isProcessing = false;
+                updateStartButton();
+            }
+        }
+
+        async function downloadResult(sessionId) {
+            try {
+                const response = await fetch(`/download_result/${sessionId}`);
                 if (response.ok) {
                     let filename = '处理结果.pdf';
                     const disposition = response.headers.get('Content-Disposition');
@@ -1018,7 +1100,7 @@
                             }
                         }
                     }
-                    
+
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1028,13 +1110,13 @@
                     a.click();
                     document.body.removeChild(a);
                     window.URL.revokeObjectURL(url);
-                    addLog('文件下载成功', 'success');
+                    addTaskLog(sessionId, '文件下载成功', 'success');
                 } else {
                     const data = await response.json();
-                    addLog(data.message, 'error');
+                    addTaskLog(sessionId, data.message || '下载失败', 'error');
                 }
             } catch (error) {
-                addLog(`下载失败：${error.message}`, 'error');
+                addTaskLog(sessionId, `下载失败：${error.message}`, 'error');
             }
         }
 
@@ -1061,99 +1143,90 @@
             }
         }
 
-        async function runScript(scriptIndex, retryCount = 0) {
-            if (!isProcessing) return;
+        async function runScriptForTask(sessionId, scriptIndex, retryCount) {
+            const task = tasks.get(sessionId);
+            if (!task || !task.isProcessing) return;
 
-            document.getElementById('status').textContent = '正在执行...';
-            
+            updateTaskStatus(sessionId, '正在执行...');
             try {
                 const ocrModel = 'qwen';
                 const response = await fetchWithTimeout(
-                    `/run_script/${currentSessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
+                    `/run_script/${sessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
                     FETCH_TIMEOUT
                 );
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
-                
+
                 if (data.status === 'completed') {
-                    isProcessing = false;
-                    document.getElementById('status').textContent = '所有脚本执行完成';
-                    document.getElementById('startButton').disabled = false;
-                    addLog('所有脚本执行完成', 'success');
-                    await downloadResult();
+                    task.isProcessing = false;
+                    updateTaskStatus(sessionId, '处理完成');
+                    updateTaskProgress(sessionId, data.totalScripts || 6, data.totalScripts || 6);
+                    addTaskLog(sessionId, '所有脚本执行完成', 'success');
+                    updateStartButton();
+                    downloadResult(sessionId);
                     return;
                 }
-                
+
                 if (data.status === 'success') {
-                    updateProgress(data.nextIndex, data.totalScripts);
-                    document.getElementById('status').textContent = 
-                        `正在执行：${data.currentScript} (${data.nextIndex}/${data.totalScripts})`;
-                    addLog(data.message, 'success');
+                    updateTaskProgress(sessionId, data.nextIndex, data.totalScripts);
+                    updateTaskStatus(sessionId, `正在执行：${data.currentScript} (${data.nextIndex}/${data.totalScripts})`);
+                    addTaskLog(sessionId, data.message, 'success');
+                    if (data.stdout && data.stdout.trim()) addTaskLog(sessionId, data.stdout.trim(), 'normal');
                     await sleep(SCRIPT_CHECK_INTERVAL);
-                    runScript(data.nextIndex, 0);
+                    runScriptForTask(sessionId, data.nextIndex, 0);
                 } else {
-                    handleError(data, scriptIndex, retryCount);
+                    handleTaskError(sessionId, data, scriptIndex, retryCount);
                 }
             } catch (error) {
-                handleError({ message: error.message }, scriptIndex, retryCount);
+                handleTaskError(sessionId, { message: error.message }, scriptIndex, retryCount);
             }
         }
 
-        function handleError(data, scriptIndex, retryCount) {
+        function handleTaskError(sessionId, data, scriptIndex, retryCount) {
+            const task = tasks.get(sessionId);
+            if (!task) return;
             if (retryCount < MAX_RETRIES - 1) {
-                const nextRetryCount = retryCount + 1;
-                addLog(`执行失败，${RETRY_DELAY/1000}秒后进行第${nextRetryCount}次重试`, 'warning');
-                document.getElementById('status').textContent = `等待重试 (${nextRetryCount}/${MAX_RETRIES})...`;
-                setTimeout(() => runScript(scriptIndex, nextRetryCount), RETRY_DELAY);
+                const nextRetry = retryCount + 1;
+                addTaskLog(sessionId, `执行失败，${RETRY_DELAY/1000}秒后进行第${nextRetry}次重试`, 'warning');
+                updateTaskStatus(sessionId, `等待重试 (${nextRetry}/${MAX_RETRIES})...`);
+                setTimeout(() => runScriptForTask(sessionId, scriptIndex, nextRetry), RETRY_DELAY);
             } else {
-                isProcessing = false;
-                document.getElementById('status').textContent = `执行失败，已重试${MAX_RETRIES}次`;
-                document.getElementById('startButton').disabled = false;
-                addLog(`执行失败，已达到最大重试次数：${data.message}`, 'error');
+                task.isProcessing = false;
+                updateTaskStatus(sessionId, `执行失败，已重试${MAX_RETRIES}次`);
+                addTaskLog(sessionId, `执行失败：${data.message}`, 'error');
+                updateStartButton();
             }
         }
 
         async function startProcess() {
-            if (isProcessing) return;
-            
+            if (selectedFiles.length === 0) return;
             if (!authStatus.isTrial && !authStatus.isActivated) {
                 addLog('请先试用或激活后才能使用', 'error');
                 return;
             }
 
             try {
-                const activationCode = authStatus.isActivated ? 
+                const activationCode = authStatus.isActivated ?
                     document.getElementById('activationInput').value : '';
-                
+
                 const authResponse = await fetch(
                     `/api/auth?machine_code=${encodeURIComponent(currentMachineCode)}&activation_code=${encodeURIComponent(activationCode)}`
                 );
                 const authData = await authResponse.json();
-                
+
                 if (!authData.auth_passed) {
                     addLog(`鉴权失败：${authData.message}`, 'error');
                     return;
                 }
-                
-                addLog('鉴权通过，开始执行', 'success');
+
+                addLog('鉴权通过，开始批量执行', 'success');
             } catch (error) {
                 addLog(`鉴权验证失败：${error.message}`, 'error');
                 return;
             }
-            
-            const uploadSuccess = await uploadFiles();
-            if (!uploadSuccess) return;
 
-            isProcessing = true;
             document.getElementById('startButton').disabled = true;
-            document.getElementById('progress').style.width = '0%';
-            document.getElementById('log').innerHTML = '';
-            addLog('开始执行脚本序列');
-            runScript(0, 0);
+            selectedFiles.forEach(file => uploadAndStartTask(file));
         }
 
         async function testQwenService() {
