@@ -62,12 +62,24 @@ FIRST_PAGE_EXAMPLE = {
 
 def write_log(message):
     try:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+
+        # 优先写入 session 日志
+        base_dir = os.getenv("BASE_DIR")
+        if base_dir:
+            session_log = Path(base_dir) / "session.log"
+            session_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(session_log, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+
+        # 同时写入全局日志（兼容 SSE）
         project_root = Path(__file__).parent.parent
-        log_file = project_root / "log.txt"
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"[Determine Level] {message}\n")
-    except Exception as e:
-        print(f"日志写入失败：{e}")
+        global_log = project_root / "log.txt"
+        with open(global_log, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] [Determine Level] {message}\n")
+    except Exception:
+        pass
 
 def load_llm_config() -> dict:
     project_root = Path(__file__).parent.parent
@@ -247,61 +259,64 @@ async def process_first_page(img_file: Path, csv_file: Path, output_path: Path) 
 
     messages = [{"role": "user", "content": content_list}]
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = await client.chat.completions.create(
-                model=LLM_CONFIG["model"],
-                messages=messages,
-                extra_body={"enable_thinking": False},
-                timeout=REQUEST_TIMEOUT,
-                temperature=0,
-            )
-            
-            content = response.choices[0].message.content.strip()
-            
-            # 本地解析 CSV 转为 JSON 保存
+    try:
+        for attempt in range(MAX_RETRIES):
             try:
-                parsed_data = parse_csv_response(content, img_file.name)
-            except Exception as parse_err:
-                write_log(f"首图 CSV 解析失败：{parse_err}")
+                response = await client.chat.completions.create(
+                    model=LLM_CONFIG["model"],
+                    messages=messages,
+                    extra_body={"enable_thinking": False},
+                    timeout=REQUEST_TIMEOUT,
+                    temperature=0,
+                )
+
+                content = response.choices[0].message.content.strip()
+
+                # 本地解析 CSV 转为 JSON 保存
+                try:
+                    parsed_data = parse_csv_response(content, img_file.name)
+                except Exception as parse_err:
+                    write_log(f"首图 CSV 解析失败：{parse_err}")
+                    if attempt == MAX_RETRIES - 1:
+                        return False
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+
+                if parsed_data:
+                    # 排序
+                    sorted_data = sorted(parsed_data, key=lambda x: x['number'])
+
+                    # 保存首图结果文件
+                    output_file = output_path / f"{img_file.stem}_merged.json"
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        json.dump(sorted_data, f, ensure_ascii=False, indent=2)
+
+                    # 存入全局变量作为 Few-shot 示例 (存储原始 CSV 字符串)
+                    FIRST_PAGE_EXAMPLE["image_base64"] = get_encoded_image(img_file)
+                    FIRST_PAGE_EXAMPLE["result_csv_str"] = content
+
+                    print(f"首图处理完成并已缓存为示例：{img_file.name}")
+                    return True
+                else:
+                    write_log(f"首图解析结果为空：{img_file.name}")
+                    if attempt == MAX_RETRIES - 1:
+                        return False
+                    await asyncio.sleep(2 ** attempt)
+
+            except (APIError, Timeout) as e:
+                write_log(f"首图第 {attempt+1} 次 API 请求失败 ({type(e).__name__}): {str(e)}")
                 if attempt == MAX_RETRIES - 1:
                     return False
                 await asyncio.sleep(2 ** attempt)
-                continue
-
-            if parsed_data:
-                # 排序
-                sorted_data = sorted(parsed_data, key=lambda x: x['number'])
-                
-                # 保存首图结果文件
-                output_file = output_path / f"{img_file.stem}_merged.json"
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    json.dump(sorted_data, f, ensure_ascii=False, indent=2)
-                
-                # 存入全局变量作为 Few-shot 示例 (存储原始 CSV 字符串)
-                FIRST_PAGE_EXAMPLE["image_base64"] = get_encoded_image(img_file)
-                FIRST_PAGE_EXAMPLE["result_csv_str"] = content
-                
-                print(f"首图处理完成并已缓存为示例：{img_file.name}")
-                return True
-            else:
-                write_log(f"首图解析结果为空：{img_file.name}")
+            except Exception as e:
+                write_log(f"首图处理异常 {img_file.name}: {str(e)}")
                 if attempt == MAX_RETRIES - 1:
                     return False
                 await asyncio.sleep(2 ** attempt)
 
-        except (APIError, Timeout) as e:
-            write_log(f"首图第 {attempt+1} 次 API 请求失败 ({type(e).__name__}): {str(e)}")
-            if attempt == MAX_RETRIES - 1:
-                return False
-            await asyncio.sleep(2 ** attempt)
-        except Exception as e:
-            write_log(f"首图处理异常 {img_file.name}: {str(e)}")
-            if attempt == MAX_RETRIES - 1:
-                return False
-            await asyncio.sleep(2 ** attempt)
-    
-    return False
+        return False
+    finally:
+        IMAGE_CACHE.pop(img_file, None)
 
 async def process_level_async(semaphore: asyncio.Semaphore, img_file: Path, csv_file: Path, output_path: Path):
     """
@@ -339,54 +354,57 @@ async def process_level_async(semaphore: asyncio.Semaphore, img_file: Path, csv_
 
         messages = [{"role": "user", "content": content_list}]
 
-        for attempt in range(MAX_RETRIES):
-            try:
-                response = await client.chat.completions.create(
-                    model=LLM_CONFIG["model"],
-                    messages=messages,
-                    extra_body={"enable_thinking": False},
-                    timeout=REQUEST_TIMEOUT,
-                    temperature=0,
-                )
-                
-                content = response.choices[0].message.content.strip()
-                
-                # 本地解析 CSV 转为 JSON
+        try:
+            for attempt in range(MAX_RETRIES):
                 try:
-                    parsed_data = parse_csv_response(content, img_file.name)
-                except Exception as parse_err:
-                    write_log(f"第 {attempt+1} 次尝试解析 CSV 失败：{parse_err}")
+                    response = await client.chat.completions.create(
+                        model=LLM_CONFIG["model"],
+                        messages=messages,
+                        extra_body={"enable_thinking": False},
+                        timeout=REQUEST_TIMEOUT,
+                        temperature=0,
+                    )
+
+                    content = response.choices[0].message.content.strip()
+
+                    # 本地解析 CSV 转为 JSON
+                    try:
+                        parsed_data = parse_csv_response(content, img_file.name)
+                    except Exception as parse_err:
+                        write_log(f"第 {attempt+1} 次尝试解析 CSV 失败：{parse_err}")
+                        if attempt == MAX_RETRIES - 1:
+                            return False
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+
+                    if parsed_data:
+                        sorted_data = sorted(parsed_data, key=lambda x: x['number'])
+
+                        with open(output_file, 'w', encoding='utf-8') as f:
+                            json.dump(sorted_data, f, ensure_ascii=False, indent=2)
+
+                        print(f"已判断层级：{img_file.name}")
+                        return True
+                    else:
+                        write_log(f"解析结果为空：{img_file.name}")
+                        if attempt == MAX_RETRIES - 1:
+                            return False
+                        await asyncio.sleep(2 ** attempt)
+
+                except (APIError, Timeout) as e:
+                    write_log(f"第 {attempt+1} 次 API 请求失败 ({type(e).__name__}): {str(e)}")
                     if attempt == MAX_RETRIES - 1:
                         return False
                     await asyncio.sleep(2 ** attempt)
-                    continue
-
-                if parsed_data:
-                    sorted_data = sorted(parsed_data, key=lambda x: x['number'])
-                    
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        json.dump(sorted_data, f, ensure_ascii=False, indent=2)
-                    
-                    print(f"已判断层级：{img_file.name}")
-                    return True
-                else:
-                    write_log(f"解析结果为空：{img_file.name}")
+                except Exception as e:
+                    write_log(f"处理异常 {img_file.name}: {str(e)}")
                     if attempt == MAX_RETRIES - 1:
                         return False
                     await asyncio.sleep(2 ** attempt)
 
-            except (APIError, Timeout) as e:
-                write_log(f"第 {attempt+1} 次 API 请求失败 ({type(e).__name__}): {str(e)}")
-                if attempt == MAX_RETRIES - 1:
-                    return False
-                await asyncio.sleep(2 ** attempt)
-            except Exception as e:
-                write_log(f"处理异常 {img_file.name}: {str(e)}")
-                if attempt == MAX_RETRIES - 1:
-                    return False
-                await asyncio.sleep(2 ** attempt)
-                
-        return False
+            return False
+        finally:
+            IMAGE_CACHE.pop(img_file, None)
 
 def post_process_levels(output_path: Path):
     write_log("开始执行后处理逻辑")
@@ -459,6 +477,9 @@ async def run_batch_processing(image_files: list, output_path: Path):
         print(f"并发处理完成。成功：{success_count}, 失败/空结果：{fail_count}, 异常：{exception_count}")
     else:
         print("仅有一张图片，处理完毕。")
+
+    # 处理完成后清空图片缓存，释放内存
+    IMAGE_CACHE.clear()
 
 async def main_async():
     load_dotenv()

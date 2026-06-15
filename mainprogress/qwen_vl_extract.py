@@ -72,12 +72,24 @@ client = None
 
 def write_log(message):
     try:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+
+        # 优先写入 session 日志
+        base_dir = os.getenv("BASE_DIR")
+        if base_dir:
+            session_log = Path(base_dir) / "session.log"
+            session_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(session_log, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+
+        # 同时写入全局日志（兼容 SSE）
         project_root = Path(__file__).parent.parent
-        log_file = project_root / "log.txt"
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"[Extract CSV] {message}\n")
-    except Exception as e:
-        print(f"日志写入失败：{e}")
+        global_log = project_root / "log.txt"
+        with open(global_log, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] [Extract CSV] {message}\n")
+    except Exception:
+        pass
 
 def load_llm_config() -> dict:
     import json
@@ -295,127 +307,130 @@ async def process_image_async(semaphore: asyncio.Semaphore, img_file: Path, outp
         last_error_msg = None
         
         try:
-            image_data_url = get_encoded_image(img_file)
-            
-            # 构建消息内容
-            content_list = [
-                {"type": "text", "text": "当前页图片（需处理）："},
-                {"type": "text", "text": PROMPT_TEXT},
-                {"type": "image_url", "image_url": {"url": image_data_url}},
-                {"type": "text", "text": PROMPT_TEXT},
-                {"type": "text", "text": IMPORTANT_NOTE}
-            ]
+            try:
+                image_data_url = get_encoded_image(img_file)
 
-            # 外层循环控制总重试次数 (初始 1 次 + 后处理失败后的额外重试)
-            total_attempts = 1 + POST_PROCESS_RETRIES
-            
-            final_content = None
-            
-            for attempt in range(total_attempts):
-                try:
-                    # 调用 SDK
-                    response = await client.chat.completions.create(
-                        model=LLM_CONFIG["model"],
-                        messages=[{"role": "user", "content": content_list}],
-                        temperature=0,
-                        extra_body={"enable_thinking": False}
-                    )
-                    
-                    # 保存原始响应内容用于潜在的错误日志
-                    last_raw_response = response.choices[0].message.content
-                    
-                    content = last_raw_response.strip()
-                    
-                    # 清理 Markdown 代码块标记
-                    if content.startswith("```csv"): 
-                        content = content[6:]
-                    elif content.startswith("```"): 
-                        content = content[3:]
-                    if content.endswith("```"): 
-                        content = content[:-3]
-                    content = content.strip()
+                # 构建消息内容
+                content_list = [
+                    {"type": "text", "text": "当前页图片（需处理）："},
+                    {"type": "text", "text": PROMPT_TEXT},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                    {"type": "text", "text": PROMPT_TEXT},
+                    {"type": "text", "text": IMPORTANT_NOTE}
+                ]
 
-                    if not content:
-                        write_log(f"模型返回空内容 (尝试 {attempt+1}/{total_attempts})")
+                # 外层循环控制总重试次数 (初始 1 次 + 后处理失败后的额外重试)
+                total_attempts = 1 + POST_PROCESS_RETRIES
+
+                final_content = None
+
+                for attempt in range(total_attempts):
+                    try:
+                        # 调用 SDK
+                        response = await client.chat.completions.create(
+                            model=LLM_CONFIG["model"],
+                            messages=[{"role": "user", "content": content_list}],
+                            temperature=0,
+                            extra_body={"enable_thinking": False}
+                        )
+
+                        # 保存原始响应内容用于潜在的错误日志
+                        last_raw_response = response.choices[0].message.content
+
+                        content = last_raw_response.strip()
+
+                        # 清理 Markdown 代码块标记
+                        if content.startswith("```csv"):
+                            content = content[6:]
+                        elif content.startswith("```"):
+                            content = content[3:]
+                        if content.endswith("```"):
+                            content = content[:-3]
+                        content = content.strip()
+
+                        if not content:
+                            write_log(f"模型返回空内容 (尝试 {attempt+1}/{total_attempts})")
+                            if attempt == total_attempts - 1:
+                                raise Exception("模型持续返回空内容")
+                            continue
+
+                        # 后处理验证与修复
+                        is_valid, processed_content = validate_and_fix_csv_content(content)
+
+                        if is_valid:
+                            final_content = processed_content
+                            if attempt > 0:
+                                write_log(f"第 {attempt+1} 次尝试成功 (经过后处理修复)")
+                            break
+                        else:
+                            # 记录验证失败的原始内容
+                            last_error_msg = f"CSV 格式验证失败：行数或列数不符合 2 列要求。原始内容片段：{content[:200]}..."
+                            write_log(f"CSV 解析失败且修复无效 (尝试 {attempt+1}/{total_attempts})")
+                            if attempt == total_attempts - 1:
+                                raise Exception(last_error_msg)
+                            # 继续下一次重试循环，重新请求 LLM
+
+                    except APIError as e:
+                        # 捕获 API 错误，尝试提取响应体
+                        error_body = getattr(e, 'body', None) or str(e)
+                        last_raw_response = f"API Error Body: {error_body}"
+                        last_error_msg = f"API 错误：{str(e)}"
+                        write_log(f"API 错误 (尝试 {attempt+1}/{total_attempts}): {last_error_msg}")
                         if attempt == total_attempts - 1:
-                            raise Exception("模型持续返回空内容")
-                        continue
-
-                    # 后处理验证与修复
-                    is_valid, processed_content = validate_and_fix_csv_content(content)
-                    
-                    if is_valid:
-                        final_content = processed_content
-                        if attempt > 0:
-                            write_log(f"第 {attempt+1} 次尝试成功 (经过后处理修复)")
-                        break
-                    else:
-                        # 记录验证失败的原始内容
-                        last_error_msg = f"CSV 格式验证失败：行数或列数不符合 2 列要求。原始内容片段：{content[:200]}..."
-                        write_log(f"CSV 解析失败且修复无效 (尝试 {attempt+1}/{total_attempts})")
+                            raise e
+                        # 短暂等待后重试
+                        await asyncio.sleep(2 ** attempt)
+                    except Exception as e:
+                        last_error_msg = f"处理逻辑错误：{str(e)}"
+                        write_log(f"处理逻辑错误 (尝试 {attempt+1}/{total_attempts}): {last_error_msg}")
                         if attempt == total_attempts - 1:
-                            raise Exception(last_error_msg)
-                        # 继续下一次重试循环，重新请求 LLM
-                        
-                except APIError as e:
-                    # 捕获 API 错误，尝试提取响应体
-                    error_body = getattr(e, 'body', None) or str(e)
-                    last_raw_response = f"API Error Body: {error_body}"
-                    last_error_msg = f"API 错误：{str(e)}"
-                    write_log(f"API 错误 (尝试 {attempt+1}/{total_attempts}): {last_error_msg}")
-                    if attempt == total_attempts - 1:
-                        raise e
-                    # 短暂等待后重试
-                    await asyncio.sleep(2 ** attempt) 
-                except Exception as e:
-                    last_error_msg = f"处理逻辑错误：{str(e)}"
-                    write_log(f"处理逻辑错误 (尝试 {attempt+1}/{total_attempts}): {last_error_msg}")
-                    if attempt == total_attempts - 1:
-                        raise e
-            
-            if final_content:
-                # === 新增逻辑：页码 Null 填充 ===
-                try:
-                    fixed_content = fix_null_page_numbers(final_content)
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        f.write(fixed_content)
-                    write_log(f"结果保存并修正页码成功：{output_file.name}")
-                except Exception as post_err:
-                    write_log(f"页码修正过程出错，保存原始内容：{str(post_err)}")
-                    # 如果修正失败，至少保存原始验证通过的内容
-                    with open(output_file, 'w', encoding='utf-8') as f:
-                        f.write(final_content)
-                
-                print(f"已提取 CSV：{img_file.name}")
-                return True
-            else:
-                # 理论上不会到达这里，因为上面已经抛出异常或 break
-                print(f"处理 {img_file.name} 失败，未达到有效内容标准")
+                            raise e
+
+                if final_content:
+                    # === 新增逻辑：页码 Null 填充 ===
+                    try:
+                        fixed_content = fix_null_page_numbers(final_content)
+                        with open(output_file, 'w', encoding='utf-8') as f:
+                            f.write(fixed_content)
+                        write_log(f"结果保存并修正页码成功：{output_file.name}")
+                    except Exception as post_err:
+                        write_log(f"页码修正过程出错，保存原始内容：{str(post_err)}")
+                        # 如果修正失败，至少保存原始验证通过的内容
+                        with open(output_file, 'w', encoding='utf-8') as f:
+                            f.write(final_content)
+
+                    print(f"已提取 CSV：{img_file.name}")
+                    return True
+                else:
+                    # 理论上不会到达这里，因为上面已经抛出异常或 break
+                    print(f"处理 {img_file.name} 失败，未达到有效内容标准")
+                    return False
+
+            except Exception as e:
+                # === 核心修改：记录详细错误日志和原始响应 ===
+                error_details = {
+                    "file": img_file.name,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "raw_response": last_raw_response if last_raw_response else "No response received",
+                    "last_error_context": last_error_msg if last_error_msg else "Unknown context"
+                }
+
+                log_entry = (
+                    f"=== CSV 解析失败报告 ===\n"
+                    f"文件：{error_details['file']}\n"
+                    f"错误类型：{error_details['error_type']}\n"
+                    f"错误信息：{error_details['error_message']}\n"
+                    f"上下文：{error_details['last_error_context']}\n"
+                    f"原始响应内容:\n{error_details['raw_response']}\n"
+                    f"========================\n"
+                )
+
+                write_log(log_entry)
+                traceback.print_exc()
                 return False
-            
-        except Exception as e:
-            # === 核心修改：记录详细错误日志和原始响应 ===
-            error_details = {
-                "file": img_file.name,
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "raw_response": last_raw_response if last_raw_response else "No response received",
-                "last_error_context": last_error_msg if last_error_msg else "Unknown context"
-            }
-            
-            log_entry = (
-                f"=== CSV 解析失败报告 ===\n"
-                f"文件：{error_details['file']}\n"
-                f"错误类型：{error_details['error_type']}\n"
-                f"错误信息：{error_details['error_message']}\n"
-                f"上下文：{error_details['last_error_context']}\n"
-                f"原始响应内容:\n{error_details['raw_response']}\n"
-                f"========================\n"
-            )
-            
-            write_log(log_entry)
-            traceback.print_exc()
-            return False
+        finally:
+            IMAGE_CACHE.pop(img_file, None)
 
 async def run_batch_processing(image_files: list, output_path: Path):
     write_log("正在预处理并缓存图片...")
@@ -432,6 +447,9 @@ async def run_batch_processing(image_files: list, output_path: Path):
     results = await asyncio.gather(*tasks, return_exceptions=True)
     success_count = sum(1 for r in results if r is True)
     print(f"CSV 提取完成，成功：{success_count}/{len(image_files)}")
+
+    # 处理完成后清空图片缓存，释放内存
+    IMAGE_CACHE.clear()
 
 async def main_async():
     global client, LLM_CONFIG

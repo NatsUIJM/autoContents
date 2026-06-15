@@ -40,7 +40,7 @@ def convert_to_pinyin(text):
     """将中文字符转换为拼音"""
     return ''.join(lazy_pinyin(text))
 
-SCRIPT_TIMEOUT = 300
+SCRIPT_TIMEOUT = 3000
 DATA_FOLDERS = [
     'input_pdf',
     'mark/input_image',

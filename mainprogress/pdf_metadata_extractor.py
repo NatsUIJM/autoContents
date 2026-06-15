@@ -459,21 +459,22 @@ async def extract_book_name(pdf_path: str, original_filename: str, client: Async
     """提取 PDF 第一页并调用 LLM 识别书名"""
     try:
         doc = fitz.open(pdf_path)
-        page = doc[0]
-        rect = page.rect
-        max_dim = max(rect.width, rect.height)
-        
-        # 修正逻辑：始终计算缩放比例，确保小封面也能清晰识别
-        TARGET_LONG_EDGE = 1000
-        if max_dim == 0:
+        try:
+            page = doc[0]
+            rect = page.rect
+            max_dim = max(rect.width, rect.height)
+
+            # 修正逻辑：始终计算缩放比例，确保小封面也能清晰识别
+            TARGET_LONG_EDGE = 1000
+            if max_dim == 0:
+                return ""
+
+            zoom = TARGET_LONG_EDGE / max_dim
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+            img_data = pix.tobytes("jpeg")
+        finally:
             doc.close()
-            return ""
-            
-        zoom = TARGET_LONG_EDGE / max_dim
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat)
-        img_data = pix.tobytes("jpeg")
-        doc.close()
         
         base64_image = base64.b64encode(img_data).decode('utf-8')
         image_data_url = f"data:image/jpeg;base64,{base64_image}"
@@ -574,7 +575,7 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str, initi
         if end_idx <= start_idx:
             end_idx = total_pages - 1
             start_idx = 0
-            
+
         pool = list(range(start_idx, end_idx + 1))
         if len(pool) < 5:
             doc.close()
@@ -675,7 +676,7 @@ async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str, initi
                 log_entries.append(entry)
 
         doc.close()
-        
+
         # 收集所有有效偏移量
         all_offsets = [entry["parsed_offset"] for entry in log_entries if isinstance(entry["parsed_offset"], int)]
         
