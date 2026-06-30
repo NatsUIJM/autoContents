@@ -16,8 +16,8 @@ source .venv/bin/activate
 # 4. 设置 pip 镜像源
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple
 
-# 5. 安装依赖 (设置超时时间为 300 秒)
-pip install --timeout 300 -r requirements.txt
+# 5. 安装依赖 (设置超时时间)
+pip install --timeout 6000 -r requirements.txt
 
 # 6. 给予运行权限
 chmod +x macos_start.command

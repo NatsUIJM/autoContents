@@ -20,7 +20,7 @@ if errorlevel 1 (
 )
 
 echo Installing dependencies...
-pip install --timeout 600 -r requirements.txt
+pip install --timeout 6000 -r requirements.txt
 if errorlevel 1 (
     echo Failed to install dependencies.
     pause
