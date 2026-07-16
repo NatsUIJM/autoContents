@@ -86,10 +86,10 @@ def load_llm_config() -> dict:
     config_path = project_root / "static" / "llm_config.json"
     if not config_path.exists():
         raise FileNotFoundError(f"配置文件未找到：{config_path}")
-        
+
     with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
+        data = json.load(f)
+
     def resolve_value(val):
         if isinstance(val, str) and val.startswith('$') and val.endswith('$'):
             env_val = os.getenv(val[1:-1])
@@ -97,7 +97,24 @@ def load_llm_config() -> dict:
                 raise ValueError(f"环境变量 {val[1:-1]} 未设置")
             return env_val
         return val
-    
+
+    # 支持新旧两种格式
+    configs = data.get("configs")
+    if configs is not None:
+        active_id = data.get("active_id")
+        config = None
+        if active_id:
+            for c in configs:
+                if c.get("id") == active_id:
+                    config = c
+                    break
+        if not config and configs:
+            config = configs[0]
+        if not config:
+            raise ValueError("没有可用的 LLM 配置")
+    else:
+        config = data
+
     return {
         "api_key": resolve_value(config.get("api_key")),
         "base_url": resolve_value(config.get("base_url")),

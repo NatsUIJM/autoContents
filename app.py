@@ -85,6 +85,59 @@ def extract_env_var_name(api_key_value):
         return api_key_value[1:-1]
     return None
 
+def load_config_file():
+    """加载完整的 llm_config.json，不存在则返回默认结构。"""
+    config_path = os.path.join(app.static_folder, 'llm_config.json')
+    if os.path.exists(config_path):
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {
+        "configs": [],
+        "active_id": None
+    }
+
+def save_config_file(data):
+    """保存完整的 llm_config.json。"""
+    config_path = os.path.join(app.static_folder, 'llm_config.json')
+    static_dir = app.static_folder
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir)
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def get_active_llm_config():
+    """从配置文件中获取当前激活的配置，并解析环境变量。"""
+    data = load_config_file()
+    active_id = data.get('active_id')
+    configs = data.get('configs', [])
+    config = None
+    if active_id:
+        for c in configs:
+            if c.get('id') == active_id:
+                config = c
+                break
+    if not config and configs:
+        config = configs[0]
+    if not config:
+        return {
+            "api_key": "",
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen3.5-397b-a17b"
+        }
+
+    api_key_value = config.get('api_key', '')
+    env_var_name = extract_env_var_name(api_key_value)
+    if env_var_name:
+        actual_api_key = os.environ.get(env_var_name, '')
+    else:
+        actual_api_key = api_key_value
+
+    return {
+        "api_key": actual_api_key,
+        "base_url": config.get('base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1'),
+        "model": config.get('model', 'qwen3.5-397b-a17b')
+    }
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -198,20 +251,9 @@ def run_script(session_id, script_index, retry_count):
         base_dir = os.path.abspath(os.path.join('data', session_id))
         
         env = os.environ.copy()
-        
-        config_path = os.path.join(app.static_folder, 'llm_config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            api_key_value = config.get('api_key', '')
-            
-            env_var_name = extract_env_var_name(api_key_value)
-            if env_var_name:
-                actual_api_key = os.environ.get(env_var_name, '')
-                env[env_var_name] = actual_api_key
-                env['DASHSCOPE_API_KEY'] = actual_api_key
-            else:
-                env['DASHSCOPE_API_KEY'] = api_key_value
+
+        active_config = get_active_llm_config()
+        env['DASHSCOPE_API_KEY'] = active_config['api_key']
         
         env.update({
             'BASE_DIR': base_dir,
@@ -310,19 +352,20 @@ def stream_log():
 @app.route('/get_llm_config')
 def get_llm_config():
     try:
-        config_path = os.path.join(app.static_folder, 'llm_config.json')
-        
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            return jsonify({'status': 'success', 'config': config})
-        else:
-            default_config = {
-                "api_key": "$DASHSCOPE_API_KEY$",
-                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "model": "qwen3.5-397b-a17b"
-            }
-            return jsonify({'status': 'success', 'config': default_config})
+        data = load_config_file()
+        active_id = data.get('active_id')
+        # 返回当前激活配置的完整信息，方便前端直接使用
+        active_config = None
+        for c in data.get('configs', []):
+            if c.get('id') == active_id:
+                active_config = c
+                break
+        return jsonify({
+            'status': 'success',
+            'configs': data.get('configs', []),
+            'active_id': active_id,
+            'active_config': active_config
+        })
     except Exception as e:
         logger.error(f"获取 LLM 配置失败：{str(e)}")
         return jsonify({'status': 'error', 'message': f'获取配置失败：{str(e)}'}), 500
@@ -330,49 +373,103 @@ def get_llm_config():
 @app.route('/save_llm_config', methods=['POST'])
 def save_llm_config():
     try:
-        config = request.get_json()
-        
+        config_entry = request.get_json()
+
         required_fields = ['api_key', 'base_url', 'model']
         for field in required_fields:
-            if field not in config:
+            if field not in config_entry:
                 return jsonify({'status': 'error', 'message': f'缺少必需字段：{field}'}), 400
-        
-        static_dir = app.static_folder
-        if not os.path.exists(static_dir):
-            os.makedirs(static_dir)
-            
-        config_path = os.path.join(static_dir, 'llm_config.json')
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-            
-        return jsonify({'status': 'success', 'message': 'LLM 配置保存成功'})
+
+        data = load_config_file()
+        configs = data.get('configs', [])
+
+        config_id = config_entry.get('id', '')
+        name = config_entry.get('name', '').strip()
+        if not name:
+            name = config_entry.get('model', '未命名')
+
+        if config_id:
+            # 更新已有配置
+            found = False
+            for c in configs:
+                if c.get('id') == config_id:
+                    c['name'] = name
+                    c['api_key'] = config_entry['api_key']
+                    c['base_url'] = config_entry['base_url']
+                    c['model'] = config_entry['model']
+                    found = True
+                    break
+            if not found:
+                return jsonify({'status': 'error', 'message': f'配置 {config_id} 不存在'}), 404
+        else:
+            # 新增配置
+            import uuid
+            config_id = uuid.uuid4().hex[:8]
+            configs.append({
+                'id': config_id,
+                'name': name,
+                'api_key': config_entry['api_key'],
+                'base_url': config_entry['base_url'],
+                'model': config_entry['model']
+            })
+
+        # 如果还没有激活配置，自动激活第一个
+        if not data.get('active_id'):
+            data['active_id'] = configs[0]['id']
+
+        data['configs'] = configs
+        save_config_file(data)
+
+        return jsonify({'status': 'success', 'message': 'LLM 配置保存成功', 'id': config_id})
     except Exception as e:
         logger.error(f"保存 LLM 配置失败：{str(e)}")
         return jsonify({'status': 'error', 'message': f'保存配置失败：{str(e)}'}), 500
 
+@app.route('/delete_llm_config/<config_id>', methods=['POST'])
+def delete_llm_config(config_id):
+    try:
+        data = load_config_file()
+        configs = data.get('configs', [])
+
+        if len(configs) <= 1:
+            return jsonify({'status': 'error', 'message': '至少需要保留一个配置'}), 400
+
+        new_configs = [c for c in configs if c.get('id') != config_id]
+        if len(new_configs) == len(configs):
+            return jsonify({'status': 'error', 'message': f'配置 {config_id} 不存在'}), 404
+
+        data['configs'] = new_configs
+        if data.get('active_id') == config_id:
+            data['active_id'] = new_configs[0]['id']
+
+        save_config_file(data)
+        return jsonify({'status': 'success', 'message': '配置已删除', 'active_id': data['active_id']})
+    except Exception as e:
+        logger.error(f"删除 LLM 配置失败：{str(e)}")
+        return jsonify({'status': 'error', 'message': f'删除配置失败：{str(e)}'}), 500
+
+@app.route('/set_active_config/<config_id>', methods=['POST'])
+def set_active_config(config_id):
+    try:
+        data = load_config_file()
+        configs = data.get('configs', [])
+        if not any(c.get('id') == config_id for c in configs):
+            return jsonify({'status': 'error', 'message': f'配置 {config_id} 不存在'}), 404
+
+        data['active_id'] = config_id
+        save_config_file(data)
+        return jsonify({'status': 'success', 'message': '已切换激活配置'})
+    except Exception as e:
+        logger.error(f"切换激活配置失败：{str(e)}")
+        return jsonify({'status': 'error', 'message': f'切换配置失败：{str(e)}'}), 500
+
 @app.route('/test_qwen_service', methods=['POST'])
 def test_qwen_service():
     try:
-        config_path = os.path.join(app.static_folder, 'llm_config.json')
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-        else:
-            config = {
-                "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
-                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "model": "qwen3.5-397b-a17b"
-            }
-        
-        api_key_value = config["api_key"]
-        env_var_name = extract_env_var_name(api_key_value)
-        if env_var_name:
-            actual_api_key = os.environ.get(env_var_name, "")
-        else:
-            actual_api_key = api_key_value
-        
+        config = get_active_llm_config()
+
         client = OpenAI(
-            api_key=actual_api_key,
+            api_key=config["api_key"],
             base_url=config["base_url"],
         )
 
@@ -383,7 +480,7 @@ def test_qwen_service():
                 {"role": "user", "content": "正在测试通义千问服务访问状态，请输出 `正常` 这两个中文字符，不要附带任何其他内容"},
             ],
         )
-        
+
         return jsonify({
             'status': 'success',
             'message': '通义千问服务状态正常',

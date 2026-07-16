@@ -760,10 +760,30 @@ async def main():
         print(f"错误：{error_msg}")
         write_log(error_msg)
         sys.exit(1)
-        
+
     with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-        
+        data = json.load(f)
+
+    # 支持新旧两种格式
+    configs = data.get("configs")
+    if configs is not None:
+        active_id = data.get("active_id")
+        config = None
+        if active_id:
+            for c in configs:
+                if c.get("id") == active_id:
+                    config = c
+                    break
+        if not config and configs:
+            config = configs[0]
+        if not config:
+            error_msg = "没有可用的 LLM 配置"
+            print(f"错误：{error_msg}")
+            write_log(error_msg)
+            sys.exit(1)
+    else:
+        config = data
+
     api_key = get_api_key(config.get("api_key", ""))
     base_url = config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     model = config.get("model", "qwen-vl-max")
