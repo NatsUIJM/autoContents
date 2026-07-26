@@ -36,13 +36,6 @@ def write_log(message):
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
-def get_api_key(raw_key: str) -> str:
-    """解析 API Key，支持环境变量提取"""
-    if raw_key.startswith("$") and raw_key.endswith("$"):
-        env_var_name = raw_key[1:-1]
-        return os.environ.get(env_var_name, "")
-    return raw_key
-
 def create_concat_image_b64(doc: fitz.Document, start_p: int, end_p: int, save_path: str = None) -> str:
     """将指定范围的 PDF 页面转换为横向拼接的 JPG，并在底部追加页码。"""
     images = []
@@ -754,45 +747,18 @@ async def main():
     print(f"[INFO] {info_msg}")
     write_log(info_msg)
 
-    config_path = os.path.join(PROJECT_ROOT, "static", "llm_config.json")
-    if not os.path.exists(config_path):
-        error_msg = f"LLM 配置文件未找到，当前查找目录：{config_path}"
+    from llm_config import load_llm_config
+    try:
+        cfg = load_llm_config()
+    except Exception as e:
+        error_msg = f"LLM 配置加载失败：{e}"
         print(f"错误：{error_msg}")
         write_log(error_msg)
         sys.exit(1)
 
-    with open(config_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    # 支持新旧两种格式
-    configs = data.get("configs")
-    if configs is not None:
-        active_id = data.get("active_id")
-        config = None
-        if active_id:
-            for c in configs:
-                if c.get("id") == active_id:
-                    config = c
-                    break
-        if not config and configs:
-            config = configs[0]
-        if not config:
-            error_msg = "没有可用的 LLM 配置"
-            print(f"错误：{error_msg}")
-            write_log(error_msg)
-            sys.exit(1)
-    else:
-        config = data
-
-    api_key = get_api_key(config.get("api_key", ""))
-    base_url = config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    model = config.get("model", "qwen-vl-max")
-    
-    if not api_key:
-        error_msg = "API Key 解析失败或为空，请检查 llm_config.json 或环境变量配置。"
-        print(f"错误：{error_msg}")
-        write_log(error_msg)
-        sys.exit(1)
+    api_key = cfg["api_key"]
+    base_url = cfg["base_url"]
+    model = cfg["model"]
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 

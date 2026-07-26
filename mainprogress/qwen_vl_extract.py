@@ -91,50 +91,7 @@ def write_log(message):
     except Exception:
         pass
 
-def load_llm_config() -> dict:
-    import json
-    project_root = Path(__file__).parent.parent
-    config_path = project_root / "static" / "llm_config.json"
-    if not config_path.exists():
-        raise FileNotFoundError(f"LLM 配置文件不存在：{config_path}")
-    with open(config_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    def resolve_value(val):
-        if isinstance(val, str) and val.startswith('$') and val.endswith('$'):
-            return os.getenv(val[1:-1])
-        return val
-
-    # 支持新旧两种格式
-    configs = data.get("configs")
-    if configs is not None:
-        active_id = data.get("active_id")
-        config = None
-        if active_id:
-            for c in configs:
-                if c.get("id") == active_id:
-                    config = c
-                    break
-        if not config and configs:
-            config = configs[0]
-        if not config:
-            raise ValueError("没有可用的 LLM 配置")
-    else:
-        # 旧格式兼容
-        config = data
-
-    api_key = resolve_value(config.get("api_key"))
-    base_url = resolve_value(config.get("base_url"))
-    model = resolve_value(config.get("model"))
-
-    if not api_key:
-        raise ValueError("API Key 不能为空")
-
-    return {
-        "api_key": api_key,
-        "base_url": base_url,
-        "model": model
-    }
+from llm_config import load_llm_config  # 统一配置加载（环境变量优先）
 
 def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]

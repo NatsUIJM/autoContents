@@ -71,11 +71,67 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 4. 保存并关闭`csv`文件，然后再运行`windows_merge.bat`或`macos_merge.command`脚本，将修改后的目录与 PDF 文件合并；
 5. 该目录下的`*_edited.pdf`文件即为处理后的 PDF 文件。
 
+## MCP 服务器（可选，供 AI Agent 调用）
+
+autoContents 也可作为 MCP（Model Context Protocol）服务器运行，让 AI 编程助手（如 Cherry Studio、Claude Desktop）直接调用书签生成能力。
+
+### 安装 uv
+
+[uv](https://docs.astral.sh/uv/) 是 Python 的快速包管理器，也是 MCP 服务器的运行环境。
+
+**Windows**
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 配置 MCP 客户端
+
+将以下 JSON 添加到你的 MCP 客户端配置文件中（路径按实际情况修改）：
+
+```json
+{
+  "mcpServers": {
+    "autoContents": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "/path/to/autoContents",
+        "python",
+        "/path/to/autoContents/mcp_server.py"
+      ],
+      "env": {
+        "AUTOCONTENTS_API_KEY": "sk-xxx",
+        "AUTOCONTENTS_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "AUTOCONTENTS_MODEL": "qwen3.7-plus"
+      }
+    }
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `command` | 固定为 `uv`，需先完成上一步的安装 |
+| `args` 中的路径 | 将 `/path/to/autoContents` 替换为项目实际路径 |
+| `AUTOCONTENTS_API_KEY` | 必填，替换为你的百炼 API Key |
+| `AUTOCONTENTS_BASE_URL` | 可选，默认为百炼兼容接口 |
+| `AUTOCONTENTS_MODEL` | 可选，默认为 `qwen3.5-397b-a17b` |
+
+配置完成后重启客户端，即可使用 `generate_pdf_bookmarks` 和 `check_llm_config` 两个工具。
+
 ### 更新日志
 
-**更新提醒：最新版本是2026年4月6日发布的，你可以根据[获取更新](#获取更新)来更新程序。**
+**更新提醒：最新版本是2026年7月26日发布的，你可以根据[获取更新](#获取更新)来更新程序。**
 
-10月13日的版本对识别逻辑进行了完全重构，可实现**任意版面结构**的目录数据提取，同时处理速度提升50%，且进一步简化了配置流程；12月2日的版本支持直接在前端进行提示词修改；3月25日发布的版本支持自定义LLM服务；3月29日发布的版本增加了使用LLM对下载文件进行重命名的功能，特别鸣谢[@Little-White3110](https://github.com/Little-White3110)提出的建议；4月4日发布的版本实现的全自动目录提取。4月6日的版本对项目结构再次进行大量重构，解决了很多细节问题。
+10月13日的版本对识别逻辑进行了完全重构，可实现**任意版面结构**的目录数据提取，同时处理速度提升50%，且进一步简化了配置流程；12月2日的版本支持直接在前端进行提示词修改；3月25日发布的版本支持自定义LLM服务；3月29日发布的版本增加了使用LLM对下载文件进行重命名的功能，特别鸣谢[@Little-White3110](https://github.com/Little-White3110)提出的建议；4月4日发布的版本实现的全自动目录提取。4月6日的版本对项目结构再次进行大量重构，解决了很多细节问题。7月26日的版本增加了`uv`和MCP支持。
 
 ### 获取更新
 

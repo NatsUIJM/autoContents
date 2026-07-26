@@ -81,45 +81,7 @@ def write_log(message):
     except Exception:
         pass
 
-def load_llm_config() -> dict:
-    project_root = Path(__file__).parent.parent
-    config_path = project_root / "static" / "llm_config.json"
-    if not config_path.exists():
-        raise FileNotFoundError(f"配置文件未找到：{config_path}")
-
-    with open(config_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    def resolve_value(val):
-        if isinstance(val, str) and val.startswith('$') and val.endswith('$'):
-            env_val = os.getenv(val[1:-1])
-            if env_val is None:
-                raise ValueError(f"环境变量 {val[1:-1]} 未设置")
-            return env_val
-        return val
-
-    # 支持新旧两种格式
-    configs = data.get("configs")
-    if configs is not None:
-        active_id = data.get("active_id")
-        config = None
-        if active_id:
-            for c in configs:
-                if c.get("id") == active_id:
-                    config = c
-                    break
-        if not config and configs:
-            config = configs[0]
-        if not config:
-            raise ValueError("没有可用的 LLM 配置")
-    else:
-        config = data
-
-    return {
-        "api_key": resolve_value(config.get("api_key")),
-        "base_url": resolve_value(config.get("base_url")),
-        "model": resolve_value(config.get("model"))
-    }
+from llm_config import load_llm_config  # 统一配置加载（环境变量优先）
 
 def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]

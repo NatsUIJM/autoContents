@@ -1,20 +1,21 @@
 from flask import Flask, render_template, jsonify, request, send_file, send_from_directory, Response
-import subprocess
 import os
 import logging
 import time
 import json
-from datetime import datetime
-import random
-import string
 import socket
-from pypinyin import lazy_pinyin
-import sys
 import webbrowser
 import threading
 from openai import OpenAI
 import traceback
 import re
+
+from mainprogress.pipeline import (
+    STEP_SEQUENCE, create_session, pinyin_name, write_initial_json, run_step,
+)
+from mainprogress.llm_config import (
+    load_llm_config, resolve_value, DEFAULT_BASE_URL, DEFAULT_MODEL,
+)
 
 logger = logging.getLogger('gunicorn.error')
 
@@ -36,54 +37,7 @@ def apple_icon():
 
 # ==================== 原有路由 ====================
 
-def convert_to_pinyin(text):
-    """将中文字符转换为拼音"""
-    return ''.join(lazy_pinyin(text))
-
 SCRIPT_TIMEOUT = 3000
-DATA_FOLDERS = [
-    'input_pdf',
-    'mark/input_image',
-    'raw_content',
-    'output_pdf',
-    'mark/image_metadata',
-    'merged_content',
-]
-
-QWEN_SCRIPT_SEQUENCE = [
-    ('pdf_metadata_extractor', 'PDF 元数据提取'),
-    ('pdf_to_image', 'PDF 转 JPG'),
-    ('qwen_vl_extract', '目录数据提取'),
-    ('determine_toc_levels', '目录层级确定'),
-    ('content_postprocessor', '目录后处理'),
-    ('pdf_generator', '生成 PDF')
-]
-
-def generate_random_string(length=6):
-    """生成指定长度的随机字母数字组合"""
-    characters = string.ascii_letters + string.digits
-    return ''.join(random.choice(characters) for _ in range(length))
-
-def generate_session_id():
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    random_suffix = generate_random_string()
-    return f"{timestamp}_{random_suffix}"
-
-def create_data_folders(session_id):
-    base_dir = os.path.join('data', session_id)
-    for folder in DATA_FOLDERS:
-        folder_path = os.path.join(base_dir, folder)
-        os.makedirs(folder_path, exist_ok=True)
-    return base_dir
-
-def extract_env_var_name(api_key_value):
-    """
-    从 API KEY 值中提取环境变量名称
-    例如：$CHERRY_IN_API_KEY$ -> CHERRY_IN_API_KEY
-    """
-    if api_key_value.startswith('$') and api_key_value.endswith('$'):
-        return api_key_value[1:-1]
-    return None
 
 def load_config_file():
     """加载完整的 llm_config.json，不存在则返回默认结构。"""
@@ -106,37 +60,15 @@ def save_config_file(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def get_active_llm_config():
-    """从配置文件中获取当前激活的配置，并解析环境变量。"""
-    data = load_config_file()
-    active_id = data.get('active_id')
-    configs = data.get('configs', [])
-    config = None
-    if active_id:
-        for c in configs:
-            if c.get('id') == active_id:
-                config = c
-                break
-    if not config and configs:
-        config = configs[0]
-    if not config:
+    """获取当前可用的 LLM 配置（统一走 llm_config 模块，出错时回退默认值）。"""
+    try:
+        return load_llm_config()
+    except ValueError:
         return {
             "api_key": "",
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen3.5-397b-a17b"
+            "base_url": DEFAULT_BASE_URL,
+            "model": DEFAULT_MODEL,
         }
-
-    api_key_value = config.get('api_key', '')
-    env_var_name = extract_env_var_name(api_key_value)
-    if env_var_name:
-        actual_api_key = os.environ.get(env_var_name, '')
-    else:
-        actual_api_key = api_key_value
-
-    return {
-        "api_key": actual_api_key,
-        "base_url": config.get('base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1'),
-        "model": config.get('model', 'qwen3.5-397b-a17b')
-    }
 
 @app.route('/')
 def home():
@@ -145,48 +77,28 @@ def home():
 @app.route('/upload', methods=['POST'])
 def upload_files():
     try:
-        session_id = generate_session_id()
-        base_dir = create_data_folders(session_id)
-        
+        session_id, base_dir = create_session('data')
+
         if 'pdf' not in request.files:
             return jsonify({'status': 'error', 'message': '未找到 PDF 文件'})
-            
+
         pdf_file = request.files['pdf']
         if pdf_file.filename == '':
             return jsonify({'status': 'error', 'message': '未选择 PDF 文件'})
-            
+
         original_filename = pdf_file.filename
-        filename_without_ext, file_extension = os.path.splitext(original_filename)
-        
-        pinyin_filename = convert_to_pinyin(filename_without_ext)
-        if len(pinyin_filename) > 25:
-            pinyin_filename = pinyin_filename[:25]
-        pinyin_filename = pinyin_filename + file_extension
-        
-        upload_folder = os.path.join(base_dir, 'input_pdf')
-        pdf_path = os.path.join(upload_folder, pinyin_filename)
+        staged_name = pinyin_name(original_filename)
+
+        pdf_path = os.path.join(base_dir, 'input_pdf', staged_name)
         pdf_file.save(pdf_path)
-        
-        json_filename = pinyin_filename.replace(file_extension, '.json')
-        json_path = os.path.join(upload_folder, json_filename)
-        
-        initial_json_data = {
-            "toc_start": 0,
-            "toc_end": 0,
-            "content_start": 0,
-            "original_filename": original_filename,
-            "book_name": ""
-        }
-        
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(initial_json_data, f, ensure_ascii=False, indent=4)
-            
+        write_initial_json(base_dir, staged_name, original_filename)
+
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'message': '文件上传成功',
             'session_id': session_id
         })
-        
+
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
@@ -234,99 +146,42 @@ def download_result(session_id):
 
 @app.route('/run_script/<session_id>/<int:script_index>/<int:retry_count>')
 def run_script(session_id, script_index, retry_count):
-    script_sequence = QWEN_SCRIPT_SEQUENCE
-    total_scripts = len(script_sequence)
-    
+    total_scripts = len(STEP_SEQUENCE)
+
     if script_index >= total_scripts:
         return jsonify({
             'status': 'completed',
             'message': '所有脚本执行完成',
             'totalScripts': total_scripts
         })
-    
-    script_name, script_desc = script_sequence[script_index]
-    try:
-        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'mainprogress'))
-        script_path = os.path.join(script_dir, f'{script_name}.py')
-        base_dir = os.path.abspath(os.path.join('data', session_id))
-        
-        env = os.environ.copy()
 
-        active_config = get_active_llm_config()
-        env['DASHSCOPE_API_KEY'] = active_config['api_key']
-        
-        env.update({
-            'BASE_DIR': base_dir,
-            'PDF_METADATA_EXTRACTOR_INPUT': f"{base_dir}/input_pdf",
-            'PDF_METADATA_EXTRACTOR_OUTPUT': f"{base_dir}/input_pdf",
-            'PDF2JPG_INPUT': f"{base_dir}/input_pdf",
-            'PDF2JPG_OUTPUT': f"{base_dir}/mark/input_image",
-            'CONTENT_POSTPROCESSOR_INPUT': f"{base_dir}/raw_content",
-            'CONTENT_POSTPROCESSOR_OUTPUT': f"{base_dir}/level_adjusted_content",
-            'PDF_GENERATOR_INPUT_1': f"{base_dir}/level_adjusted_content",
-            'PDF_GENERATOR_INPUT_2': f"{base_dir}/input_pdf",
-            'PDF_GENERATOR_OUTPUT_1': f"{base_dir}/output_pdf",
-            'QWEN_VL_INPUT': f"{base_dir}/mark/input_image",
-            'QWEN_VL_OUTPUT': f"{base_dir}/automark_raw_data"
-        })
+    base_dir = os.path.abspath(os.path.join('data', session_id))
+    step = run_step(script_index, base_dir, timeout=SCRIPT_TIMEOUT)
 
-        python_executable = sys.executable
-        
-        try:
-            result = subprocess.run(
-                [python_executable, script_path],
-                env=env,
-                cwd=script_dir,
-                capture_output=True,
-                text=True,
-                timeout=SCRIPT_TIMEOUT
-            )
-            
-            if result.returncode == 0:
-                return jsonify({
-                    'status': 'success',
-                    'currentScript': script_desc,
-                    'message': f'{script_desc}执行成功',
-                    'nextIndex': script_index + 1,
-                    'totalScripts': total_scripts,
-                    'retryCount': 0,
-                    'session_id': session_id,
-                    'stdout': result.stdout,
-                    'stderr': result.stderr
-                })
-            else:
-                return jsonify({
-                    'status': 'error',
-                    'currentScript': script_desc,
-                    'message': f'{script_desc}执行失败',
-                    'stdout': result.stdout,
-                    'stderr': result.stderr,
-                    'retryCount': retry_count,
-                    'scriptIndex': script_index,
-                    'session_id': session_id
-                })
-        except subprocess.TimeoutExpired as e:
-            return jsonify({
-                'status': 'error',
-                'currentScript': script_desc,
-                'message': f'脚本执行超时（{SCRIPT_TIMEOUT}秒）',
-                'stdout': e.stdout.decode() if e.stdout else '',
-                'stderr': e.stderr.decode() if e.stderr else '',
-                'retryCount': retry_count,
-                'scriptIndex': script_index,
-                'session_id': session_id
-            })
-            
-    except Exception as e:
-        logger.error(f"执行脚本时发生错误：{str(e)}")
+    if step.ok:
         return jsonify({
-            'status': 'error',
-            'currentScript': script_desc,
-            'message': f'执行出错：{str(e)}',
-            'retryCount': retry_count,
-            'scriptIndex': script_index,
-            'session_id': session_id
+            'status': 'success',
+            'currentScript': step.desc,
+            'message': f'{step.desc}执行成功',
+            'nextIndex': script_index + 1,
+            'totalScripts': total_scripts,
+            'retryCount': 0,
+            'session_id': session_id,
+            'stdout': step.stdout,
+            'stderr': step.stderr
         })
+
+    message = step.error or f'{step.desc}执行失败'
+    return jsonify({
+        'status': 'error',
+        'currentScript': step.desc,
+        'message': message,
+        'stdout': step.stdout,
+        'stderr': step.stderr,
+        'retryCount': retry_count,
+        'scriptIndex': script_index,
+        'session_id': session_id
+    })
 
 @app.route('/stream_log')
 def stream_log():
@@ -509,11 +364,10 @@ def test_llm_service():
                 'message': 'API 配置信息不完整，请检查 API Key、Base URL 和 Model 是否都已填写'
             }), 400
         
-        env_var_name = extract_env_var_name(api_key)
-        if env_var_name:
-            actual_api_key = os.environ.get(env_var_name, "")
-        else:
-            actual_api_key = api_key
+        try:
+            actual_api_key = resolve_value(api_key)
+        except ValueError:
+            actual_api_key = ""
         
         client = OpenAI(
             api_key=actual_api_key,
