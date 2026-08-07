@@ -3,46 +3,50 @@
 <head>
     <title>autoContents 目录生成工具</title>
     <style>
+        :root {
+            color-scheme: dark;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 40px 20px;
-            background-color: #f3f4f6;
-            color: #1f2937;
+            background-color: #0b0f14;
+            color: #e6edf3;
         }
         .container {
-            background-color: #ffffff;
+            background-color: #141a21;
             padding: 30px;
             border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.18);
         }
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 25px;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid #2a3542;
             padding-bottom: 15px;
         }
         .header h2 {
             margin: 0;
-            color: #111827;
+            color: #e6edf3;
         }
         .form-select, input[type="number"], input[type="text"], .prompt-input {
             padding: 10px 12px;
-            border: 1px solid #d1d5db;
+            border: 1px solid #2a3542;
             border-radius: 6px;
             width: 100%;
             box-sizing: border-box;
             font-size: 14px;
             transition: all 0.2s ease;
-            background-color: #fff;
+            background-color: #1b232d;
+            color: #e6edf3;
         }
         .form-select:focus, input[type="number"]:focus, input[type="text"]:focus, .prompt-input:focus {
             outline: none;
             border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
         }
         .prompt-input {
             min-height: 100px;
@@ -53,8 +57,8 @@
             transition: all 0.2s ease;
         }
         .test-btn {
-            background-color: #6366f1;
-            color: white;
+            background-color: #3b82f6;
+            color: #fff;
             height: 38px;
             padding: 0 16px;
             border: none;
@@ -64,7 +68,7 @@
             font-weight: 500;
         }
         .test-btn:hover {
-            background-color: #4f46e5;
+            background-color: #2563eb;
             transform: translateY(-1px);
         }
         .file-input-container {
@@ -95,10 +99,10 @@
             align-items: center;
             gap: 8px;
             font-size: 14px;
-            color: #4b5563;
+            color: #8b98a7;
         }
         .remove-file {
-            color: #9ca3af;
+            color: #8b98a7;
             cursor: pointer;
             border: none;
             background: none;
@@ -108,8 +112,8 @@
             justify-content: center;
         }
         .remove-file:hover {
-            color: #ef4444;
-            background-color: #fee2e2;
+            color: #f87171;
+            background-color: rgba(248, 113, 113, 0.15);
             border-radius: 4px;
         }
         .progress-container {
@@ -118,42 +122,43 @@
         .progress-bar {
             width: 100%;
             height: 8px;
-            background-color: #e5e7eb;
+            background-color: #2a3542;
             border-radius: 4px;
             overflow: hidden;
         }
         .progress {
             width: 0%;
             height: 100%;
-            background-color: #10b981;
+            background-color: #4ade80;
             transition: width 0.4s ease;
         }
         .status {
             margin: 10px 0;
             text-align: center;
-            color: #6b7280;
+            color: #8b98a7;
             font-size: 14px;
         }
         .log {
             margin-top: 20px;
             padding: 15px;
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background-color: #0b0f14;
+            border: 1px solid #2a3542;
             border-radius: 8px;
             max-height: 200px;
             overflow-y: auto;
             font-size: 13px;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             line-height: 1.6;
+            color: #e6edf3;
         }
-        .error { color: #ef4444; }
-        .warning { color: #f59e0b; }
-        .success { color: #10b981; }
-        
+        .error { color: #f87171; }
+        .warning { color: #fbbf24; }
+        .success { color: #4ade80; }
+
         button#startButton {
             width: 100%;
-            background-color: #10b981;
-            color: white;
+            background-color: #4ade80;
+            color: #0b0f14;
             padding: 14px 20px;
             border: none;
             border-radius: 6px;
@@ -163,20 +168,21 @@
             margin-top: 10px;
         }
         button#startButton:hover:not(:disabled) {
-            background-color: #059669;
+            background-color: #22c55e;
             transform: translateY(-1px);
         }
         button#startButton:disabled {
-            background-color: #d1d5db;
+            background-color: #2a3542;
+            color: #8b98a7;
             cursor: not-allowed;
         }
         .hidden { display: none; }
         
         .collapsible-wrapper {
             margin-top: 20px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid #2a3542;
             border-radius: 8px;
-            background-color: #f9fafb;
+            background-color: #1b232d;
             overflow: hidden;
         }
         .collapsible-header {
@@ -186,23 +192,23 @@
             padding: 15px 20px;
             cursor: pointer;
             user-select: none;
-            background-color: #f9fafb;
+            background-color: #1b232d;
             transition: background-color 0.2s;
         }
         .collapsible-header:hover {
-            background-color: #f3f4f6;
+            background-color: #232f3d;
         }
         .collapsible-header h3 {
             margin: 0;
             font-size: 15px;
-            color: #374151;
+            color: #e6edf3;
             font-weight: 600;
         }
         .collapsible-content {
             display: none;
             padding: 20px;
-            background-color: #ffffff;
-            border-top: 1px solid #e5e7eb;
+            background-color: #141a21;
+            border-top: 1px solid #2a3542;
         }
         .collapsible-content.active {
             display: block;
@@ -214,7 +220,7 @@
         }
         .chevron {
             transition: transform 0.3s ease;
-            color: #6b7280;
+            color: #8b98a7;
         }
         .chevron.active {
             transform: rotate(180deg);
@@ -237,25 +243,25 @@
             backdrop-filter: blur(2px);
         }
         .modal-content {
-            background-color: #ffffff;
+            background-color: #141a21;
             margin: 10% auto;
             padding: 25px;
-            border: none;
+            border: 1px solid #2a3542;
             width: 90%;
             max-width: 500px;
             border-radius: 12px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
         }
         .close {
-            color: #9ca3af;
+            color: #8b98a7;
             float: right;
             font-size: 24px;
             font-weight: bold;
             cursor: pointer;
             line-height: 1;
         }
-        .close:hover { color: #374151; }
-        
+        .close:hover { color: #e6edf3; }
+
         .footer-links {
             text-align: center;
             margin-top: 30px;
@@ -264,21 +270,21 @@
             gap: 20px;
         }
         .footer-links a {
-            color: #4f46e5;
+            color: #3b82f6;
             text-decoration: none;
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
         }
         .footer-links a:hover {
-            color: #312e81;
+            color: #60a5fa;
             text-decoration: underline;
         }
         .footer-text {
             text-align: center;
             margin-top: 15px;
             font-size: 13px;
-            color: #6b7280;
+            color: #8b98a7;
             margin-bottom: 30px;
         }
 
@@ -291,8 +297,8 @@
             gap: 5px;
             font-size: 12px;
             font-weight: 500;
-            color: #059669;
-            background: #d1fae5;
+            color: #4ade80;
+            background: rgba(74, 222, 128, 0.15);
             padding: 2px 10px;
             border-radius: 20px;
             white-space: nowrap;
@@ -342,18 +348,18 @@
             gap: 4px;
         }
         .btn-icon.btn-new {
-            background: #6366f1;
+            background: #3b82f6;
             color: #fff;
         }
         .btn-icon.btn-new:hover {
-            background: #4f46e5;
+            background: #2563eb;
         }
         .btn-icon.btn-delete {
-            background: #fee2e2;
-            color: #dc2626;
+            background: rgba(248, 113, 113, 0.15);
+            color: #f87171;
         }
         .btn-icon.btn-delete:hover:not(:disabled) {
-            background: #fecaca;
+            background: rgba(248, 113, 113, 0.28);
         }
         .btn-icon.btn-delete:disabled {
             opacity: 0.4;
@@ -374,21 +380,23 @@
         .config-form .input-group label {
             font-size: 13px;
             font-weight: 500;
-            color: #4b5563;
+            color: #8b98a7;
         }
         .config-form .input-group input {
             height: 38px;
             padding: 0 12px;
-            border: 1px solid #d1d5db;
+            border: 1px solid #2a3542;
             border-radius: 6px;
             font-size: 14px;
             box-sizing: border-box;
             transition: border-color 0.2s, box-shadow 0.2s;
+            background-color: #1b232d;
+            color: #e6edf3;
         }
         .config-form .input-group input:focus {
             outline: none;
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
         }
 
         .config-form-actions {
@@ -404,26 +412,27 @@
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
-            background: #6366f1;
+            background: #3b82f6;
             color: #fff;
             transition: background 0.15s;
         }
         .config-form-actions .save-btn:hover:not(:disabled) {
-            background: #4f46e5;
+            background: #2563eb;
         }
         .config-form-actions .save-btn:disabled {
-            background: #d1d5db;
+            background: #2a3542;
+            color: #8b98a7;
             cursor: not-allowed;
         }
         .config-form .field-hint {
             font-size: 12px;
-            color: #9ca3af;
+            color: #8b98a7;
         }
 
         /* 多任务卡片样式 */
         .task-card {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
+            background: #1b232d;
+            border: 1px solid #2a3542;
             border-radius: 8px;
             padding: 15px;
         }
@@ -435,7 +444,7 @@
         }
         .task-filename {
             font-weight: 500;
-            color: #374151;
+            color: #e6edf3;
             word-break: break-all;
             flex: 1;
             margin-right: 10px;
@@ -523,7 +532,7 @@
                 <svg id="sysLogChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <div id="sysLogContent" class="collapsible-content">
-                <div id="sysLogContainer" class="log" style="background-color: #1e1e1e; color: #d4d4d4; max-height: 300px; margin-top: 0;"></div>
+                <div id="sysLogContainer" class="log" style="background-color: #0b0f14; color: #e6edf3; max-height: 300px; margin-top: 0;"></div>
             </div>
         </div>
 
@@ -873,7 +882,7 @@
             const modal = document.getElementById('testModal');
             const resultDiv = document.getElementById('testResult');
 
-            resultDiv.innerHTML = '<p style="color: #4b5563;">正在测试模型服务状态...</p>';
+            resultDiv.innerHTML = '<p style="color: #8b98a7;">正在测试模型服务状态...</p>';
             modal.style.display = 'block';
 
             try {
@@ -896,21 +905,21 @@
 
                 if (data.status === 'success') {
                     resultDiv.innerHTML = `
-                        <p style="color: #10b981; font-weight: 500;">✓ ${data.message}</p>
-                        <p style="background: #f3f4f6; padding: 10px; border-radius: 6px; font-family: monospace;">响应内容：${data.response}</p>
-                        <p style="color: #6b7280; font-size: 13px;">使用的模型：${activeConfig.model}（${activeConfig.name || activeConfig.id}）</p>
+                        <p style="color: #4ade80; font-weight: 500;">✓ ${data.message}</p>
+                        <p style="background: #1b232d; color: #e6edf3; padding: 10px; border-radius: 6px; font-family: monospace;">响应内容：${data.response}</p>
+                        <p style="color: #8b98a7; font-size: 13px;">使用的模型：${activeConfig.model}（${activeConfig.name || activeConfig.id}）</p>
                     `;
                 } else {
                     resultDiv.innerHTML = `
-                        <p style="color: #ef4444; font-weight: 500;">✗ 测试失败</p>
+                        <p style="color: #f87171; font-weight: 500;">✗ 测试失败</p>
                         <p>错误信息：${data.message}</p>
                         <p>错误类型：${data.error_code}</p>
-                        <p style="color: #6b7280; font-size: 13px;">尝试使用的模型：${activeConfig.model}</p>
+                        <p style="color: #8b98a7; font-size: 13px;">尝试使用的模型：${activeConfig.model}</p>
                     `;
                 }
             } catch (error) {
                 resultDiv.innerHTML = `
-                    <p style="color: #ef4444; font-weight: 500;">✗ 请求失败</p>
+                    <p style="color: #f87171; font-weight: 500;">✗ 请求失败</p>
                     <p>错误信息：${error.message}</p>
                 `;
             }

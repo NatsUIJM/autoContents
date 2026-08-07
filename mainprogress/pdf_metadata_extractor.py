@@ -294,7 +294,7 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     current_limit = min(20, total_pages)
     last_scanned = 0
     retry_count = 0
-    max_retries = 2
+    max_retries = 5
     toc_found = False
 
     info_msg = f"正在分析目录范围：第 1 到 {current_limit} 页 (滑动窗口)"
@@ -317,7 +317,7 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                 # 未发现目录，触发向后搜索机制
                 if retry_count < max_retries:
                     retry_count += 1
-                    next_limit = min(current_limit + 10, 60)
+                    next_limit = min(current_limit + 10, 100)
                     info_msg = f"前 {current_limit} 页未找到目录，尝试向后搜索至第 {next_limit} 页 (尝试 {retry_count}/{max_retries})"
                     print(f"[INFO] {info_msg}")
                     write_log(info_msg)
@@ -330,7 +330,7 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
         if toc_found:
             if page_votes.get(current_limit, {}).get("is_toc", 0) > 0:
                 # 边界页是目录，继续向后拓展
-                next_limit = min(current_limit + 10, 60)
+                next_limit = min(current_limit + 10, 100)
                 if next_limit <= current_limit:
                     break
                 info_msg = f"第 {current_limit} 页确认为目录，拓展扫描范围至第 {next_limit} 页"
@@ -436,8 +436,8 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     if global_toc_start is None:
         return None, None
 
-    if global_toc_end >= 60:
-        warn_msg = "目录识别达到或超过 60 页上限，触发熔断，强制设置为 1 和 2"
+    if global_toc_end >= 120:
+        warn_msg = "目录识别达到或超过 120 页上限，触发熔断，强制设置为 1 和 2"
         print(f"[WARNING] {warn_msg}")
         write_log(warn_msg)
         return 1, 2

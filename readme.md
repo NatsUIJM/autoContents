@@ -19,9 +19,8 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 1. 注册账号：如果没有阿里云账号，请先[注册](https://account.aliyun.com/register/qr_register.htm?)一个。
 2. 实名认证：参考[实名认证文档](https://help.aliyun.com/zh/account/user-guide/individual-identities?)对阿里云账号进行实名认证。
-3. 开通百炼：前往[百炼控制台（模型广场）](https://bailian.console.aliyun.com/model-market)，开通百炼模型服务。
-4. 获取 API Key：前往[百炼控制台（API-KEY管理）](https://bailian.console.aliyun.com/?tab=model#/api-key)然后创建一个 API-KEY。
-5. 如果你有高校学生或教师身份，可前往[阿里云高校计划](https://university.aliyun.com)申请一些优惠。具体政策以该网页为准。
+3. 获取 API Key：前往[百炼控制台（API-KEY管理）](https://bailian.console.aliyun.com/?tab=model#/api-key)然后创建一个 API-KEY。
+4. 如果你有高校学生或教师身份，可前往[阿里云高校计划](https://university.aliyun.com)申请一些优惠。具体政策以该网页为准。
 
 ### 2.2 配置运行环境
 
