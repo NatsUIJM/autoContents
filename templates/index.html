@@ -4,18 +4,76 @@
     <title>autoContents 目录生成工具</title>
     <style>
         :root {
-            color-scheme: dark;
+            color-scheme: light dark;
+            --page-bg: #f3f4f6;
+            --surface: #ffffff;
+            --surface-2: #f9fafb;
+            --surface-hover: #f3f4f6;
+            --log-bg: #f8fafc;
+            --border: #e5e7eb;
+            --input-border: #d1d5db;
+            --text: #1f2937;
+            --heading: #111827;
+            --secondary: #4b5563;
+            --muted: #6b7280;
+            --faint: #9ca3af;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --link-hover: #312e81;
+            --focus: rgba(59,130,246,.1);
+            --success: #10b981;
+            --success-hover: #059669;
+            --success-bg: #d1fae5;
+            --success-text: #ffffff;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --danger-bg: #fee2e2;
+            --danger-hover-bg: #fecaca;
+            --disabled: #d1d5db;
+            --modal-overlay: rgba(0,0,0,.5);
+            --shadow: rgba(0,0,0,.1);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --page-bg: #0b0f14;
+                --surface: #141a21;
+                --surface-2: #1b232d;
+                --surface-hover: #232f3d;
+                --log-bg: #0b0f14;
+                --border: #2a3542;
+                --input-border: #2a3542;
+                --text: #e6edf3;
+                --heading: #e6edf3;
+                --secondary: #8b98a7;
+                --muted: #8b98a7;
+                --faint: #8b98a7;
+                --accent: #3b82f6;
+                --accent-hover: #2563eb;
+                --link-hover: #60a5fa;
+                --focus: rgba(59,130,246,.25);
+                --success: #4ade80;
+                --success-hover: #22c55e;
+                --success-bg: rgba(74,222,128,.15);
+                --success-text: #0b0f14;
+                --warning: #fbbf24;
+                --danger: #f87171;
+                --danger-bg: rgba(248,113,113,.15);
+                --danger-hover-bg: rgba(248,113,113,.28);
+                --disabled: #2a3542;
+                --modal-overlay: rgba(0,0,0,.5);
+                --shadow: rgba(0,0,0,.35);
+            }
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 40px 20px;
-            background-color: #0b0f14;
-            color: #e6edf3;
+            background-color: var(--page-bg);
+            color: var(--text);
         }
         .container {
-            background-color: #141a21;
+            background-color: var(--surface);
             padding: 30px;
             border-radius: 12px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.18);
@@ -25,28 +83,28 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 25px;
-            border-bottom: 1px solid #2a3542;
+            border-bottom: 1px solid var(--border);
             padding-bottom: 15px;
         }
         .header h2 {
             margin: 0;
-            color: #e6edf3;
+            color: var(--text);
         }
         .form-select, input[type="number"], input[type="text"], .prompt-input {
             padding: 10px 12px;
-            border: 1px solid #2a3542;
+            border: 1px solid var(--border);
             border-radius: 6px;
             width: 100%;
             box-sizing: border-box;
             font-size: 14px;
             transition: all 0.2s ease;
-            background-color: #1b232d;
-            color: #e6edf3;
+            background-color: var(--surface-2);
+            color: var(--text);
         }
         .form-select:focus, input[type="number"]:focus, input[type="text"]:focus, .prompt-input:focus {
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus);
         }
         .prompt-input {
             min-height: 100px;
@@ -57,7 +115,7 @@
             transition: all 0.2s ease;
         }
         .test-btn {
-            background-color: #3b82f6;
+            background-color: var(--accent);
             color: #fff;
             height: 38px;
             padding: 0 16px;
@@ -68,7 +126,7 @@
             font-weight: 500;
         }
         .test-btn:hover {
-            background-color: #2563eb;
+            background-color: var(--accent-hover);
             transform: translateY(-1px);
         }
         .file-input-container {
@@ -78,7 +136,7 @@
             gap: 15px;
         }
         .file-input-container button {
-            background-color: #3b82f6;
+            background-color: var(--accent);
             color: white;
             height: 38px;
             padding: 0 20px;
@@ -91,7 +149,7 @@
             font-weight: 500;
         }
         .file-input-container button:hover {
-            background-color: #2563eb;
+            background-color: var(--accent-hover);
             transform: translateY(-1px);
         }
         .file-name {
@@ -99,10 +157,10 @@
             align-items: center;
             gap: 8px;
             font-size: 14px;
-            color: #8b98a7;
+            color: var(--muted);
         }
         .remove-file {
-            color: #8b98a7;
+            color: var(--muted);
             cursor: pointer;
             border: none;
             background: none;
@@ -112,8 +170,8 @@
             justify-content: center;
         }
         .remove-file:hover {
-            color: #f87171;
-            background-color: rgba(248, 113, 113, 0.15);
+            color: var(--danger);
+            background-color: var(--danger-bg);
             border-radius: 4px;
         }
         .progress-container {
@@ -122,43 +180,43 @@
         .progress-bar {
             width: 100%;
             height: 8px;
-            background-color: #2a3542;
+            background-color: var(--border);
             border-radius: 4px;
             overflow: hidden;
         }
         .progress {
             width: 0%;
             height: 100%;
-            background-color: #4ade80;
+            background-color: var(--success);
             transition: width 0.4s ease;
         }
         .status {
             margin: 10px 0;
             text-align: center;
-            color: #8b98a7;
+            color: var(--muted);
             font-size: 14px;
         }
         .log {
             margin-top: 20px;
             padding: 15px;
-            background-color: #0b0f14;
-            border: 1px solid #2a3542;
+            background-color: var(--log-bg);
+            border: 1px solid var(--border);
             border-radius: 8px;
             max-height: 200px;
             overflow-y: auto;
             font-size: 13px;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             line-height: 1.6;
-            color: #e6edf3;
+            color: var(--text);
         }
-        .error { color: #f87171; }
-        .warning { color: #fbbf24; }
-        .success { color: #4ade80; }
+        .error { color: var(--danger); }
+        .warning { color: var(--warning); }
+        .success { color: var(--success); }
 
         button#startButton {
             width: 100%;
-            background-color: #4ade80;
-            color: #0b0f14;
+            background-color: var(--success);
+            color: var(--success-text);
             padding: 14px 20px;
             border: none;
             border-radius: 6px;
@@ -168,21 +226,21 @@
             margin-top: 10px;
         }
         button#startButton:hover:not(:disabled) {
-            background-color: #22c55e;
+            background-color: var(--success-hover);
             transform: translateY(-1px);
         }
         button#startButton:disabled {
-            background-color: #2a3542;
-            color: #8b98a7;
+            background-color: var(--border);
+            color: var(--muted);
             cursor: not-allowed;
         }
         .hidden { display: none; }
         
         .collapsible-wrapper {
             margin-top: 20px;
-            border: 1px solid #2a3542;
+            border: 1px solid var(--border);
             border-radius: 8px;
-            background-color: #1b232d;
+            background-color: var(--surface-2);
             overflow: hidden;
         }
         .collapsible-header {
@@ -192,23 +250,23 @@
             padding: 15px 20px;
             cursor: pointer;
             user-select: none;
-            background-color: #1b232d;
+            background-color: var(--surface-2);
             transition: background-color 0.2s;
         }
         .collapsible-header:hover {
-            background-color: #232f3d;
+            background-color: var(--surface-hover);
         }
         .collapsible-header h3 {
             margin: 0;
             font-size: 15px;
-            color: #e6edf3;
+            color: var(--text);
             font-weight: 600;
         }
         .collapsible-content {
             display: none;
             padding: 20px;
-            background-color: #141a21;
-            border-top: 1px solid #2a3542;
+            background-color: var(--surface);
+            border-top: 1px solid var(--border);
         }
         .collapsible-content.active {
             display: block;
@@ -220,7 +278,7 @@
         }
         .chevron {
             transition: transform 0.3s ease;
-            color: #8b98a7;
+            color: var(--muted);
         }
         .chevron.active {
             transform: rotate(180deg);
@@ -243,24 +301,24 @@
             backdrop-filter: blur(2px);
         }
         .modal-content {
-            background-color: #141a21;
+            background-color: var(--surface);
             margin: 10% auto;
             padding: 25px;
-            border: 1px solid #2a3542;
+            border: 1px solid var(--border);
             width: 90%;
             max-width: 500px;
             border-radius: 12px;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
         }
         .close {
-            color: #8b98a7;
+            color: var(--muted);
             float: right;
             font-size: 24px;
             font-weight: bold;
             cursor: pointer;
             line-height: 1;
         }
-        .close:hover { color: #e6edf3; }
+        .close:hover { color: var(--text); }
 
         .footer-links {
             text-align: center;
@@ -270,25 +328,32 @@
             gap: 20px;
         }
         .footer-links a {
-            color: #3b82f6;
+            color: var(--accent);
             text-decoration: none;
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
         }
         .footer-links a:hover {
-            color: #60a5fa;
+            color: var(--link-hover);
             text-decoration: underline;
         }
         .footer-text {
             text-align: center;
             margin-top: 15px;
             font-size: 13px;
-            color: #8b98a7;
+            color: var(--muted);
             margin-bottom: 30px;
         }
 
 
+
+
+        .test-status { color: var(--muted); }
+        .test-success { color: var(--success); font-weight: 500; }
+        .test-error { color: var(--danger); font-weight: 500; }
+        .test-response { background: var(--surface-2); color: var(--text); padding: 10px; border-radius: 6px; font-family: monospace; }
+        .test-meta { color: var(--muted); font-size: 13px; }
 
         /* 模型配置区 - 头部激活指示器 */
         .active-config-badge {
@@ -297,8 +362,8 @@
             gap: 5px;
             font-size: 12px;
             font-weight: 500;
-            color: #4ade80;
-            background: rgba(74, 222, 128, 0.15);
+            color: var(--success);
+            background: var(--success-bg);
             padding: 2px 10px;
             border-radius: 20px;
             white-space: nowrap;
@@ -348,18 +413,18 @@
             gap: 4px;
         }
         .btn-icon.btn-new {
-            background: #3b82f6;
+            background: var(--accent);
             color: #fff;
         }
         .btn-icon.btn-new:hover {
-            background: #2563eb;
+            background: var(--accent-hover);
         }
         .btn-icon.btn-delete {
-            background: rgba(248, 113, 113, 0.15);
-            color: #f87171;
+            background: var(--danger-bg);
+            color: var(--danger);
         }
         .btn-icon.btn-delete:hover:not(:disabled) {
-            background: rgba(248, 113, 113, 0.28);
+            background: var(--danger-hover-bg);
         }
         .btn-icon.btn-delete:disabled {
             opacity: 0.4;
@@ -380,23 +445,23 @@
         .config-form .input-group label {
             font-size: 13px;
             font-weight: 500;
-            color: #8b98a7;
+            color: var(--muted);
         }
         .config-form .input-group input {
             height: 38px;
             padding: 0 12px;
-            border: 1px solid #2a3542;
+            border: 1px solid var(--border);
             border-radius: 6px;
             font-size: 14px;
             box-sizing: border-box;
             transition: border-color 0.2s, box-shadow 0.2s;
-            background-color: #1b232d;
-            color: #e6edf3;
+            background-color: var(--surface-2);
+            color: var(--text);
         }
         .config-form .input-group input:focus {
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus);
         }
 
         .config-form-actions {
@@ -412,27 +477,27 @@
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
-            background: #3b82f6;
+            background: var(--accent);
             color: #fff;
             transition: background 0.15s;
         }
         .config-form-actions .save-btn:hover:not(:disabled) {
-            background: #2563eb;
+            background: var(--accent-hover);
         }
         .config-form-actions .save-btn:disabled {
-            background: #2a3542;
-            color: #8b98a7;
+            background: var(--border);
+            color: var(--muted);
             cursor: not-allowed;
         }
         .config-form .field-hint {
             font-size: 12px;
-            color: #8b98a7;
+            color: var(--muted);
         }
 
         /* 多任务卡片样式 */
         .task-card {
-            background: #1b232d;
-            border: 1px solid #2a3542;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
             border-radius: 8px;
             padding: 15px;
         }
@@ -444,7 +509,7 @@
         }
         .task-filename {
             font-weight: 500;
-            color: #e6edf3;
+            color: var(--text);
             word-break: break-all;
             flex: 1;
             margin-right: 10px;
@@ -532,7 +597,7 @@
                 <svg id="sysLogChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <div id="sysLogContent" class="collapsible-content">
-                <div id="sysLogContainer" class="log" style="background-color: #0b0f14; color: #e6edf3; max-height: 300px; margin-top: 0;"></div>
+                <div id="sysLogContainer" class="log" style="background-color: var(--log-bg); color: var(--text); max-height: 300px; margin-top: 0;"></div>
             </div>
         </div>
 
@@ -882,7 +947,7 @@
             const modal = document.getElementById('testModal');
             const resultDiv = document.getElementById('testResult');
 
-            resultDiv.innerHTML = '<p style="color: #8b98a7;">正在测试模型服务状态...</p>';
+            resultDiv.innerHTML = '<p class="test-status">正在测试模型服务状态...</p>';
             modal.style.display = 'block';
 
             try {
@@ -905,21 +970,21 @@
 
                 if (data.status === 'success') {
                     resultDiv.innerHTML = `
-                        <p style="color: #4ade80; font-weight: 500;">✓ ${data.message}</p>
-                        <p style="background: #1b232d; color: #e6edf3; padding: 10px; border-radius: 6px; font-family: monospace;">响应内容：${data.response}</p>
-                        <p style="color: #8b98a7; font-size: 13px;">使用的模型：${activeConfig.model}（${activeConfig.name || activeConfig.id}）</p>
+                        <p class="test-success">✓ ${data.message}</p>
+                        <p class="test-response">响应内容：${data.response}</p>
+                        <p class="test-meta">使用的模型：${activeConfig.model}（${activeConfig.name || activeConfig.id}）</p>
                     `;
                 } else {
                     resultDiv.innerHTML = `
-                        <p style="color: #f87171; font-weight: 500;">✗ 测试失败</p>
+                        <p class="test-error">✗ 测试失败</p>
                         <p>错误信息：${data.message}</p>
                         <p>错误类型：${data.error_code}</p>
-                        <p style="color: #8b98a7; font-size: 13px;">尝试使用的模型：${activeConfig.model}</p>
+                        <p class="test-meta">尝试使用的模型：${activeConfig.model}</p>
                     `;
                 }
             } catch (error) {
                 resultDiv.innerHTML = `
-                    <p style="color: #f87171; font-weight: 500;">✗ 请求失败</p>
+                    <p class="test-error">✗ 请求失败</p>
                     <p>错误信息：${error.message}</p>
                 `;
             }
