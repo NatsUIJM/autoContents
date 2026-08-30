@@ -125,12 +125,19 @@ def build_step_env(base_dir: str | Path) -> dict:
     """构造步骤子进程环境变量（含全部历史变量名，保持向后兼容）。"""
     base_dir = str(Path(base_dir).resolve())
     env = os.environ.copy()
-    # 透传 LLM 配置环境变量（api_key），避免子进程因环境隔离无法读取
+    # 透传 LLM 配置环境变量（api_key/base_url/model），避免子进程因环境隔离无法读取。
+    # 注意：子进程 load_llm_config() 环境变量优先于配置文件——只要注入了 key，
+    # 子进程就走 env 分支；若不同步注入 base_url/model，会回落到默认 dashscope
+    # 端点与默认模型，自定义服务商的 key 被发往 dashscope 导致 401。
     try:
         from mainprogress.llm_config import load_llm_config as _load_llm_config
         _cfg = _load_llm_config()
         if _cfg.get("api_key") and not env.get("AUTOCONTENTS_API_KEY"):
             env["AUTOCONTENTS_API_KEY"] = _cfg["api_key"]
+        if _cfg.get("base_url") and not env.get("AUTOCONTENTS_BASE_URL"):
+            env["AUTOCONTENTS_BASE_URL"] = _cfg["base_url"]
+        if _cfg.get("model") and not env.get("AUTOCONTENTS_MODEL"):
+            env["AUTOCONTENTS_MODEL"] = _cfg["model"]
     except Exception:
         pass  # 加载失败时静默跳过，子进程会自行处理
     env.update({
