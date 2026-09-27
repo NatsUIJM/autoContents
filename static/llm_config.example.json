@@ -1,5 +1,5 @@
 {
-  "api_key": "$DASHSCOPE_API_KEY$",
+  "api_key": "your-api-key-here",
   "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  "model": "qwen3.5-397b-a17b"
+  "model": "qwen-vl-max"
 }

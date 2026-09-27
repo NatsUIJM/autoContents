@@ -73,6 +73,7 @@ def process_pdf_with_bookmarks():
             info_data = json.load(f)
         content_start = info_data.get('content_start', 1)
         toc_start = info_data.get('toc_start', 1)
+        roman_offset = info_data.get('roman_offset', None)
         
         # 读取目录数据
         with open(content_json_path, 'r', encoding='utf-8') as f:
@@ -81,10 +82,11 @@ def process_pdf_with_bookmarks():
         # 移除 JSON 中可能已存在的 "目录" 项，避免重复
         toc_data = [item for item in toc_data if item.get('text') != '目录']
         
-        # 先将所有页码 +1
+        # 先将所有页码 +1（有 roman_offset 时罗马数字页码除外，其偏移由 roman_offset 单独处理）
         for item in toc_data:
             if 'number' in item and isinstance(item['number'], (int, float)):
-                item['number'] = item['number'] + 1
+                if not item.get('is_roman', False) or roman_offset is None:
+                    item['number'] = item['number'] + 1
         
         # 添加硬编码的"目录"条目，作为第一个 L1 标题
         toc_entry = {
@@ -102,8 +104,11 @@ def process_pdf_with_bookmarks():
                     if not isinstance(item['number'], (int, float)):
                         print(f"警告：跳过无效页码的条目 '{item['text']}'")
                         continue
-                    # 应用内容起始页偏移
-                    item['number'] = item['number'] + content_start - 1
+                    # 应用内容起始页偏移（罗马数字页码为前言部分，使用 roman_offset）
+                    if not item.get('is_roman', False):
+                        item['number'] = item['number'] + content_start - 1
+                    elif roman_offset is not None:
+                        item['number'] = item['number'] + roman_offset
                 
                 valid_items.append(item)
             except (KeyError, TypeError) as e:

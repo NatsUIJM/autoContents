@@ -13,9 +13,11 @@ import sys
 import webbrowser
 import threading
 from openai import OpenAI
+from dotenv import load_dotenv
 import traceback
 import re
 
+load_dotenv()
 logger = logging.getLogger('gunicorn.error')
 
 app = Flask(__name__)
@@ -318,9 +320,9 @@ def get_llm_config():
             return jsonify({'status': 'success', 'config': config})
         else:
             default_config = {
-                "api_key": "$DASHSCOPE_API_KEY$",
-                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "model": "qwen3.5-397b-a17b"
+                "api_key": os.getenv("OPENAI_API_KEY", ""),
+                "base_url": os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                "model": os.getenv("OPENAI_MODEL", "qwen-vl-max")
             }
             return jsonify({'status': 'success', 'config': default_config})
     except Exception as e:
@@ -359,9 +361,9 @@ def test_qwen_service():
                 config = json.load(f)
         else:
             config = {
-                "api_key": os.getenv("DASHSCOPE_API_KEY", ""),
-                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "model": "qwen3.5-397b-a17b"
+                "api_key": os.getenv("OPENAI_API_KEY", ""),
+                "base_url": os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                "model": os.getenv("OPENAI_MODEL", "qwen-vl-max")
             }
         
         api_key_value = config["api_key"]

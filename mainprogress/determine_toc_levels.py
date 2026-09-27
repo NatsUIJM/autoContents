@@ -18,6 +18,20 @@ CONCURRENT_LIMIT = 15
 MAX_RETRIES = 5
 REQUEST_TIMEOUT = 180  # 秒
 
+def roman_to_int(s):
+    """将罗马数字字符串转换为阿拉伯数字，非罗马数字返回 None"""
+    roman_map = {'i': 1, 'v': 5, 'x': 10, 'l': 50, 'c': 100, 'd': 500, 'm': 1000}
+    s = s.lower().strip()
+    if not s or not all(c in roman_map for c in s):
+        return None
+    result = 0
+    for i in range(len(s)):
+        if i + 1 < len(s) and roman_map[s[i]] < roman_map[s[i + 1]]:
+            result -= roman_map[s[i]]
+        else:
+            result += roman_map[s[i]]
+    return result
+
 # 全局提示词
 # 明确要求输出 CSV 格式，并定义列含义
 PROMPT_TEXT = """# 任务目标
@@ -212,9 +226,20 @@ def parse_csv_response(csv_text: str, source_file: str) -> list:
                 if not title:
                     continue
                 
-                # 尝试转换页码
+                # 尝试转换页码（支持阿拉伯数字和罗马数字）
                 page_num_str = row['page_number'].strip()
-                page_num = int(page_num_str) if page_num_str else None
+                is_roman = False
+                if page_num_str:
+                    if page_num_str.isdigit():
+                        page_num = int(page_num_str)
+                    else:
+                        page_num = roman_to_int(page_num_str)
+                        if page_num is not None:
+                            is_roman = True
+                        else:
+                            page_num = None
+                else:
+                    page_num = None
                 
                 # 尝试转换层级
                 level_str = row['level'].strip()
@@ -227,7 +252,8 @@ def parse_csv_response(csv_text: str, source_file: str) -> list:
                 result_data.append({
                     "text": title,
                     "number": page_num,
-                    "level": level
+                    "level": level,
+                    "is_roman": is_roman
                 })
             except (ValueError, KeyError) as e:
                 write_log(f"解析单行失败：{row}, 错误：{e}")
@@ -284,7 +310,7 @@ async def process_first_page(img_file: Path, csv_file: Path, output_path: Path) 
 
                 if parsed_data:
                     # 排序
-                    sorted_data = sorted(parsed_data, key=lambda x: x['number'])
+                    sorted_data = sorted(parsed_data, key=lambda x: (0 if x.get('is_roman') else 1, x['number']))
 
                     # 保存首图结果文件
                     output_file = output_path / f"{img_file.stem}_merged.json"
@@ -378,7 +404,7 @@ async def process_level_async(semaphore: asyncio.Semaphore, img_file: Path, csv_
                         continue
 
                     if parsed_data:
-                        sorted_data = sorted(parsed_data, key=lambda x: x['number'])
+                        sorted_data = sorted(parsed_data, key=lambda x: (0 if x.get('is_roman') else 1, x['number']))
 
                         with open(output_file, 'w', encoding='utf-8') as f:
                             json.dump(sorted_data, f, ensure_ascii=False, indent=2)

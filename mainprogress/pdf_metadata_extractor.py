@@ -558,6 +558,137 @@ async def fetch_single_offset(client: AsyncOpenAI, model: str, page_num: int, b6
         write_log(error_msg)
         return "Error"
 
+async def fetch_single_roman_offset(client: AsyncOpenAI, model: str, page_num: int, b64_img: str) -> str:
+    """调用 LLM 识别前言页面的罗马数字页码，计算前言偏移量"""
+    prompt = f"""你是一个专业的文档页码识别专家。你的任务是识别图片中页面底部或顶部标注的罗马数字页码，并计算前言偏移量。
+计算公式：前言偏移量 = PDF 物理页码 - 罗马数字页码对应的阿拉伯数字值。
+
+当前图片的 PDF 物理页码是：{page_num}
+
+【示例 1】
+物理页码：5
+图片中底部写着："iii"
+罗马数字 iii = 3
+计算：5 - 3 = 2
+输出：2
+
+【示例 2】
+物理页码：10
+图片中底部写着："xv"
+罗马数字 xv = 15
+计算：10 - 15 = -5
+输出：-5
+
+【示例 3】
+物理页码：3
+图片中没有罗马数字页码（可能是阿拉伯数字或无页码）
+输出：Error
+
+请仔细观察图片，找到罗马数字页码，并严格按照上述格式，仅输出计算后的前言偏移量数字。不要输出任何解释。"""
+    try:
+        completion = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
+                    ]
+                }
+            ],
+            extra_body={"enable_thinking": False},
+            temperature=0,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        error_msg = f"获取第 {page_num} 页罗马数字偏移量失败：{e}"
+        logger.error(error_msg)
+        write_log(error_msg)
+        return "Error"
+
+async def calculate_roman_offset(pdf_path: str, client: AsyncOpenAI, model: str, initial_data_dir: str) -> int:
+    """
+    计算前言部分的罗马数字页码偏移量。
+    遍历 PDF 前 20% 的页面（最多 15 页），并发识别罗马数字页码并计算偏移众数。
+    """
+    try:
+        doc = fitz.open(pdf_path)
+        total_pages = len(doc)
+        end_idx = min(int(total_pages * 0.2), 15)
+        if end_idx < 2:
+            doc.close()
+            return None
+
+        TARGET_LONG_EDGE = 1500
+        page_images = []  # [(page_idx, base64_image), ...]
+
+        for p in range(end_idx):
+            page = doc[p]
+            rect = page.rect
+            max_dim = max(rect.width, rect.height)
+            if max_dim == 0:
+                continue
+            zoom = TARGET_LONG_EDGE / max_dim
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+            img_data = pix.tobytes("jpeg")
+            base64_image = base64.b64encode(img_data).decode('utf-8')
+            page_images.append((p, base64_image))
+
+        doc.close()
+
+        # 并发调用 LLM 识别罗马数字页码
+        async def process_page(p, b64):
+            raw_res = await fetch_single_roman_offset(client, model, p + 1, b64)
+            return p, raw_res
+
+        tasks = [process_page(p, b64) for p, b64 in page_images]
+        responses = await asyncio.gather(*tasks)
+
+        log_entries = []
+        results = []
+        for p, raw_res in responses:
+            entry = {
+                "physical_page": p + 1,
+                "raw_response": raw_res,
+                "parsed_offset": None
+            }
+            if raw_res.isdigit() or (raw_res.startswith('-') and raw_res[1:].isdigit()):
+                val = int(raw_res)
+                entry["parsed_offset"] = val
+                results.append(val)
+            else:
+                entry["parsed_offset"] = "Error"
+            log_entries.append(entry)
+
+        # 保存日志
+        offset_log_path = os.path.join(initial_data_dir, "roman_offset_log.json")
+        summary = {
+            "total_samples": len(log_entries),
+            "valid_samples": len(results),
+            "details": log_entries
+        }
+        with open(offset_log_path, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+        write_log(f"罗马数字偏移量计算日志已保存至：{offset_log_path}")
+
+        if results:
+            most_common_offset = Counter(results).most_common(1)[0][0]
+            info_msg = f"罗马数字页码偏移量计算成功：{most_common_offset} (基于 {len(results)} 个有效样本)"
+            print(f"[INFO] {info_msg}")
+            write_log(info_msg)
+            return most_common_offset
+        else:
+            write_log("未检测到罗马数字页码，跳过前言偏移计算。")
+            return None
+
+    except Exception as e:
+        error_msg = f"计算罗马数字偏移量异常：{str(e)}"
+        logger.error(error_msg)
+        write_log(error_msg)
+        return None
+
 async def calculate_offset(pdf_path: str, client: AsyncOpenAI, model: str, initial_data_dir: str) -> int:
     """
     自动计算正文偏移量。
@@ -739,7 +870,24 @@ async def main():
     
     pdf_filename = pdf_files[0]
     pdf_path = os.path.join(input_dir, pdf_filename)
-    
+
+    # 预检 PDF 是否可正常解析（页数大于 0）
+    try:
+        _check_doc = fitz.open(pdf_path)
+        _check_pages = len(_check_doc)
+        _check_doc.close()
+        if _check_pages == 0:
+            error_msg = (f"PDF 文件无法解析出任何页面（页数为 0），文件可能已损坏或 trailer 缺失：{pdf_filename}。"
+                         f"请重新获取或修复该 PDF 后再试。")
+            print(f"错误：{error_msg}")
+            write_log(error_msg)
+            sys.exit(1)
+    except Exception as e:
+        error_msg = f"打开 PDF 文件失败：{e}"
+        print(f"错误：{error_msg}")
+        write_log(error_msg)
+        sys.exit(1)
+
     json_filename = os.path.splitext(pdf_filename)[0] + ".json"
     json_path = os.path.join(output_dir, json_filename)
     if not os.path.exists(json_path):
@@ -764,9 +912,9 @@ async def main():
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
         
-    api_key = get_api_key(config.get("api_key", ""))
-    base_url = config.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    model = config.get("model", "qwen-vl-max")
+    api_key = get_api_key(config.get("api_key", os.getenv("OPENAI_API_KEY", "")))
+    base_url = config.get("base_url", os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
+    model = config.get("model", os.getenv("OPENAI_MODEL", "qwen-vl-max"))
     
     if not api_key:
         error_msg = "API Key 解析失败或为空，请检查 llm_config.json 或环境变量配置。"
@@ -783,22 +931,26 @@ async def main():
     # 传递 initial_data_dir 给 calculate_offset
     book_name_task = extract_book_name(pdf_path, pdf_filename, client, model)
     offset_task = calculate_offset(pdf_path, client, model, initial_data_dir)
+    roman_offset_task = calculate_roman_offset(pdf_path, client, model, initial_data_dir)
     toc_task = extract_toc_info(pdf_path, client, model, initial_data_dir)
-    
-    book_name, content_start, (toc_start, toc_end) = await asyncio.gather(
-        book_name_task, offset_task, toc_task
+
+    book_name, content_start, roman_offset, (toc_start, toc_end) = await asyncio.gather(
+        book_name_task, offset_task, roman_offset_task, toc_task
     )
 
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
             json_data = json.load(f)
-            
+
         updated = False
         if book_name:
             json_data["book_name"] = book_name
             updated = True
         if content_start is not None:
             json_data["content_start"] = content_start
+            updated = True
+        if roman_offset is not None:
+            json_data["roman_offset"] = roman_offset
             updated = True
         if toc_start is not None and toc_end is not None:
             json_data["toc_start"] = toc_start
