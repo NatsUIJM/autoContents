@@ -23,6 +23,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.append(PROJECT_ROOT)
 
+from llm_config import load_llm_config  # 统一 LLM 配置加载（环境变量优先）
+
 def write_log(message):
     """写入日志到项目根目录的 log.txt"""
     try:
@@ -35,13 +37,6 @@ def write_log(message):
 # 配置日志输出到标准输出
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
 logger = logging.getLogger(__name__)
-
-def get_api_key(raw_key: str) -> str:
-    """解析 API Key，支持环境变量提取"""
-    if raw_key.startswith("$") and raw_key.endswith("$"):
-        env_var_name = raw_key[1:-1]
-        return os.environ.get(env_var_name, "")
-    return raw_key
 
 def create_concat_image_b64(doc: fitz.Document, start_p: int, end_p: int, save_path: str = None) -> str:
     """将指定范围的 PDF 页面转换为横向拼接的 JPG，并在底部追加页码。"""
@@ -301,7 +296,7 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     current_limit = min(20, total_pages)
     last_scanned = 0
     retry_count = 0
-    max_retries = 2
+    max_retries = 5
     toc_found = False
 
     info_msg = f"正在分析目录范围：第 1 到 {current_limit} 页 (滑动窗口)"
@@ -324,7 +319,7 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
                 # 未发现目录，触发向后搜索机制
                 if retry_count < max_retries:
                     retry_count += 1
-                    next_limit = min(current_limit + 10, 60)
+                    next_limit = min(current_limit + 10, 100)
                     info_msg = f"前 {current_limit} 页未找到目录，尝试向后搜索至第 {next_limit} 页 (尝试 {retry_count}/{max_retries})"
                     print(f"[INFO] {info_msg}")
                     write_log(info_msg)
@@ -337,7 +332,7 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
         if toc_found:
             if page_votes.get(current_limit, {}).get("is_toc", 0) > 0:
                 # 边界页是目录，继续向后拓展
-                next_limit = min(current_limit + 10, 60)
+                next_limit = min(current_limit + 10, 100)
                 if next_limit <= current_limit:
                     break
                 info_msg = f"第 {current_limit} 页确认为目录，拓展扫描范围至第 {next_limit} 页"
@@ -443,8 +438,8 @@ async def extract_toc_info(pdf_path: str, client: AsyncOpenAI, model: str, initi
     if global_toc_start is None:
         return None, None
 
-    if global_toc_end >= 60:
-        warn_msg = "目录识别达到或超过 60 页上限，触发熔断，强制设置为 1 和 2"
+    if global_toc_end >= 120:
+        warn_msg = "目录识别达到或超过 120 页上限，触发熔断，强制设置为 1 和 2"
         print(f"[WARNING] {warn_msg}")
         write_log(warn_msg)
         return 1, 2
@@ -902,25 +897,17 @@ async def main():
     print(f"[INFO] {info_msg}")
     write_log(info_msg)
 
-    config_path = os.path.join(PROJECT_ROOT, "static", "llm_config.json")
-    if not os.path.exists(config_path):
-        error_msg = f"LLM 配置文件未找到，当前查找目录：{config_path}"
+    try:
+        cfg = load_llm_config()
+    except Exception as e:
+        error_msg = f"LLM 配置加载失败：{e}"
         print(f"错误：{error_msg}")
         write_log(error_msg)
         sys.exit(1)
-        
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-        
-    api_key = get_api_key(config.get("api_key", os.getenv("OPENAI_API_KEY", "")))
-    base_url = config.get("base_url", os.getenv("OPENAI_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
-    model = config.get("model", os.getenv("OPENAI_MODEL", "qwen-vl-max"))
-    
-    if not api_key:
-        error_msg = "API Key 解析失败或为空，请检查 llm_config.json 或环境变量配置。"
-        print(f"错误：{error_msg}")
-        write_log(error_msg)
-        sys.exit(1)
+
+    api_key = cfg["api_key"]
+    base_url = cfg["base_url"]
+    model = cfg["model"]
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 

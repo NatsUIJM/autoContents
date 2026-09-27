@@ -49,9 +49,8 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 1. 注册账号：如果没有阿里云账号，请先[注册](https://account.aliyun.com/register/qr_register.htm?)一个。
 2. 实名认证：参考[实名认证文档](https://help.aliyun.com/zh/account/user-guide/individual-identities?)对阿里云账号进行实名认证。
-3. 开通百炼：前往[百炼控制台（模型广场）](https://bailian.console.aliyun.com/model-market)，开通百炼模型服务。
-4. 获取 API Key：前往[百炼控制台（API-KEY管理）](https://bailian.console.aliyun.com/?tab=model#/api-key)然后创建一个 API-KEY。
-5. 如果你有高校学生或教师身份，可前往[阿里云高校计划](https://university.aliyun.com)申请一些优惠。具体政策以该网页为准。
+3. 获取 API Key：前往[百炼控制台（API-KEY管理）](https://bailian.console.aliyun.com/?tab=model#/api-key)然后创建一个 API-KEY。
+4. 如果你有高校学生或教师身份，可前往[阿里云高校计划](https://university.aliyun.com)申请一些优惠。具体政策以该网页为准。
 
 </details>
 
@@ -142,6 +141,68 @@ OPENAI_MODEL=模型名称
 - **`PDF 文件无法解析出任何页面（页数为 0）`**：PDF 文件可能已损坏（trailer 缺失），请重新获取完好的 PDF 文件。
 - **LLM 服务测试失败**：请检查 API Key、Base URL 和模型名称是否正确，以及模型是否支持视觉/多模态输入。
 - **执行失败但看不到具体错误**：错误信息会显示在任务日志中，请向上滚动查看 `stderr` 输出的详细报错。
+
+## MCP 服务器（可选，供 AI Agent 调用）
+
+autoContents 也可作为 MCP（Model Context Protocol）服务器运行，让 AI 编程助手（如 Cherry Studio、Claude Desktop）直接调用书签生成能力。
+
+### 安装 uv
+
+[uv](https://docs.astral.sh/uv/) 是 Python 的快速包管理器，也是 MCP 服务器的运行环境。
+
+**Windows**
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 配置 MCP 客户端
+
+将以下 JSON 添加到你的 MCP 客户端配置文件中（路径按实际情况修改）：
+
+```json
+{
+  "mcpServers": {
+    "autoContents": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "/path/to/autoContents",
+        "python",
+        "/path/to/autoContents/mcp_server.py"
+      ],
+      "env": {
+        "AUTOCONTENTS_API_KEY": "sk-xxx",
+        "AUTOCONTENTS_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "AUTOCONTENTS_MODEL": "qwen3.7-plus"
+      }
+    }
+  }
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `command` | 固定为 `uv`，需先完成上一步的安装 |
+| `args` 中的路径 | 将 `/path/to/autoContents` 替换为项目实际路径 |
+| `AUTOCONTENTS_API_KEY` | 必填，替换为你的百炼 API Key |
+| `AUTOCONTENTS_BASE_URL` | 可选，默认为百炼兼容接口 |
+| `AUTOCONTENTS_MODEL` | 可选，默认为 `qwen3.5-397b-a17b` |
+
+配置完成后重启客户端，即可使用 `generate_pdf_bookmarks` 和 `check_llm_config` 两个工具。
+
+### 更新日志
+
+**更新提醒：最新版本是2026年7月26日发布的，你可以根据[获取更新](#获取更新)来更新程序。**
+
+10月13日的版本对识别逻辑进行了完全重构，可实现**任意版面结构**的目录数据提取，同时处理速度提升50%，且进一步简化了配置流程；12月2日的版本支持直接在前端进行提示词修改；3月25日发布的版本支持自定义LLM服务；3月29日发布的版本增加了使用LLM对下载文件进行重命名的功能，特别鸣谢[@Little-White3110](https://github.com/Little-White3110)提出的建议；4月4日发布的版本实现的全自动目录提取。4月6日的版本对项目结构再次进行大量重构，解决了很多细节问题。7月26日的版本增加了`uv`和MCP支持。
 
 ## 获取更新
 

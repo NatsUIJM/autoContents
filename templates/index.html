@@ -3,46 +3,108 @@
 <head>
     <title>autoContents 目录生成工具</title>
     <style>
+        :root {
+            color-scheme: light dark;
+            --page-bg: #f3f4f6;
+            --surface: #ffffff;
+            --surface-2: #f9fafb;
+            --surface-hover: #f3f4f6;
+            --log-bg: #f8fafc;
+            --border: #e5e7eb;
+            --input-border: #d1d5db;
+            --text: #1f2937;
+            --heading: #111827;
+            --secondary: #4b5563;
+            --muted: #6b7280;
+            --faint: #9ca3af;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --link-hover: #312e81;
+            --focus: rgba(59,130,246,.1);
+            --success: #10b981;
+            --success-hover: #059669;
+            --success-bg: #d1fae5;
+            --success-text: #ffffff;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --danger-bg: #fee2e2;
+            --danger-hover-bg: #fecaca;
+            --disabled: #d1d5db;
+            --modal-overlay: rgba(0,0,0,.5);
+            --shadow: rgba(0,0,0,.1);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --page-bg: #0b0f14;
+                --surface: #141a21;
+                --surface-2: #1b232d;
+                --surface-hover: #232f3d;
+                --log-bg: #0b0f14;
+                --border: #2a3542;
+                --input-border: #2a3542;
+                --text: #e6edf3;
+                --heading: #e6edf3;
+                --secondary: #8b98a7;
+                --muted: #8b98a7;
+                --faint: #8b98a7;
+                --accent: #3b82f6;
+                --accent-hover: #2563eb;
+                --link-hover: #60a5fa;
+                --focus: rgba(59,130,246,.25);
+                --success: #4ade80;
+                --success-hover: #22c55e;
+                --success-bg: rgba(74,222,128,.15);
+                --success-text: #0b0f14;
+                --warning: #fbbf24;
+                --danger: #f87171;
+                --danger-bg: rgba(248,113,113,.15);
+                --danger-hover-bg: rgba(248,113,113,.28);
+                --disabled: #2a3542;
+                --modal-overlay: rgba(0,0,0,.5);
+                --shadow: rgba(0,0,0,.35);
+            }
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 40px 20px;
-            background-color: #f3f4f6;
-            color: #1f2937;
+            background-color: var(--page-bg);
+            color: var(--text);
         }
         .container {
-            background-color: #ffffff;
+            background-color: var(--surface);
             padding: 30px;
             border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.18);
         }
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 25px;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid var(--border);
             padding-bottom: 15px;
         }
         .header h2 {
             margin: 0;
-            color: #111827;
+            color: var(--text);
         }
         .form-select, input[type="number"], input[type="text"], .prompt-input {
             padding: 10px 12px;
-            border: 1px solid #d1d5db;
+            border: 1px solid var(--border);
             border-radius: 6px;
             width: 100%;
             box-sizing: border-box;
             font-size: 14px;
             transition: all 0.2s ease;
-            background-color: #fff;
+            background-color: var(--surface-2);
+            color: var(--text);
         }
         .form-select:focus, input[type="number"]:focus, input[type="text"]:focus, .prompt-input:focus {
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus);
         }
         .prompt-input {
             min-height: 100px;
@@ -53,9 +115,10 @@
             transition: all 0.2s ease;
         }
         .test-btn {
-            background-color: #6366f1;
-            color: white;
-            padding: 8px 16px;
+            background-color: var(--accent);
+            color: #fff;
+            height: 38px;
+            padding: 0 16px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
@@ -63,7 +126,7 @@
             font-weight: 500;
         }
         .test-btn:hover {
-            background-color: #4f46e5;
+            background-color: var(--accent-hover);
             transform: translateY(-1px);
         }
         .version {
@@ -90,9 +153,10 @@
             background-color: #eff6ff;
         }
         .file-input-container button {
-            background-color: #3b82f6;
+            background-color: var(--accent);
             color: white;
-            padding: 10px 20px;
+            height: 38px;
+            padding: 0 20px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
@@ -102,7 +166,7 @@
             font-weight: 500;
         }
         .file-input-container button:hover {
-            background-color: #2563eb;
+            background-color: var(--accent-hover);
             transform: translateY(-1px);
         }
         .file-name {
@@ -110,10 +174,10 @@
             align-items: center;
             gap: 8px;
             font-size: 14px;
-            color: #4b5563;
+            color: var(--muted);
         }
         .remove-file {
-            color: #9ca3af;
+            color: var(--muted);
             cursor: pointer;
             border: none;
             background: none;
@@ -123,8 +187,8 @@
             justify-content: center;
         }
         .remove-file:hover {
-            color: #ef4444;
-            background-color: #fee2e2;
+            color: var(--danger);
+            background-color: var(--danger-bg);
             border-radius: 4px;
         }
         .progress-container {
@@ -133,42 +197,43 @@
         .progress-bar {
             width: 100%;
             height: 8px;
-            background-color: #e5e7eb;
+            background-color: var(--border);
             border-radius: 4px;
             overflow: hidden;
         }
         .progress {
             width: 0%;
             height: 100%;
-            background-color: #10b981;
+            background-color: var(--success);
             transition: width 0.4s ease;
         }
         .status {
             margin: 10px 0;
             text-align: center;
-            color: #6b7280;
+            color: var(--muted);
             font-size: 14px;
         }
         .log {
             margin-top: 20px;
             padding: 15px;
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background-color: var(--log-bg);
+            border: 1px solid var(--border);
             border-radius: 8px;
             max-height: 200px;
             overflow-y: auto;
             font-size: 13px;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             line-height: 1.6;
+            color: var(--text);
         }
-        .error { color: #ef4444; }
-        .warning { color: #f59e0b; }
-        .success { color: #10b981; }
-        
+        .error { color: var(--danger); }
+        .warning { color: var(--warning); }
+        .success { color: var(--success); }
+
         button#startButton {
             width: 100%;
-            background-color: #10b981;
-            color: white;
+            background-color: var(--success);
+            color: var(--success-text);
             padding: 14px 20px;
             border: none;
             border-radius: 6px;
@@ -178,20 +243,21 @@
             margin-top: 10px;
         }
         button#startButton:hover:not(:disabled) {
-            background-color: #059669;
+            background-color: var(--success-hover);
             transform: translateY(-1px);
         }
         button#startButton:disabled {
-            background-color: #d1d5db;
+            background-color: var(--border);
+            color: var(--muted);
             cursor: not-allowed;
         }
         .hidden { display: none; }
         
         .collapsible-wrapper {
             margin-top: 20px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--border);
             border-radius: 8px;
-            background-color: #f9fafb;
+            background-color: var(--surface-2);
             overflow: hidden;
         }
         .collapsible-header {
@@ -201,23 +267,23 @@
             padding: 15px 20px;
             cursor: pointer;
             user-select: none;
-            background-color: #f9fafb;
+            background-color: var(--surface-2);
             transition: background-color 0.2s;
         }
         .collapsible-header:hover {
-            background-color: #f3f4f6;
+            background-color: var(--surface-hover);
         }
         .collapsible-header h3 {
             margin: 0;
             font-size: 15px;
-            color: #374151;
+            color: var(--text);
             font-weight: 600;
         }
         .collapsible-content {
             display: none;
             padding: 20px;
-            background-color: #ffffff;
-            border-top: 1px solid #e5e7eb;
+            background-color: var(--surface);
+            border-top: 1px solid var(--border);
         }
         .collapsible-content.active {
             display: block;
@@ -229,34 +295,15 @@
         }
         .chevron {
             transition: transform 0.3s ease;
-            color: #6b7280;
+            color: var(--muted);
         }
         .chevron.active {
             transform: rotate(180deg);
         }
-        .llm-config-section, .prompt-section {
+        .prompt-section {
             display: flex;
             flex-direction: column;
             gap: 15px;
-        }
-        .save-btn {
-            align-self: flex-start;
-            background-color: #6366f1;
-            color: white;
-            padding: 8px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            margin-top: 5px;
-        }
-        .save-btn:hover:not(:disabled) {
-            background-color: #4f46e5;
-        }
-        .save-btn:disabled {
-            background-color: #d1d5db;
-            cursor: not-allowed;
         }
 
         .modal {
@@ -271,25 +318,25 @@
             backdrop-filter: blur(2px);
         }
         .modal-content {
-            background-color: #ffffff;
+            background-color: var(--surface);
             margin: 10% auto;
             padding: 25px;
-            border: none;
+            border: 1px solid var(--border);
             width: 90%;
             max-width: 500px;
             border-radius: 12px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
         }
         .close {
-            color: #9ca3af;
+            color: var(--muted);
             float: right;
             font-size: 24px;
             font-weight: bold;
             cursor: pointer;
             line-height: 1;
         }
-        .close:hover { color: #374151; }
-        
+        .close:hover { color: var(--text); }
+
         .footer-links {
             text-align: center;
             margin-top: 30px;
@@ -298,30 +345,176 @@
             gap: 20px;
         }
         .footer-links a {
-            color: #4f46e5;
+            color: var(--accent);
             text-decoration: none;
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
         }
         .footer-links a:hover {
-            color: #312e81;
+            color: var(--link-hover);
             text-decoration: underline;
         }
         .footer-text {
             text-align: center;
             margin-top: 15px;
             font-size: 13px;
-            color: #6b7280;
+            color: var(--muted);
             margin-bottom: 30px;
         }
 
 
 
+
+        .test-status { color: var(--muted); }
+        .test-success { color: var(--success); font-weight: 500; }
+        .test-error { color: var(--danger); font-weight: 500; }
+        .test-response { background: var(--surface-2); color: var(--text); padding: 10px; border-radius: 6px; font-family: monospace; }
+        .test-meta { color: var(--muted); font-size: 13px; }
+
+        /* 模型配置区 - 头部激活指示器 */
+        .active-config-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--success);
+            background: var(--success-bg);
+            padding: 2px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+        .active-config-badge svg {
+            flex-shrink: 0;
+        }
+        .collapsible-header .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+            flex: 1;
+        }
+        .collapsible-header .header-left h3 {
+            white-space: nowrap;
+        }
+
+        /* 配置选择行 */
+        .config-selector-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .config-selector-row select {
+            flex: 1;
+            height: 38px;
+            padding: 0 12px;
+            box-sizing: border-box;
+        }
+        .config-selector-row .btn-icon {
+            height: 38px;
+            padding: 0 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-icon.btn-new {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-icon.btn-new:hover {
+            background: var(--accent-hover);
+        }
+        .btn-icon.btn-delete {
+            background: var(--danger-bg);
+            color: var(--danger);
+        }
+        .btn-icon.btn-delete:hover:not(:disabled) {
+            background: var(--danger-hover-bg);
+        }
+        .btn-icon.btn-delete:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* 配置表单 - 内联标签 */
+        .config-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .config-form .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .config-form .input-group label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--muted);
+        }
+        .config-form .input-group input {
+            height: 38px;
+            padding: 0 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background-color: var(--surface-2);
+            color: var(--text);
+        }
+        .config-form .input-group input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus);
+        }
+
+        .config-form-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .config-form-actions .save-btn {
+            height: 38px;
+            padding: 0 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            background: var(--accent);
+            color: #fff;
+            transition: background 0.15s;
+        }
+        .config-form-actions .save-btn:hover:not(:disabled) {
+            background: var(--accent-hover);
+        }
+        .config-form-actions .save-btn:disabled {
+            background: var(--border);
+            color: var(--muted);
+            cursor: not-allowed;
+        }
+        .config-form .field-hint {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
         /* 多任务卡片样式 */
         .task-card {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
             border-radius: 8px;
             padding: 15px;
         }
@@ -333,7 +526,7 @@
         }
         .task-filename {
             font-weight: 500;
-            color: #374151;
+            color: var(--text);
             word-break: break-all;
             flex: 1;
             margin-right: 10px;
@@ -375,24 +568,43 @@
         
         <div class="collapsible-wrapper">
             <div class="collapsible-header" onclick="toggleCollapsible('llmContent', 'llmChevron')">
-                <h3>模型配置管理</h3>
+                <div class="header-left">
+                    <h3>模型配置管理</h3>
+                    <span id="activeConfigBadge" class="active-config-badge" style="display:none;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/></svg>
+                        <span id="activeConfigName"></span>
+                    </span>
+                </div>
                 <svg id="llmChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <div id="llmContent" class="collapsible-content">
-                <div class="llm-config-section">
+                <div class="config-selector-row">
+                    <select id="configSelector" class="form-select" onchange="onConfigSelect()">
+                        <option value="">-- 请选择配置 --</option>
+                    </select>
+                    <button class="btn-icon btn-new" onclick="newConfig()">+ 新建</button>
+                    <button id="deleteConfigBtn" class="btn-icon btn-delete" onclick="deleteConfig()" disabled>删除</button>
+                </div>
+                <div class="config-form">
                     <div class="input-group">
-                        <label for="apiKey">API 密钥（若为环境变量请使用$符号包裹，否则直接输入 KEY 即可）</label>
-                        <input type="text" id="apiKey" class="llm-config-input" placeholder="请输入 API 密钥...">
+                        <label for="configName">配置名称</label>
+                        <input type="text" id="configName" placeholder="例如：阿里云 Qwen3.7、DeepSeek V3...">
                     </div>
                     <div class="input-group">
-                        <label for="baseUrl">Base URL（需以 v1 结尾）</label>
-                        <input type="text" id="baseUrl" class="llm-config-input" placeholder="请输入 Base URL...">
+                        <label for="apiKey">API 密钥</label>
+                        <input type="text" id="apiKey" placeholder="如使用环境变量请使用 $变量名$ 格式">
+                    </div>
+                    <div class="input-group">
+                        <label for="baseUrl">Base URL</label>
+                        <input type="text" id="baseUrl" placeholder="需以 /v1 结尾">
                     </div>
                     <div class="input-group">
                         <label for="model">模型名称</label>
-                        <input type="text" id="model" class="llm-config-input" placeholder="请输入模型名称...">
+                        <input type="text" id="model" placeholder="例如：qwen3.7-plus">
                     </div>
-                    <button id="saveConfigBtn" class="save-btn" onclick="saveLLMConfig()" disabled>保存 LLM 配置</button>
+                    <div class="config-form-actions">
+                        <button id="saveConfigBtn" class="save-btn" onclick="saveLLMConfig()" disabled>保存配置</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -403,7 +615,7 @@
                 <svg id="sysLogChevron" class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <div id="sysLogContent" class="collapsible-content">
-                <div id="sysLogContainer" class="log" style="background-color: #1e1e1e; color: #d4d4d4; max-height: 300px; margin-top: 0;"></div>
+                <div id="sysLogContainer" class="log" style="background-color: var(--log-bg); color: var(--text); max-height: 300px; margin-top: 0;"></div>
             </div>
         </div>
 
@@ -434,6 +646,9 @@
         let currentSessionId = null;
         let llmConfigModified = false;
         let logEventSource = null;
+        let allConfigs = [];
+        let activeConfigId = null;
+        let currentEditingId = null;
 
         function initSysLogStream() {
             if (logEventSource) {
@@ -533,7 +748,7 @@
             startButton.title = '';
         }
 
-        ['apiKey', 'baseUrl', 'model'].forEach(id => {
+        ['configName', 'apiKey', 'baseUrl', 'model'].forEach(id => {
             document.getElementById(id).addEventListener('input', function() {
                 llmConfigModified = true;
                 document.getElementById('saveConfigBtn').disabled = false;
@@ -775,54 +990,45 @@
         async function testQwenService() {
             const modal = document.getElementById('testModal');
             const resultDiv = document.getElementById('testResult');
-            
-            resultDiv.innerHTML = '<p style="color: #4b5563;">正在测试模型服务状态...</p>';
+
+            resultDiv.innerHTML = '<p class="test-status">正在测试模型服务状态...</p>';
             modal.style.display = 'block';
-            
+
             try {
-                const configResponse = await fetch('/get_llm_config');
-                if (!configResponse.ok) {
-                    throw new Error('获取 LLM 配置失败');
+                const activeConfig = allConfigs.find(c => c.id === activeConfigId);
+                if (!activeConfig) {
+                    throw new Error('没有激活的配置，请先保存一个配置');
                 }
-                
-                const configData = await configResponse.json();
-                if (configData.status !== 'success') {
-                    throw new Error(configData.message || '获取 LLM 配置失败');
-                }
-                
-                const config = configData.config;
-                
+
                 const response = await fetch('/test_llm_service', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        api_key: config.api_key,
-                        base_url: config.base_url,
-                        model: config.model
+                        api_key: activeConfig.api_key,
+                        base_url: activeConfig.base_url,
+                        model: activeConfig.model
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.status === 'success') {
                     resultDiv.innerHTML = `
-                        <p style="color: #10b981; font-weight: 500;">✓ ${data.message}</p>
-                        <p style="background: #f3f4f6; padding: 10px; border-radius: 6px; font-family: monospace;">响应内容：${data.response}</p>
-                        <p style="color: #6b7280; font-size: 13px;">使用的模型：${config.model}</p>
+                        <p class="test-success">✓ ${data.message}</p>
+                        <p class="test-response">响应内容：${data.response}</p>
+                        <p class="test-meta">使用的模型：${activeConfig.model}（${activeConfig.name || activeConfig.id}）</p>
                     `;
                 } else {
                     resultDiv.innerHTML = `
-                        <p style="color: #ef4444; font-weight: 500;">✗ 测试失败</p>
+                        <p class="test-error">✗ 测试失败</p>
                         <p>错误信息：${data.message}</p>
                         <p>错误类型：${data.error_code}</p>
-                        <p style="color: #6b7280; font-size: 13px;">尝试使用的模型：${config.model}</p>
+                        <p class="test-meta">尝试使用的模型：${activeConfig.model}</p>
                     `;
                 }
             } catch (error) {
                 resultDiv.innerHTML = `
-                    <p style="color: #ef4444; font-weight: 500;">✗ 请求失败</p>
+                    <p class="test-error">✗ 请求失败</p>
                     <p>错误信息：${error.message}</p>
                 `;
             }
@@ -839,21 +1045,128 @@
             }
         }
 
+        function populateConfigForm(config) {
+            document.getElementById('configName').value = config ? (config.name || '') : '';
+            document.getElementById('apiKey').value = config ? (config.api_key || '') : '';
+            document.getElementById('baseUrl').value = config ? (config.base_url || '') : '';
+            document.getElementById('model').value = config ? (config.model || '') : '';
+            llmConfigModified = false;
+            document.getElementById('saveConfigBtn').disabled = true;
+        }
+
+        function updateConfigSelector() {
+            const selector = document.getElementById('configSelector');
+            selector.innerHTML = '';
+            const badge = document.getElementById('activeConfigBadge');
+            const badgeName = document.getElementById('activeConfigName');
+
+            allConfigs.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.id;
+                option.textContent = c.name || c.model;
+                if (c.id === activeConfigId) {
+                    option.selected = true;
+                    badge.style.display = 'inline-flex';
+                    badgeName.textContent = c.name || c.model;
+                }
+                selector.appendChild(option);
+            });
+            if (!activeConfigId || allConfigs.length === 0) {
+                badge.style.display = 'none';
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '-- 请先新建配置 --';
+                selector.appendChild(option);
+            }
+            document.getElementById('deleteConfigBtn').disabled = allConfigs.length <= 1;
+        }
+
+        function onConfigSelect() {
+            const selectedId = document.getElementById('configSelector').value;
+            if (!selectedId) return;
+            const config = allConfigs.find(c => c.id === selectedId);
+            if (!config) return;
+            currentEditingId = selectedId;
+            populateConfigForm(config);
+
+            // 如果选择的不是当前激活的配置，自动切换
+            if (selectedId !== activeConfigId) {
+                setActiveConfig(selectedId);
+            }
+        }
+
+        async function setActiveConfig(configId) {
+            try {
+                const response = await fetch(`/set_active_config/${configId}`, { method: 'POST' });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    activeConfigId = configId;
+                    updateConfigSelector();
+                    addLog('已切换至：' + (allConfigs.find(c => c.id === configId)?.name || configId), 'success');
+                }
+            } catch (error) {
+                console.error('切换配置失败:', error);
+            }
+        }
+
+        function newConfig() {
+            currentEditingId = null;
+            populateConfigForm(null);
+            document.getElementById('configSelector').value = '';
+            document.getElementById('deleteConfigBtn').disabled = true;
+        }
+
+        async function deleteConfig() {
+            const selectedId = document.getElementById('configSelector').value;
+            if (!selectedId) return;
+            if (allConfigs.length <= 1) {
+                addLog('至少需要保留一个配置', 'warning');
+                return;
+            }
+            if (!confirm('确定要删除配置 "' + (allConfigs.find(c => c.id === selectedId)?.name || selectedId) + '" 吗？此操作不可撤销。')) return;
+
+            try {
+                const response = await fetch(`/delete_llm_config/${selectedId}`, { method: 'POST' });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    allConfigs = allConfigs.filter(c => c.id !== selectedId);
+                    if (data.active_id) activeConfigId = data.active_id;
+                    updateConfigSelector();
+                    if (currentEditingId === selectedId) {
+                        const active = allConfigs.find(c => c.id === activeConfigId);
+                        currentEditingId = activeConfigId;
+                        populateConfigForm(active);
+                    }
+                    addLog('配置已删除', 'success');
+                } else {
+                    addLog(data.message || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('删除配置失败:', error);
+                addLog('删除配置失败：' + error.message, 'error');
+            }
+        }
+
         async function loadLLMConfig() {
             try {
                 const response = await fetch('/get_llm_config');
-                if (!response.ok) {
-                    throw new Error('获取 LLM 配置失败');
-                }
-                
+                if (!response.ok) throw new Error('获取 LLM 配置失败');
+
                 const data = await response.json();
                 if (data.status === 'success') {
-                    document.getElementById('apiKey').value = data.config.api_key;
-                    document.getElementById('baseUrl').value = data.config.base_url;
-                    document.getElementById('model').value = data.config.model;
-                    
-                    llmConfigModified = false;
-                    document.getElementById('saveConfigBtn').disabled = true;
+                    allConfigs = data.configs || [];
+                    activeConfigId = data.active_id;
+
+                    updateConfigSelector();
+
+                    const active = data.active_config;
+                    if (active) {
+                        currentEditingId = active.id;
+                        populateConfigForm(active);
+                    } else if (allConfigs.length > 0) {
+                        currentEditingId = allConfigs[0].id;
+                        populateConfigForm(allConfigs[0]);
+                    }
                 } else {
                     throw new Error(data.message || '获取 LLM 配置失败');
                 }
@@ -866,6 +1179,8 @@
         async function saveLLMConfig() {
             try {
                 const config = {
+                    id: currentEditingId || '',
+                    name: document.getElementById('configName').value,
                     api_key: document.getElementById('apiKey').value,
                     base_url: document.getElementById('baseUrl').value,
                     model: document.getElementById('model').value
@@ -873,20 +1188,17 @@
 
                 const response = await fetch('/save_llm_config', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
 
-                if (!response.ok) {
-                    throw new Error('保存 LLM 配置失败');
-                }
+                if (!response.ok) throw new Error('保存 LLM 配置失败');
 
                 const data = await response.json();
-                if (data.status !== 'success') {
-                    throw new Error(data.message || '保存 LLM 配置失败');
-                }
+                if (data.status !== 'success') throw new Error(data.message || '保存 LLM 配置失败');
+
+                // 重新加载以获取最新状态
+                await loadLLMConfig();
 
                 llmConfigModified = false;
                 document.getElementById('saveConfigBtn').disabled = true;

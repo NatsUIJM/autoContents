@@ -91,32 +91,7 @@ def write_log(message):
     except Exception:
         pass
 
-def load_llm_config() -> dict:
-    import json
-    project_root = Path(__file__).parent.parent
-    config_path = project_root / "static" / "llm_config.json"
-    if not config_path.exists():
-        raise FileNotFoundError(f"LLM 配置文件不存在：{config_path}")
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    def resolve_value(val):
-        if isinstance(val, str) and val.startswith('$') and val.endswith('$'):
-            return os.getenv(val[1:-1])
-        return val
-
-    api_key = resolve_value(config.get("api_key"))
-    base_url = resolve_value(config.get("base_url"))
-    model = resolve_value(config.get("model"))
-
-    if not api_key:
-        raise ValueError("API Key 不能为空")
-    
-    return {
-        "api_key": api_key,
-        "base_url": base_url,
-        "model": model
-    }
+from llm_config import load_llm_config  # 统一配置加载（环境变量优先）
 
 def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]
