@@ -88,7 +88,9 @@ def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     check=True 的默认 traceback 只显示命令本身，看不到子进程报了什么；
     构建失败时必须能看到真实 stderr，否则只能靠猜。
     """
-    result = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **kw
+    )
     if result.returncode != 0:
         sys.stderr.write(result.stdout or "")
         sys.stderr.write(result.stderr or "")
@@ -114,20 +116,35 @@ def read_direct_deps(pyproject: Path) -> list[str]:
 
 
 def find_python_root(py_standalone: Path) -> Path:
-    """定位 py-standalone 内的 CPython 安装目录（含 bin/ 与 lib/）。
+    """定位 py-standalone 内的 CPython 安装目录。
 
-    注意 py-app-standalone 会同时留下两个目录：真实目录
-    cpython-X.Y.Z-<platform> 与一个指向它的符号链接cpython-X.Y-<platform>。
-    真实目录名带补丁号，才是要用的那个。
+    两个平台的布局不同：
+    - macOS:``cpython-X.Y.Z-<platform>/{bin,lib,include,share}``
+    - Windows: ``cpython-X.Y.Z-<platform>/{python.exe,Lib,...}``（无 bin/）
+
+    另外 py-app-standalone 会留下一个同名符号链接（不带补丁号），要跳过。
+
+    补丁号只在目录名里（.13），不在 BUILD 文件里，且各平台目录名长度一致，
+    因此按「版本号段数最多」挑真实目录最稳妥。
     """
     candidates = [
         c
         for c in sorted(py_standalone.iterdir())
-        if c.is_dir() and not c.is_symlink() and (c / "bin").is_dir()
+        if c.is_dir() and not c.is_symlink() and (c / "BUILD").is_file()
     ]
     if not candidates:
         raise SystemExit(f"未在 {py_standalone} 中找到 CPython 安装目录")
-    return candidates[0]
+    # 取目录名中数字段最多的（cpython-3.13.13-... 而非 cpython-3.13-...）
+    return max(candidates, key=lambda p: p.name.count("."))
+
+
+def python_exe(py_root: Path) -> Path:
+    """返回该平台下的解释器路径。"""
+    if (py_root / "bin" / "python3.13").exists():
+        return py_root / "bin" / "python3.13"
+    if (py_root / "python.exe").exists():
+        return py_root / "python.exe"
+    raise SystemExit(f"未在 {py_root} 中找到解释器")
 
 
 def fix_symlink(bundle: Path) -> None:
@@ -207,14 +224,15 @@ def copy_project(dest: Path) -> None:
 
 def write_launcher(bundle: Path, target: str) -> None:
     py_root = find_python_root(bundle / "py-standalone")
+    exe = python_exe(py_root)
     if target.startswith("macos"):
-        rel = f"py-standalone/{py_root.name}/bin/python3.13"
+        rel = exe.relative_to(bundle).as_posix()
         launcher = bundle / "启动 autoContents.command"
         launcher.write_text(LAUNCHER_SH.replace("{python}", rel), encoding="utf-8")
         # 双击 .command 必须有执行权限
         launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     else:
-        rel = f"py-standalone\\{py_root.name}\\python.exe"
+        rel = exe.relative_to(bundle).as_posix()
         launcher = bundle / "启动 autoContents.bat"
         launcher.write_text(
             LAUNCHER_BAT.replace("{python}", rel), encoding="utf-8"
@@ -248,11 +266,7 @@ def smoke_test(bundle: Path, target: str) -> None:
     便携包最常见的失败是「打包成功但用户一跑就崩」，必须在这里拦住。
     """
     py_root = find_python_root(bundle / "py-standalone")
-    exe = (
-        py_root / "bin" / "python3.13"
-        if target.startswith("macos")
-        else py_root / "python.exe"
-    )
+    exe = python_exe(py_root)
     code = (
         "import pymupdf, pikepdf, PIL, flask, fastmcp, openai, dotenv;"
         "import sys;"
@@ -261,7 +275,12 @@ def smoke_test(bundle: Path, target: str) -> None:
         "print('smoke-ok')"
     )
     result = subprocess.run(
-        [str(exe), "-c", code], cwd=bundle, capture_output=True, text=True
+        [str(exe), "-c", code],
+        cwd=bundle,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if "smoke-ok" not in result.stdout:
         raise SystemExit(
