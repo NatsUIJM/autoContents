@@ -83,6 +83,8 @@ jobs:
       - name: 创建 Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.2.1
         with:
-          draft: true
+          # 直接发布（非 draft）：tag 推上去即自动上线，无需手动确认。
+          # 版本一致性已在前置步骤校验过，构建产物可信。
+          draft: false
           generate_release_notes: true
           files: artifacts/*.zip
