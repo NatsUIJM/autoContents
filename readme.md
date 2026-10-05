@@ -90,7 +90,8 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 <summary><b>macOS</b></summary>
 
 1. [点击这里](https://www.python.org/ftp/python/3.13.13/python-3.13.13-macos11.pkg)下载Python安装程序。下载完成后直接安装即可。
-2. 打开"终端"APP，输入`chmod +x `（注意最后面有空格），然后将`macos_install.command`文件拖入终端窗口，按`return`。
+2. 打开"终端"APP，依次输入`chmod +x `（注意最后面有空格），然后将`macos_install.command`文件拖入终端窗口，按`return`。
+3. 同样的方法，对`macos_start.command`执行一次`chmod +x `（若双击启动无反应，说明该文件缺少执行权限）。
 
 </details>
 
@@ -200,15 +201,19 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### 更新日志
 
-**更新提醒：最新版本是2026年7月26日发布的，你可以根据[获取更新](#获取更新)来更新程序。**
+**更新提醒：最新版本是v1.1.0，你可以根据[获取更新](#获取更新)来更新程序。**
 
 10月13日的版本对识别逻辑进行了完全重构，可实现**任意版面结构**的目录数据提取，同时处理速度提升50%，且进一步简化了配置流程；12月2日的版本支持直接在前端进行提示词修改；3月25日发布的版本支持自定义LLM服务；3月29日发布的版本增加了使用LLM对下载文件进行重命名的功能，特别鸣谢[@Little-White3110](https://github.com/Little-White3110)提出的建议；4月4日发布的版本实现的全自动目录提取。4月6日的版本对项目结构再次进行大量重构，解决了很多细节问题。7月26日的版本增加了`uv`和MCP支持。
+
+**v1.1.0** 支持任意 OpenAI 兼容的LLM服务商（通义千问、书生·浦语、OpenAI、DeepSeek 等，不再局限于通义千问）、罗马数字页码（前言/序言页码正确排在正文之前）、拖拽上传PDF，以及损坏文件的预检提示。特别鸣谢 [@4965898](https://github.com/4965898/autoContents) 提交的 PR 思路。
 
 ## 获取更新
 
 1. 点击页面顶部的绿色按钮`Code`，然后点击`Download ZIP`以下载程序源码；
 2. 将下载的`autoContents-main`文件夹中的全部内容覆盖到本地`autoContents-main`文件夹中；
 3. 重新运行`2.2`的安装步骤以更新依赖。
+
+> **macOS 用户注意**：从 GitHub 下载的 ZIP 会丢失 Unix 可执行权限，覆盖后 `.command` 文件将无法双击运行。请在终端执行一次 `chmod +x *.command contents_editor/*.command` 后再启动。
 
 ## Star History
 
