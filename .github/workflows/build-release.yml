@@ -43,6 +43,9 @@ jobs:
       # 否则前端更新提醒会拿 tag 与错误版本比较，提示错乱。
       - name: 校验版本一致性
         shell: python
+        env:
+          # Windows 控制台默认 cp1252，无法编码本步骤的中文输出
+          PYTHONIOENCODING: utf-8
         run: |
           import os, re, sys
           tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
