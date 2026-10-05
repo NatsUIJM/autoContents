@@ -4,7 +4,15 @@
 
 autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具，能够基于目录页内容创建可跳转书签。上传 PDF 文档后无需进行任何其他操作，等待 1 分钟左右即可获取处理结果。
 
-本仓库基于 [NatsUIJM/autoContents](https://github.com/NatsUIJM/autoContents) 修改，主要改动如下：
+## 下载使用
+
+前往 [Releases](https://github.com/NatsUIJM/autoContents/releases) 下载对应系统的压缩包，解压后双击 `启动 autoContents.command`（macOS）或 `启动 autoContents.bat`（Windows）即可，**无需安装 Python 或任何依赖**。首次使用需在页面中填入自己的 LLM API Key。
+
+若需自行配置环境运行源码，请参考下文「配置环境」章节。
+
+## v1.1.0 更新内容
+
+本版本整合了社区贡献（作者 [4965898](https://github.com/4965898/autoContents)），主要改动如下：
 
 - **支持任意 OpenAI 兼容的 LLM 服务商**（通义千问、书生·浦语、OpenAI、DeepSeek 等），不再局限于通义千问
 - 所有硬编码模型名改为**变量/配置读取**，可通过 `.env` 文件或网页 UI 随时切换模型
@@ -215,6 +223,12 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 > **macOS 用户注意**：从 GitHub 下载的 ZIP 会丢失 Unix 可执行权限，覆盖后 `.command` 文件将无法双击运行。请在终端执行一次 `chmod +x *.command contents_editor/*.command` 后再启动。
 
+## 许可与贡献
+
+本项目采用[专有许可协议](LICENSE)（source-available，非开源许可）：个人学习、研究与非商业用途可自由使用与修改；**商业使用需另行获得作者书面授权**。
+
+欢迎通过 Issue 反馈问题、通过 Pull Request 贡献改进。贡献的代码同样适用本协议条款。
+
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=4965898/autoContents&type=Date)](https://star-history.com/#4965898/autoContents&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=NatsUIJM/autoContents&type=Date)](https://star-history.com/#NatsUIJM/autoContents&Date)

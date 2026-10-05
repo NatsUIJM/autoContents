@@ -1,5 +1,99 @@
+autoContents 专有许可协议
+AutoContents Proprietary License
+
+版权所有 (c) 2026 史鉴 (Shi Jian)。保留所有权利。
 Copyright (c) 2026 Shi Jian. All rights reserved.
 
-本软件仅供个人学习和非商业用途使用。任何商业用途必须获得作者书面授权。
+---
 
-违反上述声明者，将承担相应法律责任。
+## 1. 定义
+
+"本项目"指 autoContents 及其源代码、文档、构建脚本等全部内容。
+"衍生作品"指基于本项目任何部分修改、翻译、重构或组合而成的作品。
+"分发"指将本项目或衍生作品以任何形式交付给他人，包括上传至公开代码托管平台。
+
+## 2. 授权范围
+
+作者在此授予你以下**非独占、可撤销**的使用许可：
+
+### 允许
+
+- 个人学习、研究、非商业用途的使用与运行
+- 阅读、复制源代码
+- 为个人用途修改源代码
+- 在本项目官方仓库提交 Issue 反馈问题
+- 通过 Pull Request 向本项目贡献代码改进
+
+### 禁止
+
+- 任何形式的商业使用，包括但不限于：销售、收费服务、SaaS 订阅、
+  企业内部使用、嵌入商业产品
+- 将本项目或衍生作品用于盈利目的
+- **以任何名称、任何形式重新发布本项目或衍生作品**，包括：
+  - 改名后发布
+  - 仅更换界面或重新打包
+  - 镜像仓库、第三方下载站
+- 移除或篡改作者署名与版权声明
+- 声称本项目或其衍生作品由你原创开发
+- 使用本项目名称、商标或作者身份进行任何形式的背书或推广
+
+## 3. 贡献
+
+通过 Pull Request 提交的代码贡献：
+
+- 你确认该贡献为原创，或已获得相应授权
+- 你同意该贡献及其衍生作品同样适用本协议的全部条款
+- 你保留该贡献的著作权，并授权作者将其纳入本项目
+- 作者有权因任何原因拒绝、修改或删除任何贡献
+
+提交的贡献视为你已同意本第 3 条，无需另行签署授权文件。
+
+## 4. 商标与署名
+
+本项目的名称、标识及作者信息受保护。贡献被合并后，署名信息
+（如原作者列表）不得被移除。
+
+## 5. 免责声明
+
+本项目按「现状」提供，不附带任何明示或默示担保，包括但不限于
+适销性、特定用途适用性、不侵权的担保。作者不对因使用或无法使用
+本项目而产生的任何直接或间接损失承担责任。
+
+## 6. 终止
+
+违反本协议任一条款即自动终止授权。终止后，你须停止使用并删除
+本项目及衍生作品的全部副本。
+
+## 7. 商业授权
+
+商业使用需另行获得作者书面授权。请通过项目仓库的 Issue 或
+作者邮箱联系。
+
+---
+
+## English Summary (for reference)
+
+**This is a proprietary, source-available license — not an OSI-approved
+open source license.**
+
+You MAY: use, run, read, copy, and modify the software for personal,
+educational, and non-commercial purposes; submit bug reports via Issues;
+contribute improvements via Pull Requests.
+
+You MAY NOT: use it commercially (including internally within a for-profit
+entity, in paid services, or SaaS); republish the software or any derivative
+work under any name or through any channel; mirror it to third-party sites;
+remove or alter authorship/copyright notices; claim authorship of the
+software or any derivative; use the project name or author identity for
+endorsement.
+
+Contributions you submit are licensed under these same terms.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+For commercial licensing, contact the author.
+
+---
+
+作者：史鉴 (Shi Jian)
+项目：https://github.com/NatsUIJM/autoContents

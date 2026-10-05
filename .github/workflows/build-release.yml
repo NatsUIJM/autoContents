@@ -1,0 +1,73 @@
+name: build-release
+
+# 打 tag（v*）时构建便携包并发布 Release；也可手动触发（只构建，不发 Release）
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 一个平台挂掉不影响另一个
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            os: macos-15
+          - target: windows-x64
+            os: windows-latest
+    steps:
+      # pin 到 commit SHA：浮动 tag 会在上游改版本时静默换掉实际执行的内容
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          # 避免把 token 带进构建产物
+          persist-credentials: false
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: 构建便携包
+        run: uv run tools/build_bundle.py --target ${{ matrix.target }}
+
+      - name: 上传产物
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.4.3
+        with:
+          name: autoContents-${{ matrix.target }}
+          path: dist/autoContents-${{ matrix.target }}.zip
+          retention-days: 7
+          if-no-files-found: error
+
+  release:
+    name: 发布 Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.1.8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 校验产物
+        run: |
+          ls -lh artifacts/
+          test -n "$(ls artifacts/*.zip)" || { echo "没有产物"; exit 1; }
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.2.1
+        with:
+          draft: true
+          generate_release_notes: true
+          files: artifacts/*.zip
