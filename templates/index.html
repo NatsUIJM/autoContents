@@ -138,6 +138,42 @@
             border-radius: 4px;
             vertical-align: middle;
         }
+        .update-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            background-color: #ecfdf5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+        .update-banner a {
+            color: #059669;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .update-banner a:hover { text-decoration: underline; }
+        .update-banner .dismiss {
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+        }
+        @media (prefers-color-scheme: dark) {
+            .update-banner {
+                background-color: rgba(16, 185, 129, 0.12);
+                border-color: rgba(16, 185, 129, 0.45);
+                color: #6ee7b7;
+            }
+            .update-banner a { color: #34d399; }
+        }
         .file-input-container {
             margin-bottom: 25px;
             display: flex;
@@ -542,8 +578,14 @@
 <body>
     <div class="container">
         <div class="header">
-            <h2>autoContents 目录生成工具 <span class="version">v1.1.0</span></h2>
+            <h2>autoContents 目录生成工具 <span class="version" id="versionBadge">v?</span></h2>
             <button class="test-btn" onclick="testQwenService()">模型服务测试</button>
+        </div>
+
+        <div class="update-banner" id="updateBanner">
+            <span id="updateBannerText"></span>
+            <a id="updateBannerLink" href="https://github.com/NatsUIJM/autoContents/releases/latest" target="_blank" rel="noopener">前往下载</a>
+            <button class="dismiss" id="updateBannerDismiss" title="本次关闭" onclick="dismissUpdateBanner()">×</button>
         </div>
 
         <div class="file-input-container" id="dropZone">
@@ -681,7 +723,92 @@
         window.addEventListener('DOMContentLoaded', function() {
             loadLLMConfig();
             initSysLogStream();
+            initUpdateCheck();
         });
+
+        // ==================== 版本与更新检查 ====================
+
+        const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h 内不重复检查
+        const UPDATE_DISMISS_KEY = 'ac_update_dismissed_tag';
+
+        function compareVersions(a, b) {
+            // 逐段数值比较：1.10.0 > 1.9.0。非数字段按 0 处理。
+            const pa = String(a).replace(/^v/i, '').split('.');
+            const pb = String(b).replace(/^v/i, '').split('.');
+            const len = Math.max(pa.length, pb.length);
+            for (let i = 0; i < len; i++) {
+                const na = parseInt(pa[i], 10) || 0;
+                const nb = parseInt(pb[i], 10) || 0;
+                if (na !== nb) return na - nb;
+            }
+            return 0;
+        }
+
+        function initUpdateCheck() {
+            // 1. 填充版本徽章（版本号来自后端单一真相源）
+            fetch('/api_version')
+                .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                .then(info => {
+                    const badge = document.getElementById('versionBadge');
+                    badge.textContent = 'v' + info.version;
+                    checkForUpdate(info.version, info.releases_url);
+                })
+                .catch(err => {
+                    console.warn('版本信息获取失败，更新检查跳过:', err);
+                    const badge = document.getElementById('versionBadge');
+                    if (badge) badge.style.display = 'none';
+                });
+        }
+
+        function checkForUpdate(currentVersion, releasesUrl) {
+            // 24h 内检查过且用户未忽略，则用缓存结果，避免打爆 GitHub 匿名限额（60 次/时/IP）
+            const cached = localStorage.getItem('ac_update_cache');
+            if (cached) {
+                try {
+                    const c = JSON.parse(cached);
+                    if (Date.now() - c.checkedAt < UPDATE_CHECK_INTERVAL_MS) {
+                        maybeShowUpdateBanner(currentVersion, c.latestTag);
+                        return;
+                    }
+                } catch (e) { localStorage.removeItem('ac_update_cache'); }
+            }
+
+            fetch(releasesUrl, { headers: { 'Accept': 'application/vnd.github+json' } })
+                .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+                .then(rel => {
+                    const latestTag = rel.tag_name || '';
+                    localStorage.setItem('ac_update_cache', JSON.stringify({
+                        checkedAt: Date.now(),
+                        latestTag: latestTag,
+                    }));
+                    maybeShowUpdateBanner(currentVersion, latestTag);
+                })
+                .catch(err => console.warn('更新检查失败（不影响使用）:', err));
+        }
+
+        function maybeShowUpdateBanner(currentVersion, latestTag) {
+            if (!latestTag) return;
+            const dismissedTag = localStorage.getItem(UPDATE_DISMISS_KEY);
+            if (dismissedTag === latestTag) return; // 用户已忽略这个版本
+            if (compareVersions(latestTag, currentVersion) <= 0) return;
+
+            const banner = document.getElementById('updateBanner');
+            document.getElementById('updateBannerText').textContent =
+                `发现新版本 v${latestTag.replace(/^v/i, '')}（当前 v${currentVersion}）`;
+            banner.style.display = 'flex';
+        }
+
+        function dismissUpdateBanner() {
+            const cacheRaw = localStorage.getItem('ac_update_cache');
+            let latestTag = '';
+            if (cacheRaw) {
+                try { latestTag = JSON.parse(cacheRaw).latestTag || ''; } catch (e) {}
+            }
+            if (latestTag) {
+                localStorage.setItem(UPDATE_DISMISS_KEY, latestTag);
+            }
+            document.getElementById('updateBanner').style.display = 'none';
+        }
 
         // ==================== 原有功能函数 ====================
 

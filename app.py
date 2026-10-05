@@ -23,7 +23,21 @@ logger = logging.getLogger('gunicorn.error')
 
 app = Flask(__name__)
 
+# 版本号单一真相源：发版时只改这里（readme 与 tag 同步更新）。
+# 前端横幅用它显示当前版本，并与 GitHub Releases 最新 tag 比对做更新提醒。
+APP_VERSION = "1.1.0"
+RELEASES_API = "https://api.github.com/repos/NatsUIJM/autoContents/releases/latest"
+
 # ==================== Flask 路由 ====================
+
+@app.route('/api_version')
+def api_version():
+    """返回当前版本与最新 Release 信息，供前端更新检查。"""
+    return jsonify({
+        'version': APP_VERSION,
+        'releases_url': RELEASES_API,
+        'download_url': 'https://github.com/NatsUIJM/autoContents/releases/latest',
+    })
 
 @app.route('/favicon.ico')
 def favicon():

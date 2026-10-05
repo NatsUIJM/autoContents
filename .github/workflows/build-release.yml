@@ -39,6 +39,21 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      # tag（v1.2.3）必须与代码内版本（APP_VERSION = "1.2.3"）一致，
+      # 否则前端更新提醒会拿 tag 与错误版本比较，提示错乱。
+      - name: 校验版本一致性
+        shell: python
+        run: |
+          import os, re, sys
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          src = open("app.py", encoding="utf-8").read()
+          m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', src)
+          if not m:
+              sys.exit("app.py 中未找到 APP_VERSION 定义")
+          if m.group(1) != tag:
+              sys.exit(f"版本不一致: tag 是 {tag}, app.py 是 {m.group(1)}。请先更新 APP_VERSION 再打 tag。")
+          print(f"版本校验通过: {tag}")
+
       - name: 构建便携包
         run: uv run tools/build_bundle.py --target ${{ matrix.target }}
 
