@@ -1,0 +1,12 @@
+{
+  "configs": [
+    {
+      "id": "example1",
+      "name": "通义千问（阿里云百炼）",
+      "api_key": "your-api-key-here",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "model": "qwen3.5-397b-a17b"
+    }
+  ],
+  "active_id": "example1"
+}

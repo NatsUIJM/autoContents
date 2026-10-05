@@ -129,11 +129,28 @@
             background-color: var(--accent-hover);
             transform: translateY(-1px);
         }
+        .version {
+            font-size: 12px;
+            font-weight: 400;
+            color: #6366f1;
+            background: #eef2ff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            vertical-align: middle;
+        }
         .file-input-container {
             margin-bottom: 25px;
             display: flex;
             align-items: center;
             gap: 15px;
+            padding: 20px;
+            border: 2px dashed transparent;
+            border-radius: 8px;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+        .file-input-container.drag-over {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
         }
         .file-input-container button {
             background-color: var(--accent);
@@ -525,11 +542,11 @@
 <body>
     <div class="container">
         <div class="header">
-            <h2>autoContents 目录生成工具</h2>
+            <h2>autoContents 目录生成工具 <span class="version">v1.1.0</span></h2>
             <button class="test-btn" onclick="testQwenService()">模型服务测试</button>
         </div>
 
-        <div class="file-input-container">
+        <div class="file-input-container" id="dropZone">
             <input type="file" id="pdfFiles" accept=".pdf" multiple class="hidden">
             <button onclick="document.getElementById('pdfFiles').click()">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -539,6 +556,7 @@
                 </svg>
                 选择 PDF 文件（支持多选）
             </button>
+            <span style="font-size: 13px; color: #6b7280;">或将 PDF 拖拽到此处</span>
             <div id="fileList" class="file-name" style="flex-direction: column; align-items: flex-start; gap: 5px;"></div>
         </div>
 
@@ -680,8 +698,8 @@
             }
         }
 
-        document.getElementById('pdfFiles').addEventListener('change', function(e) {
-            selectedFiles = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
+        function handleFiles(files) {
+            selectedFiles = Array.from(files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
             const fileListDiv = document.getElementById('fileList');
             fileListDiv.innerHTML = '';
             if (selectedFiles.length === 0) {
@@ -695,7 +713,31 @@
                 fileListDiv.appendChild(item);
             });
             updateStartButton();
+        }
+
+        document.getElementById('pdfFiles').addEventListener('change', function(e) {
+            handleFiles(e.target.files);
         });
+
+        // 拖拽上传支持
+        const dropZone = document.getElementById('dropZone');
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', function(e) {
+            if (!dropZone.contains(e.relatedTarget)) {
+                dropZone.classList.remove('drag-over');
+            }
+        });
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+        // 阻止页面默认的拖拽行为（防止浏览器直接打开 PDF）
+        document.addEventListener('dragover', function(e) { e.preventDefault(); });
+        document.addEventListener('drop', function(e) { e.preventDefault(); });
 
         function updateStartButton() {
             const startButton = document.getElementById('startButton');
@@ -887,9 +929,9 @@
 
             updateTaskStatus(sessionId, '正在执行...');
             try {
-                const ocrModel = 'qwen';
+                const configModel = document.getElementById('model').value || 'intern-latest';
                 const response = await fetchWithTimeout(
-                    `/run_script/${sessionId}/${scriptIndex}/${retryCount}?ocr_model=${ocrModel}`,
+                    `/run_script/${sessionId}/${scriptIndex}/${retryCount}?ocr_model=${configModel}`,
                     FETCH_TIMEOUT
                 );
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -923,15 +965,17 @@
         function handleTaskError(sessionId, data, scriptIndex, retryCount) {
             const task = tasks.get(sessionId);
             if (!task) return;
+            const errDetail = (data.stderr && data.stderr.trim()) ? data.stderr.trim() : data.message;
             if (retryCount < MAX_RETRIES - 1) {
                 const nextRetry = retryCount + 1;
-                addTaskLog(sessionId, `执行失败，${RETRY_DELAY/1000}秒后进行第${nextRetry}次重试`, 'warning');
+                addTaskLog(sessionId, `执行失败：${errDetail}`, 'error');
+                addTaskLog(sessionId, `${RETRY_DELAY/1000}秒后进行第${nextRetry}次重试`, 'warning');
                 updateTaskStatus(sessionId, `等待重试 (${nextRetry}/${MAX_RETRIES})...`);
                 setTimeout(() => runScriptForTask(sessionId, scriptIndex, nextRetry), RETRY_DELAY);
             } else {
                 task.isProcessing = false;
                 updateTaskStatus(sessionId, `执行失败，已重试${MAX_RETRIES}次`);
-                addTaskLog(sessionId, `执行失败：${data.message}`, 'error');
+                addTaskLog(sessionId, `执行失败：${errDetail}`, 'error');
                 updateStartButton();
             }
         }

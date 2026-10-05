@@ -7,6 +7,7 @@ import socket
 import webbrowser
 import threading
 from openai import OpenAI
+from dotenv import load_dotenv
 import traceback
 import re
 
@@ -17,6 +18,7 @@ from mainprogress.llm_config import (
     load_llm_config, resolve_value, DEFAULT_BASE_URL, DEFAULT_MODEL,
 )
 
+load_dotenv()
 logger = logging.getLogger('gunicorn.error')
 
 app = Flask(__name__)
@@ -208,16 +210,28 @@ def stream_log():
 def get_llm_config():
     try:
         data = load_config_file()
+        configs = data.get('configs', [])
         active_id = data.get('active_id')
         # 返回当前激活配置的完整信息，方便前端直接使用
         active_config = None
-        for c in data.get('configs', []):
+        for c in configs:
             if c.get('id') == active_id:
                 active_config = c
                 break
+        if active_config is None and configs:
+            active_config = configs[0]
+        # 尚无已保存配置时，回退到环境变量默认值（兼容 .env / OPENAI_* 个性化配置）
+        if not configs:
+            active_config = {
+                'id': None,
+                'name': '',
+                'api_key': os.getenv("OPENAI_API_KEY", ""),
+                'base_url': os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL),
+                'model': os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
+            }
         return jsonify({
             'status': 'success',
-            'configs': data.get('configs', []),
+            'configs': configs,
             'active_id': active_id,
             'active_config': active_config
         })

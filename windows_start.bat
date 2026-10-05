@@ -1,4 +1,3 @@
 @echo off
-call .venv\Scripts\activate.bat
-python app.py
+cmd /c ".venv\Scripts\activate.bat && python app.py"
 pause

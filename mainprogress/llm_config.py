@@ -2,6 +2,7 @@
 
 全项目唯一的 LLM 配置来源，优先级：
 1. 环境变量 AUTOCONTENTS_API_KEY / AUTOCONTENTS_BASE_URL / AUTOCONTENTS_MODEL
+   （兼容个性化配置：同时支持 OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL，二者均可）
 2. static/llm_config.json（支持 $ENV_VAR$ 引用环境变量）
 
 app.py 的 Web 配置管理（增删改查配置文件）仍保留在 app.py 中，
@@ -12,9 +13,22 @@ import json
 import os
 from pathlib import Path
 
+# 加载 .env（若存在），让 WEB / MCP / 子进程都能读取同一份凭证
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 ENV_API_KEY = "AUTOCONTENTS_API_KEY"
 ENV_BASE_URL = "AUTOCONTENTS_BASE_URL"
 ENV_MODEL = "AUTOCONTENTS_MODEL"
+
+# 兼容个性化配置：支持任意 OpenAI 兼容服务商通过 OPENAI_* 环境变量注入
+LEGACY_ENV_API_KEY = "OPENAI_API_KEY"
+LEGACY_ENV_BASE_URL = "OPENAI_BASE_URL"
+LEGACY_ENV_MODEL = "OPENAI_MODEL"
 
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_MODEL = "qwen3.5-397b-a17b"
@@ -71,12 +85,14 @@ def load_llm_config() -> dict:
     环境变量优先于配置文件；任一来源提供 api_key 即可，
     base_url / model 缺省时使用默认值。无可用 api_key 时抛出 ValueError。
     """
-    env_key = os.getenv(ENV_API_KEY, "").strip()
+    env_key = os.getenv(ENV_API_KEY, "").strip() or os.getenv(LEGACY_ENV_API_KEY, "").strip()
     if env_key:
+        env_base_url = os.getenv(ENV_BASE_URL, "").strip() or os.getenv(LEGACY_ENV_BASE_URL, "").strip()
+        env_model = os.getenv(ENV_MODEL, "").strip() or os.getenv(LEGACY_ENV_MODEL, "").strip()
         return {
             "api_key": env_key,
-            "base_url": os.getenv(ENV_BASE_URL, "").strip() or DEFAULT_BASE_URL,
-            "model": os.getenv(ENV_MODEL, "").strip() or DEFAULT_MODEL,
+            "base_url": env_base_url or DEFAULT_BASE_URL,
+            "model": env_model or DEFAULT_MODEL,
         }
 
     file_config = _load_from_file()
@@ -85,7 +101,8 @@ def load_llm_config() -> dict:
 
     raise ValueError(
         "未找到可用的 LLM 配置：请设置环境变量 "
-        f"{ENV_API_KEY}（可选 {ENV_BASE_URL} / {ENV_MODEL}），"
+        f"{ENV_API_KEY} / {LEGACY_ENV_API_KEY}（可选 {ENV_BASE_URL} / {ENV_MODEL}，"
+        f"或 {LEGACY_ENV_BASE_URL} / {LEGACY_ENV_MODEL}），"
         f"或在 {CONFIG_PATH} 中配置 api_key"
     )
 

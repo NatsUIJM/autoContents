@@ -19,3 +19,6 @@ testscript.py
 batch_*
 auth.key
 .claude
+# 敏感配置文件（含 API Key，请勿提交）
+.env
+static/llm_config.json
