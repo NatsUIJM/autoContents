@@ -4,6 +4,15 @@
 
 autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具，能够基于目录页内容创建可跳转书签。上传 PDF 文档后无需进行任何其他操作，等待 1 分钟左右即可获取处理结果。
 
+## 贡献者致谢
+
+本项目的可用性离不开社区的反馈与代码贡献，感谢以下参与者：
+
+- **[Daxoel (@4965898)](https://github.com/4965898)** —— 贡献 v1.1.0 的核心功能：任意 OpenAI 兼容 LLM 服务商支持、罗马数字页码识别与前言偏移计算、拖拽上传 PDF、PDF 完整性预检、启动脚本兼容性修复。他另在 [issue #16](https://github.com/NatsUIJM/autoContents/issues/16) 中提出了「支持其他 MaaS 平台」的需求，直接促成了这项改进。
+- **[@Little-White3110](https://github.com/Little-White3110)** —— 就导出文件命名规则与自定义导出文件名提出改进建议（[#12](https://github.com/NatsUIJM/autoContents/issues/12)、[#14](https://github.com/NatsUIJM/autoContents/issues/14)），并贡献了 3月29日版本的文件重命名功能。
+
+欢迎通过 [Issue](https://github.com/NatsUIJM/autoContents/issues) 反馈问题、通过 [Pull Request](https://github.com/NatsUIJM/autoContents/pulls) 贡献代码，贡献内容同样适用本项目[许可协议](#许可与贡献)。
+
 ## 下载使用
 
 前往 [Releases](https://github.com/NatsUIJM/autoContents/releases) 下载对应系统的压缩包，解压后双击 `启动 autoContents.command`（macOS）或 `启动 autoContents.bat`（Windows）即可，**无需安装 Python 或任何依赖**。首次使用需在页面中填入自己的 LLM API Key。
@@ -12,7 +21,7 @@ autoContents 是一款专为扫描版 PDF 设计的书签全自动生成工具�
 
 ## v1.1.0 更新内容
 
-本版本整合了社区贡献（作者 [4965898](https://github.com/4965898/autoContents)），主要改动如下：
+本版本更新内容如下（贡献者见上方[致谢](#贡献者致谢)）：
 
 - **支持任意 OpenAI 兼容的 LLM 服务商**（通义千问、书生·浦语、OpenAI、DeepSeek 等），不再局限于通义千问
 - 所有硬编码模型名改为**变量/配置读取**，可通过 `.env` 文件或网页 UI 随时切换模型
