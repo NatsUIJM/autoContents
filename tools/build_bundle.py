@@ -28,6 +28,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BUNDLE_NAME = "autoContents"
 
+# Windows 控制台默认 cp1252/cp936，无法编码本脚本里的中文输出，
+# 会在第一处 print 就抛 UnicodeEncodeError。统一切到 UTF-8 并对无法
+# 编码的字符降级处理，保证构建流程不会因日志中断。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
 # 项目运行所需的文件/目录（相对项目根）
 INCLUDE_ITEMS = [
     "app.py",
